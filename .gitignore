@@ -1,0 +1,50 @@
+# 编辑器与系统文件
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# JavaScript / TypeScript 生态
+node_modules/
+dist/
+build/
+coverage/
+
+# Python 生态
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# 日志与临时文件
+*.log
+*.tmp
+*.temp
+
+# 本地环境变量
+.env
+.env.*
+
+# 输出目录中的临时产物
+output/temporary/*
+output/exploratory/*
+
+# Python 构建与覆盖率
+**/build/
+**/dist/
+**/*.egg-info/
+.coverage
+htmlcov/
+
+# 评测与本地产物缓存
+.eval-cache/
+evals/**/tmp/
+evals/**/results/
+
+# 保留研究产物与说明文件
+!output/README.md
+!output/playwright/
+!output/playwright/**
+!**/README.md
+!CLAUDE.md

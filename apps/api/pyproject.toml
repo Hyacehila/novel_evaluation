@@ -1,0 +1,11 @@
+[project]
+name = "api"
+version = "0.1.0"
+description = "Backend service scaffold for the novel evaluation system"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.9.5,<0.10.0"]
+build-backend = "uv_build"
