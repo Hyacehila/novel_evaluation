@@ -143,7 +143,8 @@
 当任务状态从处理中转为 `completed`：
 
 - 当前页面保持停留在 `任务详情 / 状态页`
-- 页面展示结果入口
+- 仅当 `resultStatus = available` 时展示结果入口
+- 当 `resultStatus = not_available` 或 `blocked` 时，保留任务页说明或进入对应语义态入口
 - 不自动跳转 `结果详情页`
 - 可主动失效 `task-result:{taskId}`，为用户后续进入结果页做准备
 - 同时失效 `dashboard-summary` 与 `history-list:*`

@@ -243,6 +243,8 @@ GET /api/tasks/{taskId}
 
 - `resultAvailable` 主要用于任务页是否展示结果入口
 - `resultStatus` 用于任务页补充结果可用性语义
+- 前端最小假契约应遵守：`resultAvailable = true` 当且仅当 `resultStatus = available`
+- 当 `resultStatus = not_available` 或 `blocked` 时，`resultAvailable` 必须为 `false`
 
 ## 三、读取结果详情
 
@@ -329,6 +331,8 @@ GET /api/tasks/{taskId}/result
 
 - `result` 仅在 `resultStatus = available` 时存在
 - `not_available` 与 `blocked` 均不应返回伪正式结果
+- 若任务不存在，应返回 `404`
+- 若任务存在但结果尚未生成、尚未就绪、当前不可展示或被阻断，应返回 `200` 且通过 `resultStatus` 表达语义
 - 前端应基于 `resultStatus` 进入对应展示态
 
 ## 四、读取工作台首页摘要
@@ -434,6 +438,7 @@ GET /api/history?q={query}&status={status}&cursor={cursor}&limit={limit}
 说明：
 
 - 这些错误码用于前端错误态分类与文案映射
+- `RESULT_NOT_AVAILABLE` 与 `RESULT_BLOCKED` 不是结果读取主路径的常态 envelope；主路径优先使用 `200 + data.resultStatus`
 - 后端后续可以扩展，但不建议把错误语义全部塞进自然语言 message
 
 ## View Model 映射建议

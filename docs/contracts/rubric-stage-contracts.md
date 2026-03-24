@@ -1,8 +1,8 @@
-# 分层 Rubric 阶段契约
+# 全 LLM Rubric 阶段契约
 
 ## 目标
 
-本文档定义分层 `rubric` 评分流程中的中间阶段契约，用于指导后续在 `packages/schemas/` 中落地正式结构定义。
+本文档定义全 `LLM` 分阶段 `rubric` 评分流程中的中间阶段契约，用于指导后续在 `packages/schemas/` 中落地正式结构定义。
 
 本文档只负责说明结构含义、边界和映射关系，不代替正式 Schema 本体。
 
@@ -23,16 +23,17 @@
 - 无 JSON 外自然语言
 - 版本可追踪
 
-### 3. 契约要支持版本治理
+### 3. 契约必须服务单主线评分流程
 
-每个阶段对象都应包含最少元数据：
+所有阶段对象都应服务以下正式主线：
 
-- `taskId`
-- `schemaVersion`
-- `promptVersion`
-- `rubricVersion`
-- `providerId`
-- `modelId`
+1. `输入预检查`
+2. `LLM rubric 分点评价`
+3. `轻量一致性整理`
+4. `新模型聚合输出`
+5. `正式结果投影`
+
+文档中不再保留分叉升级、外部介入或并行评分路径相关阶段对象。
 
 ### 4. 置信度与错误语义必须显式化
 
@@ -40,7 +41,7 @@
 
 - 置信度
 - 是否可继续进入下游
-- 当前失败是结构失败、证据失败还是判断失败
+- 当前失败是结构失败、不可评失败还是判断失败
 
 ## 通用字段约定
 
@@ -50,11 +51,14 @@
 - `stage`：当前阶段名称
 - `schemaVersion`：阶段结构版本
 - `rubricVersion`：本阶段使用的 Rubric 版本
-- `executorType`：建议使用 `rule`、`llm`、`hybrid`
-- `promptVersion`：本阶段使用的 Prompt 版本，仅在 `executorType` 为 `llm` 或 `hybrid` 时必填
-- `providerId`：模型供应商标识，仅在 `executorType` 为 `llm` 或 `hybrid` 时必填
-- `modelId`：模型标识，仅在 `executorType` 为 `llm` 或 `hybrid` 时必填
-- `ruleSetVersion`：规则集版本，仅在 `executorType` 为 `rule` 或 `hybrid` 时建议记录
+- `promptVersion`：本阶段使用的 Prompt 版本
+- `providerId`：模型供应商标识
+- `modelId`：模型标识
+
+说明：
+
+- 当前正式主线默认由 `LLM` 生成评分阶段对象
+- 系统边界的确定性校验不属于本文档的阶段对象范围
 
 ### 质量字段
 
@@ -65,25 +69,18 @@
 
 ### 证据引用字段
 
-- `evidenceId`：证据对象标识
+为了避免“证据抽取”与“评分项”分离导致的双重治理，正式主线采用内嵌证据引用：
+
 - `sourceSpan`：原文范围引用
-- `excerpt`：证据摘录
+- `excerpt`：短摘录，仅用于内部治理与评测
 - `observationType`：观察类别
+- `evidenceNote`：对该证据的短说明
 
 说明：
 
-- 阶段对象应尽量通过 `evidenceId` 复用证据，避免复制整段文本
+- `excerpt` 不应默认进入对外正式结果
 - 证据引用应优先使用结构化范围，而不是松散自然语言描述
-- `excerpt` 只应作为内部治理、评测或调试字段，不应默认进入对外正式结果
-
-### 证据数据治理
-
-对于原文证据片段，建议区分以下保存策略：
-
-- 对外正式 API：默认不返回 `excerpt`
-- 运行时日志：默认只记录必要元数据、短摘录或哈希，不默认长期保存整段原文
-- 评测报告：默认优先保存派生指标与引用标识，避免无必要复制用户全文片段
-- 需要人工复核的内部场景：可受控保存短摘录，但应与正式用户结果分离
+- 同一阶段对象可复用多个证据引用，不要求再维护独立 `EvidencePack`
 
 ## 阶段对象定义
 
@@ -91,8 +88,6 @@
 
 - 下列“建议字段”主要列出每个阶段对象的业务字段
 - 除非明确豁免，每个阶段对象默认还应继承前文定义的标识字段与质量字段
-- 当 `executorType` 为 `rule` 时，可不提供 `promptVersion`、`providerId`、`modelId`
-- 当 `executorType` 为 `llm` 或 `hybrid` 时，应按前文要求补齐对应执行器元数据
 
 ### 1. `InputScreeningResult`
 
@@ -100,7 +95,7 @@
 
 - 判断输入是否可评
 - 识别输入类型与边界风险
-- 给后续阶段提供输入上下文
+- 给后续分点评价阶段提供输入上下文
 
 建议字段：
 
@@ -116,44 +111,67 @@
 说明：
 
 - `rateable=false` 时，应优先进入结构化失败路径，而不是伪造评分结果
-- `segmentationPlan` 用于说明长文本如何切段或优先关注哪些片段
+- `segmentationPlan` 用于说明长文本的处理边界，不应演化为额外路由系统
 
-### 2. `EvidenceItem`
+### 2. `RubricEvaluationEvidenceRef`
 
 用途：
 
-- 表示一个可复用的评分证据单元
+- 表示单个分点评价项所依赖的文本依据
 
 建议字段：
 
-- `evidenceId`
-- `category`
 - `sourceSpan`
 - `excerpt`
-- `summary`
-- `polarity`：`positive`、`negative`、`mixed`、`neutral`
-- `severity`
+- `observationType`
+- `evidenceNote`
 - `confidence`
 
-### 3. `EvidencePack`
+### 3. `RubricEvaluationItem`
 
 用途：
 
-- 聚合当前样本的结构化证据
-- 作为原子评分层的直接输入
+- 表示一个稳定的 `rubric` 子维度评价结果
 
 建议字段：
 
-- `items`：`EvidenceItem[]`
-- `coverageByDimension`
-- `missingEvidenceDimensions`
-- `riskTags`
+- `evaluationId`
+- `dimensionId`
+- `subdimensionId`
+- `scoreBand`：`0-4`
+- `reason`
+- `evidenceRefs`：`RubricEvaluationEvidenceRef[]`
 - `confidence`
+- `riskTags`
+- `blockingSignals`
+
+约束：
+
+- 无依据时不得直接输出高分
+- `reason` 应短而明确，不应输出长段抒情文本
+- 命中高风险信号时，必须输出对应 `riskTags` 或 `blockingSignals`
+
+### 4. `RubricEvaluationSet`
+
+用途：
+
+- 聚合全部 `RubricEvaluationItem`
+- 作为轻量一致性整理与聚合模型的标准输入
+
+建议字段：
+
+- `items`：`RubricEvaluationItem[]`
+- `dimensionSummaries`
+- `coverageByDimension`
+- `missingRequiredItems`
+- `riskTags`
+- `overallConfidence`
 
 说明：
 
-- `coverageByDimension` 用于记录哪些一级或二级维度已具备证据支撑
-- `missingEvidenceDimensions` 可直接用于触发升级条件
+- `RubricEvaluationSet` 是新的评分主干对象
+- 该对象同时承接原“证据抽取 + 原子评分”的正式语义
+- 文档层不再保留独立 `EvidencePack` 作为长期主阶段对象
 
 ## 维度标识符治理
 
@@ -164,76 +182,44 @@
 - 重命名稳定标识符应触发版本升级与评测回归
 - 文档中出现的一级与二级维度名称，应优先视为正式命名候选
 
-### 4. `AtomicRubricScore`
+### 5. `ConsistencyConflict`
 
 用途：
 
-- 表示单个 `rubric` 子维度的评分结果
-
-建议字段：
-
-- `dimensionId`
-- `subdimensionId`
-- `scoreBand`：`0-4`
-- `reason`
-- `evidenceRefs`
-- `confidence`
-- `fatalFlags`
-- `nextAction`：`keep`、`review`、`escalate`
-
-约束：
-
-- 无证据时不得直接输出高分
-- 命中 `fatalFlags` 时必须解释原因
-- `reason` 应短而明确，不应输出长段抒情文本
-
-### 5. `RubricScoreCard`
-
-用途：
-
-- 聚合全部 `AtomicRubricScore`
-- 作为一致性校验与聚合层的标准输入
-
-建议字段：
-
-- `scores`：`AtomicRubricScore[]`
-- `dimensionSummaries`
-- `riskTags`
-- `overallConfidence`
-- `needsConsistencyCheck`
-
-### 6. `ConsistencyConflict`
-
-用途：
-
-- 描述一个具体冲突项
+- 描述一个具体冲突项或整理项
 
 建议字段：
 
 - `conflictId`
 - `conflictType`
-- `relatedDimensions`
-- `relatedEvidenceIds`
+- `relatedEvaluations`
 - `description`
 - `severity`
-- `recommendedAction`
+- `normalizationNote`
 
-### 7. `ConsistencyCheckResult`
+### 6. `ConsistencyCheckResult`
 
 用途：
 
-- 记录一致性校验结果
+- 记录轻量一致性整理结果
+- 为聚合模型提供“哪些项可直接用、哪些项存在问题”的结构化说明
 
 建议字段：
 
 - `passed`
 - `conflicts`：`ConsistencyConflict[]`
-- `duplicateScoringDetected`
 - `unsupportedClaimsDetected`
-- `requiresArbitration`
+- `duplicatedPenaltiesDetected`
+- `missingRequiredItems`
+- `normalizationNotes`
 - `confidence`
 
-### 8. `AggregatedRubricResult`
+说明：
+
+- 本对象不再承担分叉升级或外部介入语义
+- 本对象只服务聚合前的结果整理与冲突提示
+
+### 7. `AggregatedRubricResult`
 
 用途：
 
@@ -246,47 +232,27 @@
 - `topLevelScoresDraft`
 - `strengthCandidates`
 - `weaknessCandidates`
+- `platformCandidates`
 - `marketFitDraft`
 - `editorVerdictDraft`
 - `detailedAnalysisDraft`
+- `supportingDimensionMap`
 - `riskTags`
 - `overallConfidence`
-- `requiresArbitration`
 
 聚合要求：
 
 - 必须记录每个顶层评分主要来自哪些内部维度
 - 必须执行基础逻辑校准
 - 不允许让 `signingProbability` 独立脱离底层维度飙升
+- 聚合模型不得重新绕过分点评价结果整体直评
 
-### 9. `ArbitrationRecord`
-
-用途：
-
-- 记录升级仲裁过程和结果
-
-建议字段：
-
-- `triggerReasons`
-- `disputedItems`
-- `arbitrationMode`
-- `decision`：`uphold`、`revise`、`unrateable`
-- `revisedFields`
-- `justification`
-- `confidence`
-
-约束：
-
-- 必须记录升级原因
-- 必须说明仲裁是修正了哪些字段或维度
-- 不应把仲裁实现为不可解释的整体重写
-
-### 10. `FinalEvaluationProjection`
+### 8. `FinalEvaluationProjection`
 
 用途：
 
 - 生成对外正式结果对象前的最后投影层
-- 它属于后端内部过渡对象，不应直接等同于最终对外 API 返回体
+- 属于后端内部过渡对象，不直接等同于最终对外 API 返回体
 
 建议字段：
 
@@ -296,7 +262,7 @@
 - `innovationScore`
 - `strengths`
 - `weaknesses`
-- `sortingHat`
+- `platforms`
 - `marketFit`
 - `editorVerdict`
 - `detailedAnalysis`
@@ -323,6 +289,8 @@
 约束来源：
 
 - `fatalRisk`
+- `InputScreeningResult`
+- `ConsistencyCheckResult`
 
 ### `writingQuality`
 
@@ -337,6 +305,7 @@
 约束来源：
 
 - `fatalRisk`
+- `ConsistencyCheckResult`
 
 ### `innovationScore`
 
@@ -347,6 +316,7 @@
 约束来源：
 
 - `fatalRisk`
+- `ConsistencyCheckResult`
 
 ### `signingProbability`
 
@@ -359,8 +329,8 @@
 约束来源：
 
 - `fatalRisk`
-- 一致性校验结果
-- 仲裁结果
+- `InputScreeningResult`
+- `ConsistencyCheckResult`
 
 说明：
 
@@ -374,10 +344,10 @@
 
 - `input_invalid`
 - `input_unrateable`
-- `evidence_insufficient`
-- `contract_invalid`
+- `rubric_evaluation_failed`
+- `rubric_incomplete`
 - `consistency_conflict`
-- `arbitration_required`
+- `aggregation_failed`
 - `provider_failure`
 
 原则：
@@ -392,10 +362,10 @@
 
 1. 在 `packages/schemas/output/` 中优先冻结最终输出结构
 2. 在 `packages/schemas/evals/` 中定义阶段评测与差异报告结构
-3. 再按阶段引入内部中间契约 Schema
+3. 再按正式主线引入内部中间契约 Schema
 
 这样做的原因：
 
 - 先保证正式接口稳定
 - 再扩展内部阶段结构
-- 避免在仓库早期阶段就让中间结构反过来绑死外部接口
+- 避免中间结构反过来绑死对外接口

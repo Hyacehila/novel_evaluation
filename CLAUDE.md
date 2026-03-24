@@ -77,6 +77,12 @@
 - 正式结构应以 `packages/schemas/` 为唯一真源
 - API、Worker、Evals 都必须遵守同一套结构约束
 
+### 正式评分主线
+
+- 正式评分主线采用全 `LLM` 分阶段 `rubric` 机制
+- 正式流程固定为：输入预检查 → `LLM rubric` 分点评价 → 轻量一致性整理 → 新模型聚合输出 → 正式结果投影
+- 正式方案固定为单主线全 `LLM` 分阶段 `rubric` 流程，不引入额外介入环节或并行评分路径
+
 ### 研究产物边界
 
 - `output/playwright/*` 仅作研究用途
@@ -112,5 +118,6 @@
 4. `docs/planning/layered-rubric-implementation-plan.md`
 5. `docs/planning/rubric-design-absorption-matrix.md`
 6. `docs/decisions/ADR-004-layered-rubric-evaluation.md`
-7. `docs/contracts/json-contracts.md`
-8. `docs/decisions/ADR-001-repo-structure.md`
+7. `docs/architecture/scoring-pipeline.md`
+8. `docs/contracts/json-contracts.md`
+9. `docs/decisions/ADR-001-repo-structure.md`

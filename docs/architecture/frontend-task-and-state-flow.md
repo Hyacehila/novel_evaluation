@@ -130,6 +130,12 @@ completed -> blocked
 available -> fetch_failed
 ```
 
+说明：
+
+- `resultStatus` 是与任务状态并行存在的结果可读性语义字段，不只在 `completed` 后出现
+- 在任务详情场景下，`queued`、`processing`、`failed` 也可伴随 `resultStatus = not_available`
+- 上述结果阶段图主要描述结果页消费视角，而不是后端唯一合法组合全集
+
 ## 失败与阻断分类
 
 | 类型 | 含义 | 主要停留页面 | 是否允许进入结果正文 |

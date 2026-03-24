@@ -16,13 +16,26 @@
 
 - 文档优先解释边界、职责和原因
 - 不将临时抓取产物直接放入 `docs/`
+- 正式评分主线应在真源文档中单点定义，再由其它文档引用
+- 技术路线一旦冻结，应通过架构文档与 ADR 同步回写全仓库
 
-## 当前新增专题
+## 当前关键真源
 
-与核心评分机制相关的新增专题文档：
+### 系统与范围
+
+- `docs/architecture/system-overview.md`
+- `docs/planning/mvp-phase-1-scope.md`
+
+### 评分主线与契约
 
 - `docs/architecture/layered-rubric-evaluation-architecture.md`
 - `docs/contracts/rubric-stage-contracts.md`
-- `docs/planning/layered-rubric-implementation-plan.md`
-- `docs/planning/rubric-design-absorption-matrix.md`
+- `docs/architecture/scoring-pipeline.md`
+- `docs/contracts/json-contracts.md`
+
+### 技术路线与决策
+
+- `docs/architecture/frontend-technical-route.md`
+- `docs/architecture/backend-technical-route.md`
 - `docs/decisions/ADR-004-layered-rubric-evaluation.md`
+- `docs/decisions/ADR-005-backend-technical-route.md`
