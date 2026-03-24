@@ -28,12 +28,13 @@
 
 ## 建议阅读顺序
 
-1. `docs/planning/novel-scoring-system-master-plan.md`
-2. `docs/planning/repo-restructure-task-list.md`
-3. `docs/architecture/repository-layout.md`
-4. `docs/architecture/system-overview.md`
-5. `docs/contracts/json-contracts.md`
-6. `docs/decisions/ADR-001-repo-structure.md`
+1. `docs/architecture/layered-rubric-evaluation-architecture.md`
+2. `docs/contracts/rubric-stage-contracts.md`
+3. `docs/planning/layered-rubric-implementation-plan.md`
+4. `docs/planning/rubric-design-absorption-matrix.md`
+5. `docs/decisions/ADR-004-layered-rubric-evaluation.md`
+6. `docs/architecture/system-overview.md`
+7. `docs/contracts/json-contracts.md`
 
 ## 当前状态
 

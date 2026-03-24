@@ -16,3 +16,13 @@
 
 - 文档优先解释边界、职责和原因
 - 不将临时抓取产物直接放入 `docs/`
+
+## 当前新增专题
+
+与核心评分机制相关的新增专题文档：
+
+- `docs/architecture/layered-rubric-evaluation-architecture.md`
+- `docs/contracts/rubric-stage-contracts.md`
+- `docs/planning/layered-rubric-implementation-plan.md`
+- `docs/planning/rubric-design-absorption-matrix.md`
+- `docs/decisions/ADR-004-layered-rubric-evaluation.md`

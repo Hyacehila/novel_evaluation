@@ -107,10 +107,10 @@
 ## 推荐阅读顺序
 
 1. `README.md`
-2. `docs/planning/novel-scoring-system-master-plan.md`
-3. `docs/planning/repo-restructure-task-list.md`
-4. `docs/architecture/repository-layout.md`
-5. `docs/contracts/json-contracts.md`
-6. `docs/decisions/ADR-001-repo-structure.md`
-7. `docs/decisions/ADR-002-prompt-governance.md`
-8. `docs/decisions/ADR-003-output-artifacts-boundary.md`
+2. `docs/architecture/layered-rubric-evaluation-architecture.md`
+3. `docs/contracts/rubric-stage-contracts.md`
+4. `docs/planning/layered-rubric-implementation-plan.md`
+5. `docs/planning/rubric-design-absorption-matrix.md`
+6. `docs/decisions/ADR-004-layered-rubric-evaluation.md`
+7. `docs/contracts/json-contracts.md`
+8. `docs/decisions/ADR-001-repo-structure.md`
