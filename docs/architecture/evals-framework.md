@@ -1,80 +1,68 @@
 # Evals 框架说明
 
-本文档定义回归评测体系的目标与基本结构。
+## 文档目的
+
+本文档冻结 `Phase 1` 的回归评测框架结构、对象关系和统一报告口径。
 
 ## 目标
 
-- 验证输出结构是否稳定
-- 验证评分逻辑是否出现漂移
-- 验证 Prompt 或 Provider 变更是否导致退化
-- 为版本比较提供可复用报告
+- 验证正式结构是否稳定
+- 验证评分主线是否漂移
+- 验证 Prompt/Schema/Provider 变化影响
+- 生成结构化 baseline 与 report
 
-## 评测对象
+## 正式对象
 
-- 输入结构
-- 输出 JSON 合法性
-- 顶层评分分布
-- 平台推荐结构
-- 详细分析字段完整性
-- Prompt 版本切换后的稳定性
-- Provider / Model 切换后的稳定性
-- 内部 `rubric` 维度稳定性
-- 分点评价与最终结论的一致性
-- 聚合输出稳定性
+- `EvalCase`
+- `EvalRecord`
+- `EvalBaseline`
+- `EvalReport`
 
-## 评测类型
+`EvalReport` 固定为单一正式对象，并新增：
 
-### 1. 结构合法性评测
+- `reportType = execution_summary | baseline_comparison`
 
-检查 JSON 是否符合 Schema。
+`EvalBaseline` 继续独立存在，不并入 `EvalReport`。
 
-### 2. 阶段稳定性评测
+## 文件颗粒度
 
-检查同类文本在不同版本下的阶段结果漂移。
+`packages/schemas/evals/` 正式文件颗粒度固定为：
 
-在引入全 `LLM` 分阶段主线后，建议重点关注：
+- `case.py`
+- `record.py`
+- `baseline.py`
+- `report.py`
 
-- 一级维度分布是否稳定
-- 分点评价项是否发生异常漂移
-- 一致性整理结果是否稳定
-- 顶层结果变化是否能被中间阶段解释
+## 执行面
 
-### 3. 鲁棒性评测
+- 用户主任务不通过 worker/evals
+- worker 只运行 `batch` 与 `eval`
+- eval runner 输出 `EvalRecord`
+- report/baseline 基于 `EvalRecord` 汇总
 
-检查异常输入、缺失字段、边缘样本时的系统表现。
+## 触发规则
 
-建议重点覆盖：
+以下变更必须触发一次受控回归：
 
-- 不可评样本
-- 依据不足样本
-- 高冲突样本
-- 明显 AI 味或术语污染样本
-- 聚合输出容易波动的边界样本
+- `promptVersion`
+- `schemaVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- 上传与输入边界
+- 任务状态或错误码集合
 
-### 4. 回归评测
+## 最小结果
 
-比较当前版本与历史基线之间的变化。
+每次回归至少要能回答：
 
-在比较时建议同时保留：
+- 哪些 case 被执行
+- 哪些结果 `available / blocked / failed`
+- 正式结构是否合法
+- 与 baseline 相比发生了什么变化
 
-- 最终结果对象差异
-- 内部维度差异
-- 分点评价差异
-- 一致性整理差异
-- 聚合输出差异
-- 成本与时延差异
+## 非目标
 
-## 评测资产
-
-- `datasets/`：样本与金标准
-- `cases/`：评测用例组织
-- `runners/`：执行入口
-- `reports/`：报告输出
-- `baselines/`：历史基线结果
-
-## 原则
-
-- Prompt 变更要跑回归
-- Provider / Model 变更要跑回归
-- Schema 变更要跑结构合法性验证
-- 阶段契约变化要跑阶段稳定性验证
+- 复杂在线评测后台
+- 多 Provider 生产矩阵
+- 第二套业务结果语义

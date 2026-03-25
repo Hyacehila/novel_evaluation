@@ -2,85 +2,57 @@
 
 ## 文档目的
 
-本文档定义当前仓库面向 `/orchestrate` 与 `devfleet` 的 mission 依赖图、并行边界和禁止并行修改面。
+本文档定义 `I1-I9`、`R1-R5`、`E1`、`F1-F2`、`O1-O2` 的依赖顺序、并行边界和禁止并行修改面。
 
-它与 `docs/planning/devfleet-mission-catalog.md` 配套使用：
+## 波次 DAG
 
-- `mission-catalog` 负责定义 mission 本身
-- 本文档负责定义 mission 之间的 `depends_on`、波次顺序和并行规则
-
-## 当前 DAG 作用域
-
-当前 DAG 只覆盖 implementation-prep mission：
-
-- `I1` 到 `I9`
-
-当前不再下发文档修复 mission。
-
-## Implementation-Prep DAG
-
-### Wave 0：并行基础收口
+### Wave 0：Implementation-Prep 基础并行
 
 可并行：
 
-- `I1`：落地 `packages/schemas/evals/` 正式 schema
-- `I2`：落地 `packages/provider-adapters/` 最小 provider port 与本地 adapter
-- `I3`：落地 `packages/prompt-runtime/` registry / versions 读取接口
+- `I1`
+- `I2`
+- `I3`
 
 说明：
 
-- 三者互不依赖，可并行启动
-- 但不得并行改动 `packages/application/services/evaluation_service.py`
+- 三者互不依赖
+- 不得并行改动 `packages/application/services/evaluation_service.py`
 
 ### Wave 1：Prompt 资产实例化
 
-- `I4`：落地首批 Prompt registry / versions 实例与 scoring 资产骨架
+- `I4`
 
 依赖：
 
 - `I3`
 
-说明：
-
-- `I4` 依赖 `I3` 提供的读取契约
-- `I4` 不得反向修改 prompt runtime 接口本体
-
 ### Wave 2：application 去硬编码化
 
-- `I5`：让 application service 通过 port 消费 prompt/provider
+- `I5`
 
 依赖：
 
 - `I2`
 - `I3`
 
-说明：
-
-- `I5` 是 API 与 worker 接线前的共同上游
-- `I5` 完成前，不允许并行修改 `apps/api/src/api/` 与 `apps/worker/` 以接新依赖
-
-### Wave 3：执行入口补齐
+### Wave 3：最小执行入口
 
 可并行：
 
-- `I6`：收口 API 依赖注入与 DTO 对齐
-- `I7`：落地 worker 最小执行入口
-- `I8`：落地 evals runner 与报告输出
+- `I6`
+- `I7`
+- `I8`
 
 依赖：
 
-- `I6` 依赖 `I5`
-- `I7` 依赖 `I5`
-- `I8` 依赖 `I1`、`I4`
+- `I6 <- I5`
+- `I7 <- I5`
+- `I8 <- I1, I4`
 
-说明：
+### Wave 4：implementation-prep 复审
 
-- `I6` 与 `I7` 共用 application 新边界，但文件集不同，可以并行
-- `I8` 主要收口 evals 闭环，可与 `I6`、`I7` 并行
-
-### Wave 4：复审收尾
-
-- `I9`：执行收口验证并复审 readiness
+- `I9`
 
 依赖：
 
@@ -88,9 +60,39 @@
 - `I7`
 - `I8`
 
-说明：
+### Wave 5：Runtime Completion
 
-- `I9` 只做结论与验证，不应重写上游对象边界
+并行起点：
+
+- `R1`
+- `R2`
+- `R3`
+
+后续串联：
+
+- `R4 <- R1, R2, R3`
+- `R5 <- R1, I6`
+
+### Wave 6：Evals / Worker 闭环
+
+- `E1`
+
+依赖：
+
+- `R2`
+- `R3`
+- `R4`
+- `R5`
+
+### Wave 7：Frontend 闭环
+
+- `F1 <- I6, R5`
+- `F2 <- F1, R4, R5`
+
+### Wave 8：Release / Ops
+
+- `O1 <- R1, R5, F2`
+- `O2 <- E1, O1`
 
 ## 依赖矩阵
 
@@ -105,106 +107,123 @@
 | `I7` | `I5` |
 | `I8` | `I1`、`I4` |
 | `I9` | `I6`、`I7`、`I8` |
+| `R1` | `I5`、`I6` |
+| `R2` | `I2`、`I5` |
+| `R3` | `I3`、`I4` |
+| `R4` | `R1`、`R2`、`R3` |
+| `R5` | `R1`、`I6` |
+| `E1` | `R2`、`R3`、`R4`、`R5` |
+| `F1` | `I6`、`R5` |
+| `F2` | `F1`、`R4`、`R5` |
+| `O1` | `R1`、`R5`、`F2` |
+| `O2` | `E1`、`O1` |
 
 ## 禁止并行修改面
 
-以下修改面在同一波次内禁止被多个 mission 并行改动：
+### 1. 共享 schema 真源
 
-### 1. 正式 schema 真源
-
-涉及文件：
+涉及：
 
 - `packages/schemas/output/*.py`
 - `packages/schemas/stages/*.py`
+- `packages/schemas/evals/*.py`
 - `docs/contracts/canonical-schema-index.md`
 
-原因：
+唯一 owner：
 
-- 这是 API、application、worker、evals 的共享结构基线
-- `I1` 只能新增 `packages/schemas/evals/`，不得与其它 mission 并行重写既有 schema 子域
+- `I1`
+- `R4`
 
 ### 2. application 主用例边界
 
-涉及文件：
+涉及：
 
 - `packages/application/services/evaluation_service.py`
 - `packages/application/ports/*.py`
 
-原因：
+唯一 owner：
 
-- 这是 provider / prompt / API / worker 的共同接线中心
-- `I5` 是该修改面的唯一 owner
+- `I5`
+- `R1`
+- `R4`
 
-### 3. API 资源语义与错误映射
+### 3. API 资源语义与上传/历史边界
 
-涉及文件：
+涉及：
 
 - `apps/api/src/api/*.py`
 - `apps/api/contracts/*.md`
 
-原因：
+唯一 owner：
 
-- `I6` 只能在既有资源语义下接新依赖
-- 不允许 `I6` 与其它 mission 同时改 API 语义主文档
+- `I6`
+- `R5`
 
-### 4. Prompt 治理与运行时绑定
+### 4. Prompt 运行时与资产绑定
 
-涉及文件：
+涉及：
 
 - `packages/prompt-runtime/**`
 - `prompts/registry/**`
 - `prompts/versions/**`
 - `prompts/scoring/**`
 
-原因：
+唯一 owner：
 
-- `I3` 负责接口，`I4` 负责实例
-- 两者必须串行，避免接口与资产实例错位
+- `I3`
+- `I4`
+- `R3`
 
-### 5. Evals 运行闭环
+### 5. Provider 契约与 adapter
 
-涉及文件：
+涉及：
 
+- `packages/provider-adapters/**`
+- `docs/contracts/provider-execution-contract.md`
+
+唯一 owner：
+
+- `I2`
+- `R2`
+
+### 6. Worker / Evals 报告闭环
+
+涉及：
+
+- `apps/worker/**`
 - `evals/runners/**`
 - `evals/reports/**`
 - `evals/baselines/**`
 
-原因：
+唯一 owner：
 
-- `I8` 负责该修改面
-- 不应让其它 mission 并行发明第二套报告输出口径
+- `I7`
+- `I8`
+- `E1`
 
-## 并行建议
+### 7. Frontend 工程壳与页面
 
-### 可以并行
+涉及：
 
-在满足 `depends_on` 后，以下修改面适合并行：
+- `apps/web/**`
 
-- `I1`、`I2`、`I3`
-- `I6`、`I7`、`I8`
+唯一 owner：
 
-### 不适合并行
-
-- 在 `I5` 未完成前并行修改 application、API、worker 的依赖接线
-- 在 `I3` 未完成前并行落地 Prompt 资产实例与 runtime 接口
-- 在 `I1` 未完成前并行让 runner 依赖尚不存在的 evals schema
+- `F1`
+- `F2`
 
 ## 合并顺序建议
-
-当前 implementation-prep 阶段建议按以下顺序合并：
 
 1. `I1`、`I2`、`I3`
 2. `I4`
 3. `I5`
 4. `I6`、`I7`、`I8`
 5. `I9`
-
-## DevFleet 提交约束
-
-在使用 `devfleet` 提交 mission 时，prompt 应至少要求每个 agent：
-
-- 只改单一 mission 负责的文件集
-- 只引用单一上游真源
-- 只完成单一验收标准
-- 不得顺手扩大到其它冻结面
-- 不得把 README 占位内容误当正式真源或已实现能力
+6. `R1`、`R2`、`R3`
+7. `R4`
+8. `R5`
+9. `E1`
+10. `F1`
+11. `F2`
+12. `O1`
+13. `O2`

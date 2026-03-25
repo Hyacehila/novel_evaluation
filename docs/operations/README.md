@@ -1,24 +1,18 @@
 # `docs/operations`
 
-该目录用于记录系统运行、交付、质量门禁与失败退出相关的运维文档。
+该目录用于冻结 `Phase 1` 的本地运行、安装、配置、诊断、质量门禁和回滚规则。
 
-## 当前主文档
+## 主文档
 
-- `docs/operations/local-development-topology.md`：本机启动 `apps/web`、`apps/api`、`apps/worker` 的运行假设与组件关系
-- `docs/operations/quality-gates-and-regression.md`：最小质量门禁、终止型验证入口与回归触发规则
-- `docs/operations/rollback-and-fallback.md`：Prompt / Schema / Provider / Worker / Evals 的回滚与降级语义
+- `docs/operations/runtime-configuration-and-diagnostics.md`
+- `docs/operations/local-installation-and-smoke.md`
+- `docs/operations/local-development-topology.md`
+- `docs/operations/quality-gates-and-regression.md`
+- `docs/operations/rollback-and-fallback.md`
 
-## 当前状态
+## 当前口径
 
-- 当前已冻结“开源项目、本地部署、本机联调”的运行前提
-- 运维文档优先服务本地开发者与本地部署用户
-- 当前不以内置公网高并发或复杂分布式运维方案为前提
-
-## DevFleet 作用
-
-该目录当前主要为 DevFleet 提供：
-
-- 终止型验证入口
-- 回归触发规则
-- 失败退出与回滚主文档
-- 不适合并行/不适合长时运行的约束说明
+- 运维文档只服务 `Phase 1` 本地单用户交付
+- `SQLite` 是唯一正式本地状态存储
+- 用户任务由 API 进程内执行，worker 只做回归与批处理
+- 新环境可用性必须以安装、启动和 smoke 文档验证

@@ -1,41 +1,54 @@
 # `docs`
 
-该目录用于承载项目的正式文档体系。
+该目录承载项目的正式真源文档。临时差距报告不再保留为长期入口；范围、架构、契约、运维和实施计划都应各归其位。
 
-## 当前子目录
+## 子目录
 
-- `planning/`：规划文档与任务清单
-- `architecture/`：结构设计与系统边界
-- `product/`：术语、业务对象与产品说明
+- `planning/`：范围冻结、实施路线、mission 规划、覆盖矩阵
+- `architecture/`：系统结构、运行模型、分层边界
+- `contracts/`：API、Schema、Provider、上传与前端协作契约
+- `operations/`：本地运行、安装、配置、诊断、回滚、质量门禁
 - `decisions/`：ADR 与关键决策记录
-- `contracts/`：结构契约说明
-- `operations/`：运行、交付与质量门禁说明
-- `research/`：研究资料与研究结论整理
+- `product/`：术语和业务词表
+- `research/`：研究材料，不拥有正式定义权
 
-## 原则
+## 使用原则
 
-- 文档优先解释边界、职责和原因
-- 不将临时抓取产物直接放入 `docs/`
-- 正式评分主线应在真源文档中单点定义，再由其它文档引用
-- 技术路线一旦冻结，应通过架构文档与 ADR 同步回写全仓库
+- 单一规则只在一个主文档冻结，其它文档引用而不重复定义
+- README、空目录和占位说明不计入已实现能力
+- 当前唯一交付口径是 `Phase 1` 的本地单用户版本
+- 若规则已经冻结到真源文档，不得在实现阶段暗中改口
 
-## 当前关键真源
+## 关键真源
 
-### 系统与范围
+### 范围与计划
+
+- `docs/planning/mvp-phase-1-scope.md`
+- `docs/planning/layered-rubric-implementation-plan.md`
+- `docs/planning/devfleet-mission-catalog.md`
+- `docs/planning/devfleet-mission-dag.md`
+
+### 运行模型与架构
 
 - `docs/architecture/system-overview.md`
-- `docs/planning/mvp-phase-1-scope.md`
-
-### 评分主线与契约
-
-- `docs/architecture/layered-rubric-evaluation-architecture.md`
-- `docs/contracts/rubric-stage-contracts.md`
-- `docs/architecture/scoring-pipeline.md`
-- `docs/contracts/json-contracts.md`
-
-### 技术路线与决策
-
-- `docs/architecture/frontend-technical-route.md`
+- `docs/architecture/runtime-execution-and-persistence.md`
 - `docs/architecture/backend-technical-route.md`
-- `docs/decisions/ADR-004-layered-rubric-evaluation.md`
-- `docs/decisions/ADR-005-backend-technical-route.md`
+- `docs/architecture/application-layer-boundaries.md`
+- `docs/architecture/integration-boundaries.md`
+
+### 契约
+
+- `apps/api/contracts/api-v0-overview.md`
+- `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+- `docs/contracts/file-upload-and-ingestion-boundary.md`
+- `docs/contracts/provider-execution-contract.md`
+- `docs/contracts/rubric-stage-contracts.md`
+- `docs/contracts/canonical-schema-index.md`
+
+### 运维与交付
+
+- `docs/operations/runtime-configuration-and-diagnostics.md`
+- `docs/operations/local-installation-and-smoke.md`
+- `docs/operations/local-development-topology.md`
+- `docs/operations/quality-gates-and-regression.md`
+- `docs/operations/rollback-and-fallback.md`

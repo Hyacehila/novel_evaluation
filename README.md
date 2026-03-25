@@ -1,59 +1,49 @@
 # 小说智能打分系统仓库
 
-本仓库当前处于**结构构建与实现准备阶段**，已完成顶层目录骨架、主线架构文档与核心治理文档落位，正在围绕已冻结的技术路线补齐可执行文档，**尚未开始大规模业务开发**。
+本仓库当前锚定的唯一交付目标是 `Phase 1`：开源、本地部署、单用户、可运行的小说智能打分系统。正式交付边界已经冻结为 `SQLite` 单文件持久化、`API` 进程内异步执行用户任务、`worker` 仅承接回归与批处理、上传格式固定为 `TXT/MD/DOCX`、前端包管理器固定为 `pnpm`。
 
-## 当前目标
+## Phase 1 冻结结论
 
-- 为小说智能打分系统建立长期可演进的仓库结构
-- 冻结 `Phase 1` 的前后端实现基线与协作边界
-- 将 Prompt、Schema、Provider、Evals、应用入口明确分层
-- 将抓取与分析产物和正式源码彻底隔离
-- 优先满足开源项目的本地部署、本机联调与本机回归
+- 后端基线：`Python 3.13 + uv + FastAPI + Pydantic`
+- 前端基线：`Next.js (App Router) + React + TypeScript + pnpm`
+- Provider：`DeepSeek API`
+- 评分编排：`PocketFlow`
+- 本地状态存储：`SQLite`
+- 默认数据库路径：`./var/novel-evaluation.sqlite3`
+- 用户任务执行模型：`apps/api` 进程内异步执行
+- `worker` 职责：只运行批处理与回归
+- 历史查询：正式支持 `q/status/cursor/limit`
+- 当前继续排除：鉴权、多租户、`SSE`、`WebSocket`、多 Provider 生产级切换
 
-## 当前实现基线
+## 当前现实
 
-- 前端技术路线见 `docs/architecture/frontend-technical-route.md`
-- 后端技术路线见 `docs/architecture/backend-technical-route.md`
-- 后端实现基线为 `Python 3.13 + uv + FastAPI + Pydantic`
-- `Phase 1` 默认且唯一正式接入的模型 Provider 为 `DeepSeek API`
-- 评分主线的多阶段 LLM 编排基线为 `PocketFlow`
-- 项目当前部署定位为开源项目本地部署、本机启动 `apps/web` 与 `apps/api` 后使用
+- 文档真源已经覆盖范围、架构、契约、运维与实施计划
+- 最小后端基线已存在：`packages/schemas/`、`packages/application/`、`apps/api/` 和测试
+- 前端、真实评分运行时、正式 Provider adapter、Prompt runtime、worker/evals、持久化实现仍待开发
+- 因此当前结论仍是：
+  - `Doc-Ready = Yes`
+  - `Implementation-Ready = Not Yet`
+  - `Delivery-Ready = Not Yet`
 
-## 顶层目录说明
+## 顶层目录
 
-- `apps/`：可运行应用入口，包括前端、后端、异步执行层
-- `packages/`：可复用核心能力，包括领域模型、应用编排、Provider 适配、Schema 等
-- `prompts/`：正式 Prompt 资产，仅允许后端治理与使用
-- `evals/`：评测样本、用例、基线与报告
-- `docs/`：规划、架构、契约、运维、决策与研究说明
-- `output/`：抓取、分析、快照与临时产物，非正式源码目录
-- `scripts/`：仓库维护、评测执行、结构检查脚本
+- `apps/`：可运行应用入口，包含 `api`、`web`、`worker`
+- `packages/`：可复用核心模块，包含 application、provider-adapters、prompt-runtime、schemas 等
+- `prompts/`：正式 Prompt 资产与版本元数据
+- `evals/`：评测样本、用例、runner、baseline、report
+- `docs/`：范围、架构、契约、运维、决策与实施计划
+- `output/`：研究、抓取与临时产物
+- `scripts/`：仓库维护和自动化脚本
 
-## 当前原则
+## 关键文档
 
-- Prompt 只能在后端侧治理，不允许前端持有正式评分 Prompt
-- 所有核心结构以严格 JSON 契约为基础
-- 正式结构真源位于 `packages/schemas/`
-- 正式评分主线采用全 `LLM` 分阶段 `rubric` 机制
-- `output/playwright/` 永久视为研究/抓取产物，不纳入正式源码
-- 正式实现应先遵守 `docs/` 下的规划与边界，再开始编码
-
-## 建议阅读顺序
-
-1. `docs/architecture/system-overview.md`
-2. `docs/planning/mvp-phase-1-scope.md`
-3. `docs/architecture/backend-technical-route.md`
-4. `docs/decisions/ADR-005-backend-technical-route.md`
-5. `docs/architecture/layered-rubric-evaluation-architecture.md`
-6. `docs/contracts/rubric-stage-contracts.md`
-7. `docs/architecture/scoring-pipeline.md`
-8. `docs/contracts/json-contracts.md`
-
-## 当前状态
-
-- 已完成目录骨架创建
-- 已迁移主计划文档到 `docs/planning/`
-- 已建立首批架构与治理文档真源
-- 已冻结正式评分主线与后端实现基线
-- 正在补齐前后端协作与本地部署相关文档
-- 暂未进行大规模业务开发
+1. `docs/planning/mvp-phase-1-scope.md`
+2. `docs/architecture/system-overview.md`
+3. `docs/architecture/runtime-execution-and-persistence.md`
+4. `apps/api/contracts/api-v0-overview.md`
+5. `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+6. `docs/contracts/file-upload-and-ingestion-boundary.md`
+7. `docs/contracts/provider-execution-contract.md`
+8. `docs/contracts/rubric-stage-contracts.md`
+9. `docs/operations/runtime-configuration-and-diagnostics.md`
+10. `docs/operations/local-installation-and-smoke.md`
