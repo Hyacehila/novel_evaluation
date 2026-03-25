@@ -19,15 +19,16 @@
 
 | 术语 | 统一写法 | 说明 |
 | --- | --- | --- |
-| 输入稿件 | `Manuscript` | 用户提交的评测对象 |
+| 输入稿件 | `Manuscript` | 用户提交的联合投稿包对象 |
+| 创建任务请求 | `JointSubmissionRequest` | 新建任务时的正式输入对象 |
 | 任务 | `EvaluationTask` | 一次独立评测任务 |
 | 结果 | `EvaluationResult` | 正式结构化结果 |
-| 历史项 | `HistoryTaskItem` | 历史记录页主列表对象 |
-| 输入草稿 | `InputDraft` | 前端编辑中的输入对象 |
+| 历史项 | `HistoryTaskItemView` | 历史记录页主列表对象 |
+| 输入草稿 | `InputDraftView` | 前端编辑中的联合投稿包草稿 |
 
 ## 状态命名
 
-### 输入与提交状态
+### 输入与提交本地状态
 
 - `editing`
 - `validation_failed`
@@ -45,8 +46,29 @@
 
 - `available`
 - `not_available`
-- `fetch_failed`
 - `blocked`
+
+### 读取失败本地派生状态
+
+- `fetch_failed`
+
+说明：
+
+- `fetch_failed` 只属于前端页面本地派生状态
+- `fetch_failed` 不是后端 `resultStatus` 或 `status` 枚举的一部分
+
+## 输入组成术语
+
+冻结统一写法：
+
+- `chapters_outline`
+- `chapters_only`
+- `outline_only`
+
+不再使用：
+
+- `inputType`
+- “开篇 / 章节 / 大纲 / 其它” 作为正式主输入枚举
 
 ## 展示术语
 
@@ -61,8 +83,9 @@
 ## 使用规则
 
 - 前端文档新增术语时，应优先复用本文现有术语
-- 若需新增术语，应先判断是否属于页面、对象、状态或展示四类
+- 若需新增术语，应先判断是否属于页面、对象、状态、输入组成或展示五类
 - 不要在不同文档中混用“评分任务 / 评测任务”“结果页 / 报告页”等并列称呼
+- 不要把前端本地状态反向写回后端正式枚举
 
 ## 与其他文档的关系
 

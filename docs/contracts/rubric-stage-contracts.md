@@ -1,234 +1,378 @@
-# 全 LLM Rubric 阶段契约
+# 面向网络小说双输入全 LLM Rubric 阶段契约
 
-## 目标
+## 文档角色
 
-本文档定义全 `LLM` 分阶段 `rubric` 评分流程中的中间阶段契约，用于指导后续在 `packages/schemas/` 中落地正式结构定义。
+本文档冻结正式评分主线中的中间阶段对象，用于支撑：
 
-本文档只负责说明结构含义、边界和映射关系，不代替正式 Schema 本体。
+- `packages/application/` 的用例编排
+- `packages/schemas/` 的后续正式 schema 落位
+- `apps/api/`、`apps/worker/`、`evals/` 对阶段结果的统一理解
+- DevFleet 在后续实现阶段对输入、输出和错误边界的单一引用
 
-## 契约分层原则
+本文档不替代正式 schema 文件；它负责冻结对象语义、枚举、字段和强约束。
 
-### 1. 对外结果契约与对内阶段契约分离
+## 适用主线
 
-- 对外正式结果继续使用统一结果结构
-- 对内阶段契约用于承接评分过程中的结构化中间产物
-- 前端只消费正式结果对象，不直接依赖阶段契约
+正式评分主线固定为：
 
-### 2. 所有阶段输出都应是严格 JSON
-
-即使是内部阶段对象，也应满足：
-
-- 结构可解析
-- 字段含义稳定
-- 无 JSON 外自然语言
-- 版本可追踪
-
-### 3. 契约必须服务单主线评分流程
-
-所有阶段对象都应服务以下正式主线：
-
-1. `输入预检查`
-2. `LLM rubric 分点评价`
-3. `轻量一致性整理`
-4. `新模型聚合输出`
-5. `正式结果投影`
-
-文档中不再保留分叉升级、外部介入或并行评分路径相关阶段对象。
-
-### 4. 置信度与错误语义必须显式化
-
-每个阶段对象都应显式表达：
-
-- 置信度
-- 是否可继续进入下游
-- 当前失败是结构失败、不可评失败还是判断失败
-
-## 通用字段约定
-
-### 标识字段
-
-- `taskId`：一次评分任务的唯一标识
-- `stage`：当前阶段名称
-- `schemaVersion`：阶段结构版本
-- `rubricVersion`：本阶段使用的 Rubric 版本
-- `promptVersion`：本阶段使用的 Prompt 版本
-- `providerId`：模型供应商标识
-- `modelId`：模型标识
+1. 输入预检查
+2. `LLM rubric` 分点评价
+3. 轻量一致性整理
+4. 新模型聚合输出
+5. 正式结果投影
 
 说明：
 
-- 当前正式主线默认由 `LLM` 生成评分阶段对象
-- 系统边界的确定性校验不属于本文档的阶段对象范围
+- 不再保留 `pairwise`、多路径裁决、外部仲裁或并行评分主线
+- 所有阶段对象都服务同一条双输入单主线
+
+## 共享枚举
+
+### 阶段名 `stage`
+
+冻结枚举：
+
+- `input_screening`
+- `rubric_evaluation`
+- `consistency_check`
+- `aggregation`
+- `final_projection`
+
+### 输入组成 `inputComposition`
+
+冻结枚举：
+
+- `chapters_outline`
+- `chapters_only`
+- `outline_only`
+
+### 评估模式 `evaluationMode`
+
+冻结枚举：
+
+- `full`
+- `degraded`
+
+### 输入充分性 `sufficiency`
+
+冻结枚举：
+
+- `sufficient`
+- `insufficient`
+- `missing`
+
+### 阶段状态 `stageStatus`
+
+冻结枚举：
+
+- `ok`
+- `warning`
+- `failed`
+- `unrateable`
+
+### 证据来源 `sourceType`
+
+冻结枚举：
+
+- `chapters`
+- `outline`
+- `cross_input`
+
+### 评分档位 `scoreBand`
+
+冻结枚举：
+
+- `0`
+- `1`
+- `2`
+- `3`
+- `4`
+
+## 共享字段
+
+### 标识与版本字段
+
+除非对象明确豁免，阶段对象默认继承：
+
+- `taskId`
+- `stage`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+
+### 上下文字段
+
+除非对象明确豁免，阶段对象默认继承：
+
+- `inputComposition`
+- `evaluationMode`
+- `hasChapters`
+- `hasOutline`
 
 ### 质量字段
 
-- `confidence`：`0-1` 之间的小数
-- `status`：建议使用 `ok`、`warning`、`failed`、`unrateable`
-- `issues`：当前阶段发现的问题列表
-- `riskTags`：当前阶段命中的风险标签列表
+除非对象明确豁免，阶段对象默认继承：
 
-### 证据引用字段
+- `status`
+- `confidence`
+- `riskTags`
+- `issues`
 
-为了避免“证据抽取”与“评分项”分离导致的双重治理，正式主线采用内嵌证据引用：
+约束：
 
-- `sourceSpan`：原文范围引用
-- `excerpt`：短摘录，仅用于内部治理与评测
-- `observationType`：观察类别
-- `evidenceNote`：对该证据的短说明
+- `confidence` 必须是 `0-1` 之间的小数
+- `issues` 用于记录结构化问题，不允许退化为大段说明文
 
-说明：
+## 固定词表
 
-- `excerpt` 不应默认进入对外正式结果
-- 证据引用应优先使用结构化范围，而不是松散自然语言描述
-- 同一阶段对象可复用多个证据引用，不要求再维护独立 `EvidencePack`
+### 新 `8` 轴主评价层 `axisId`
 
-## 阶段对象定义
+冻结词表：
 
-说明：
+- `hookRetention`
+- `serialMomentum`
+- `characterDrive`
+- `narrativeControl`
+- `pacingPayoff`
+- `settingDifferentiation`
+- `platformFit`
+- `commercialPotential`
 
-- 下列“建议字段”主要列出每个阶段对象的业务字段
-- 除非明确豁免，每个阶段对象默认还应继承前文定义的标识字段与质量字段
+### 旧四维骨架层 `skeletonDimensionId`
+
+冻结词表：
+
+- `marketAttraction`
+- `narrativeExecution`
+- `characterMomentum`
+- `noveltyUtility`
+
+### 风险词表 `fatalRisk`
+
+当前冻结最小词表：
+
+- `aiManualTone`
+- `staleFormula`
+- `conceptSpam`
+- `fakePayoff`
+- `nonNarrativeSubmission`
+- `insufficientMaterial`
+
+## 阶段对象
 
 ### 1. `InputScreeningResult`
 
 用途：
 
-- 判断输入是否可评
-- 识别输入类型与边界风险
-- 给后续分点评价阶段提供输入上下文
+- 判断输入是否可进入正式主线
+- 冻结输入组成、输入充分性和降级语义
+- 为下游阶段提供结构化上下文
 
-建议字段：
+冻结字段：
 
+- `taskId`
+- `stage`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- `inputComposition`
+- `hasChapters`
+- `hasOutline`
+- `chaptersSufficiency`
+- `outlineSufficiency`
+- `evaluationMode`
 - `rateable`
-- `manuscriptType`：`opening`、`chapter`、`outline`、`other`
-- `language`
-- `lengthBucket`
+- `status`
 - `rejectionReasons`
 - `riskTags`
 - `segmentationPlan`
 - `confidence`
+- `continueAllowed`
 
-说明：
+字段约束：
 
-- `rateable=false` 时，应优先进入结构化失败路径，而不是伪造评分结果
-- `segmentationPlan` 用于说明长文本的处理边界，不应演化为额外路由系统
+- `stage` 固定为 `input_screening`
+- `chaptersSufficiency` / `outlineSufficiency` 使用 `sufficiency` 冻结枚举
+- `rateable` 表示业务语义上是否可继续评分
+- `continueAllowed` 表示是否允许进入下游阶段
+- `segmentationPlan` 只描述长文本处理边界，不得扩展成第二套评分路由
+
+强约束：
+
+- `evaluationMode=full` 当且仅当：
+  - `inputComposition=chapters_outline`
+  - `chaptersSufficiency=sufficient`
+  - `outlineSufficiency=sufficient`
+- `evaluationMode=degraded` 用于单侧输入仍可继续评估的场景
+- `rateable=false` 时，不允许伪造低分结果替代阻断结论
+- `rateable=false` 且阶段正常结束时，应落到 `EvaluationTask(status=completed, resultStatus=blocked)`
+- 只有阶段执行本身异常时，才进入 `failed + not_available`
 
 ### 2. `RubricEvaluationEvidenceRef`
 
 用途：
 
-- 表示单个分点评价项所依赖的文本依据
+- 表示单个分点评价项的证据引用
 
-建议字段：
+冻结字段：
 
+- `sourceType`
 - `sourceSpan`
 - `excerpt`
 - `observationType`
 - `evidenceNote`
 - `confidence`
 
+强约束：
+
+- `sourceType` 只能取 `chapters`、`outline`、`cross_input`
+- `sourceSpan` 应优先使用结构化范围，而不是自由文本位置描述
+- `excerpt` 只用于内部治理、回归和审查，不默认暴露到正式结果对象
+
 ### 3. `RubricEvaluationItem`
 
 用途：
 
-- 表示一个稳定的 `rubric` 子维度评价结果
+- 表示单个正式 `rubric` 评价项
 
-建议字段：
+冻结字段：
 
 - `evaluationId`
-- `dimensionId`
-- `subdimensionId`
-- `scoreBand`：`0-4`
+- `axisId`
+- `scoreBand`
 - `reason`
-- `evidenceRefs`：`RubricEvaluationEvidenceRef[]`
+- `evidenceRefs`
 - `confidence`
 - `riskTags`
 - `blockingSignals`
+- `affectedSkeletonDimensions`
+- `degradedByInput`
 
-约束：
+强约束：
 
-- 无依据时不得直接输出高分
-- `reason` 应短而明确，不应输出长段抒情文本
-- 命中高风险信号时，必须输出对应 `riskTags` 或 `blockingSignals`
+- `axisId` 必须属于冻结的 `8` 轴词表
+- `scoreBand` 使用固定 `0-4` 档位
+- 每个评价项至少包含一条 `evidenceRefs`
+- 无依据时不得输出高分
+- 命中高风险信号时，必须在 `riskTags` 或 `blockingSignals` 中显式记录
+- `affectedSkeletonDimensions` 只能引用冻结的骨架层词表
 
 ### 4. `RubricEvaluationSet`
 
 用途：
 
-- 聚合全部 `RubricEvaluationItem`
-- 作为轻量一致性整理与聚合模型的标准输入
+- 汇总全部 `RubricEvaluationItem`
+- 作为一致性整理与聚合的标准输入对象
 
-建议字段：
+冻结字段：
 
-- `items`：`RubricEvaluationItem[]`
-- `dimensionSummaries`
-- `coverageByDimension`
-- `missingRequiredItems`
+- `taskId`
+- `stage`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- `inputComposition`
+- `evaluationMode`
+- `items`
+- `axisSummaries`
+- `missingRequiredAxes`
 - `riskTags`
 - `overallConfidence`
 
-说明：
+强约束：
 
-- `RubricEvaluationSet` 是新的评分主干对象
-- 该对象同时承接原“证据抽取 + 原子评分”的正式语义
-- 文档层不再保留独立 `EvidencePack` 作为长期主阶段对象
-
-## 维度标识符治理
-
-为避免 Prompt、Schema、Evals 与实现层各自发明命名，建议采用以下规则：
-
-- `dimensionId` 与 `subdimensionId` 应作为稳定标识符使用
-- 展示名称可以调整，但稳定标识符不应随意重命名
-- 重命名稳定标识符应触发版本升级与评测回归
-- 文档中出现的一级与二级维度名称，应优先视为正式命名候选
+- `stage` 固定为 `rubric_evaluation`
+- `items` 必须覆盖全部 `8` 轴
+- `full` 模式下：
+  - 不允许缺轴
+  - `missingRequiredAxes` 必须为空数组
+- `degraded` 模式下：
+  - 仍然输出全部 `8` 轴评价项
+  - 受输入缺失影响的轴必须通过 `degradedByInput`、较低 `confidence` 或 `blockingSignals` 显式表达
+  - 不允许静默省略受影响轴
 
 ### 5. `ConsistencyConflict`
 
 用途：
 
-- 描述一个具体冲突项或整理项
+- 表示轻量一致性整理中识别到的具体冲突或归一化问题
 
-建议字段：
+冻结字段：
 
 - `conflictId`
 - `conflictType`
-- `relatedEvaluations`
+- `relatedEvaluationIds`
 - `description`
 - `severity`
 - `normalizationNote`
+
+`conflictType` 当前冻结枚举：
+
+- `cross_input_mismatch`
+- `unsupported_claim`
+- `duplicated_penalty`
+- `missing_required_axis`
+- `weak_evidence`
 
 ### 6. `ConsistencyCheckResult`
 
 用途：
 
 - 记录轻量一致性整理结果
-- 为聚合模型提供“哪些项可直接用、哪些项存在问题”的结构化说明
+- 决定聚合是否允许继续消费上游评价结果
 
-建议字段：
+冻结字段：
 
+- `taskId`
+- `stage`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- `inputComposition`
+- `evaluationMode`
 - `passed`
-- `conflicts`：`ConsistencyConflict[]`
+- `conflicts`
+- `crossInputMismatchDetected`
 - `unsupportedClaimsDetected`
 - `duplicatedPenaltiesDetected`
-- `missingRequiredItems`
+- `missingRequiredAxes`
 - `normalizationNotes`
 - `confidence`
+- `continueAllowed`
 
-说明：
+强约束：
 
-- 本对象不再承担分叉升级或外部介入语义
-- 本对象只服务聚合前的结果整理与冲突提示
+- `stage` 固定为 `consistency_check`
+- 本阶段只负责整理与冲突识别，不负责重新评分
+- `continueAllowed=false` 时，不允许下游聚合产出伪正式结果正文
+- `crossInputMismatchDetected=true` 且冲突不可归一化时，应进入阻断语义，而不是低分替代
 
 ### 7. `AggregatedRubricResult`
 
 用途：
 
-- 将内部维度结果聚合为对外结果草案
-- 生成风险标签、改进重点和顶层评分解释
+- 将 `8` 轴结果汇总到旧四维骨架层
+- 生成对外结果草案所需的内部聚合对象
 
-建议字段：
+冻结字段：
 
+- `taskId`
+- `stage`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
 - `axisScores`
+- `skeletonScores`
 - `topLevelScoresDraft`
 - `strengthCandidates`
 - `weaknessCandidates`
@@ -236,26 +380,35 @@
 - `marketFitDraft`
 - `editorVerdictDraft`
 - `detailedAnalysisDraft`
-- `supportingDimensionMap`
+- `supportingAxisMap`
+- `supportingSkeletonMap`
 - `riskTags`
 - `overallConfidence`
 
-聚合要求：
+强约束：
 
-- 必须记录每个顶层评分主要来自哪些内部维度
-- 必须执行基础逻辑校准
-- 不允许让 `signingProbability` 独立脱离底层维度飙升
-- 聚合模型不得重新绕过分点评价结果整体直评
+- `stage` 固定为 `aggregation`
+- `topLevelScoresDraft` 只是内部草案，不等于 API 正式返回体
+- `commercialValue` 主要受 `marketAttraction` 影响，并次级参考 `characterMomentum`
+- `writingQuality` 主要受 `narrativeExecution` 影响，并次级参考 `characterMomentum`
+- `innovationScore` 主要受 `noveltyUtility` 影响
+- `signingProbability` 不允许脱离其它顶层分数、`platformFit` 和 `fatalRisk` 独立飙升
+- 聚合层不得绕过 `RubricEvaluationSet` 整体直评
 
 ### 8. `FinalEvaluationProjection`
 
 用途：
 
-- 生成对外正式结果对象前的最后投影层
-- 属于后端内部过渡对象，不直接等同于最终对外 API 返回体
+- 生成对外正式结果对象前的最后内部投影层
 
-建议字段：
+冻结字段：
 
+- `taskId`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
 - `signingProbability`
 - `commercialValue`
 - `writingQuality`
@@ -266,106 +419,42 @@
 - `marketFit`
 - `editorVerdict`
 - `detailedAnalysis`
-- `supportingDimensionMap`
 - `overallConfidence`
+- `supportingAxisMap`
+- `supportingSkeletonMap`
 
-说明：
+强约束：
 
-- `supportingDimensionMap` 可作为内部追踪字段保存，不要求前端直接消费
-- 对外 API 最终仍应返回正式输出 Schema 所要求的稳定对象
+- `stage` 语义固定为 `final_projection`
+- 该对象只在可以形成正式结果正文时生成
+- `blocked` 或 `not_available` 场景不创建伪 `FinalEvaluationProjection`
+- `supportingAxisMap` 与 `supportingSkeletonMap` 属于内部追踪字段，不要求前端直接消费
 
-## 顶层输出字段映射原则
+## 阻断与失败边界
 
-### `commercialValue`
+- `InputScreeningResult.rateable=false` 且阶段正常结束：进入业务阻断，任务语义为 `completed + blocked`
+- `ConsistencyCheckResult.continueAllowed=false` 且属于不可归一化冲突：进入业务阻断，任务语义为 `completed + blocked`
+- Provider 故障、超时、结构校验失败、阶段执行崩溃：进入技术失败，任务语义为 `failed + not_available`
 
-主要来源：
+## 与正式结果的关系
 
-- `marketAttraction`
+- 阶段对象是后端内部治理对象，不直接等于对外 API DTO
+- 对外 `EvaluationResult` 语义见 `docs/contracts/json-contracts.md`
+- 任务状态与结果状态语义见 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
 
-次级来源：
+## 当前待确认项
 
-- `characterMomentum`
+以下内容当前保留为待确认项，不由实现阶段暗中决定：
 
-约束来源：
+- `segmentationPlan` 的最终正式字段颗粒度
+- 阶段对象是否在 `packages/schemas/stages/` 下独立落位
+- `FinalEvaluationProjection` 是否需要额外最小元信息字段
 
-- `fatalRisk`
-- `InputScreeningResult`
-- `ConsistencyCheckResult`
+## 完成标准
 
-### `writingQuality`
+满足以下条件时，可认为阶段契约足以支撑 DevFleet 后续实现 mission：
 
-主要来源：
-
-- `narrativeExecution`
-
-次级来源：
-
-- `characterMomentum`
-
-约束来源：
-
-- `fatalRisk`
-- `ConsistencyCheckResult`
-
-### `innovationScore`
-
-主要来源：
-
-- `noveltyUtility`
-
-约束来源：
-
-- `fatalRisk`
-- `ConsistencyCheckResult`
-
-### `signingProbability`
-
-主要来源：
-
-- `commercialValue`
-- `writingQuality`
-- `innovationScore`
-
-约束来源：
-
-- `fatalRisk`
-- `InputScreeningResult`
-- `ConsistencyCheckResult`
-
-说明：
-
-- 当前阶段不在文档中硬编码固定权重公式
-- 先固定“主要来源、次级来源、上限约束”三层关系
-- 具体权重应在 Evals 校准后再冻结到正式实现中
-
-## 错误与不可评语义
-
-建议至少区分以下错误类别：
-
-- `input_invalid`
-- `input_unrateable`
-- `rubric_evaluation_failed`
-- `rubric_incomplete`
-- `consistency_conflict`
-- `aggregation_failed`
-- `provider_failure`
-
-原则：
-
-- 不可评应走结构化错误或结构化任务状态，而不是伪造低分结果
-- 结构失败与判断失败应明确区分
-- 内部阶段失败原因应支持进入 Evals 报告
-
-## 与 `packages/schemas/` 的关系
-
-后续建议落地顺序：
-
-1. 在 `packages/schemas/output/` 中优先冻结最终输出结构
-2. 在 `packages/schemas/evals/` 中定义阶段评测与差异报告结构
-3. 再按正式主线引入内部中间契约 Schema
-
-这样做的原因：
-
-- 先保证正式接口稳定
-- 再扩展内部阶段结构
-- 避免中间结构反过来绑死对外接口
+- 不再停留在“大面积建议字段”层级
+- 输入充分性、降级和阻断边界已冻结
+- `8` 轴、骨架层和正式结果投影之间的责任已清楚分层
+- 上游任务可以按本文档独立实现而不再反复追问字段语义

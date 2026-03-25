@@ -10,14 +10,14 @@
 
 - 视图模型服务于页面消费，不等于领域模型
 - 视图模型只包含页面真正需要的字段
-- 首期显式展示只要求基础元信息
-- Prompt、Schema、Provider 扩展字段可预留，但不作为首期强要求
+- 输入页围绕联合投稿包草稿建模，而不是旧 `text / inputType` 模型
+- 页面本地状态与后端任务/结果状态必须分层
 
 ## 视图模型总览
 
 | 模型 | 主要页面 | 作用 |
 | --- | --- | --- |
-| `InputDraftView` | 新建评测任务页 | 表示用户正在编辑的输入草稿 |
+| `InputDraftView` | 新建评测任务页 | 表示用户正在编辑的联合投稿包输入草稿 |
 | `DashboardTaskSummaryView` | 工作台首页 | 表示首页中的任务摘要 |
 | `DashboardResultSummaryView` | 工作台首页 | 表示首页中的最近结果摘要 |
 | `TaskDetailView` | 任务详情 / 状态页 | 表示单任务详情与状态信息 |
@@ -28,18 +28,24 @@
 
 ### 用途
 
-用于承接新建评测任务页中的输入草稿。
+用于承接新建评测任务页中的联合投稿包输入草稿。
 
 ### 字段建议
 
 | 字段 | 含义 | 必需性 | 首期展示/使用 |
 | --- | --- | --- | --- |
-| `title` | 标题 | 可选 | 使用 |
-| `text` | 正文输入 | 条件必需 | 使用 |
-| `inputType` | 输入类型 | 必需 | 使用 |
+| `title` | 标题 | 必需 | 使用 |
+| `chapters` | 章节草稿列表 | 条件必需 | 使用 |
+| `outline` | 大纲草稿 | 条件必需 | 使用 |
 | `sourceType` | 来源类型 | 必需 | 使用 |
-| `attachmentName` | 上传文件名 | 可选 | 使用 |
-| `attachmentType` | 上传文件类型 | 可选 | 使用 |
+| `inputComposition` | 输入组成派生值 | 派生 | 使用 |
+| `evaluationMode` | 评估模式派生值 | 派生 | 使用 |
+
+说明：
+
+- `chapters` 与 `outline` 至少存在一侧
+- `inputComposition` 只能是 `chapters_outline / chapters_only / outline_only`
+- `evaluationMode` 只能是 `full / degraded`
 
 ## 2. DashboardTaskSummaryView
 
@@ -53,7 +59,7 @@
 | --- | --- | --- | --- |
 | `taskId` | 任务 ID | 必需 | 是 |
 | `title` | 任务标题或输入摘要标题 | 可选 | 是 |
-| `inputType` | 输入类型 | 必需 | 是 |
+| `inputComposition` | 输入组成 | 必需 | 是 |
 | `status` | 任务状态 | 必需 | 是 |
 | `createdAt` | 创建时间 | 必需 | 是 |
 | `hasResult` | 是否存在可用结果 | 必需 | 是 |
@@ -74,11 +80,6 @@
 | `signingProbability` | 核心评分摘要 | 可选 | 是 |
 | `editorVerdict` | 简短结论摘要 | 可选 | 是 |
 
-说明：
-
-- 首页结果摘要只是快捷入口，不承担完整结果阅读功能。
-- 首页结果摘要不改变“历史记录按任务组织”的原则。
-
 ## 4. TaskDetailView
 
 ### 用途
@@ -92,7 +93,8 @@
 | `taskId` | 任务 ID | 必需 | 是 |
 | `title` | 标题或输入摘要标题 | 可选 | 是 |
 | `inputSummary` | 输入摘要 | 可选 | 是 |
-| `inputType` | 输入类型 | 必需 | 是 |
+| `inputComposition` | 输入组成 | 必需 | 是 |
+| `evaluationMode` | 评估模式 | 必需 | 是 |
 | `status` | 任务状态 | 必需 | 是 |
 | `createdAt` | 创建时间 | 必需 | 是 |
 | `errorMessage` | 错误信息 | 可选 | 是 |
@@ -152,7 +154,7 @@
 | `taskId` | 任务 ID | 必需 | 是 |
 | `title` | 标题或输入摘要标题 | 可选 | 是 |
 | `inputSummary` | 输入摘要 | 可选 | 是 |
-| `inputType` | 输入类型 | 必需 | 是 |
+| `inputComposition` | 输入组成 | 必需 | 是 |
 | `status` | 任务状态 | 必需 | 是 |
 | `createdAt` | 创建时间 | 必需 | 是 |
 | `resultAvailable` | 是否可进入结果详情页 | 必需 | 是 |
@@ -175,6 +177,7 @@
 
 ## 与正式契约的映射原则
 
+- 输入页字段应围绕 `JointSubmissionRequest` 与 `Manuscript` 映射
 - 结果页字段应围绕 `docs/contracts/json-contracts.md` 定义的正式结果结构映射
 - 前端不得因为页面方便而重命名正式结果核心语义
 - 前端可根据展示需要生成摘要字段，但不得改变正式结果含义
@@ -182,6 +185,5 @@
 ## 与其他文档的关系
 
 - 页面作用见 `docs/planning/frontend-page-specs.md`
-- 页面展示边界见 `docs/planning/frontend-page-specs.md`
 - 输入边界见 `docs/contracts/frontend-input-and-submit-spec.md`
 - 前后端职责边界见 `docs/contracts/frontend-backend-boundary.md`

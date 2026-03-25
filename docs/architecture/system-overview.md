@@ -2,7 +2,7 @@
 
 ## 系统目标
 
-构建一个面向小说文本评审的智能打分系统，核心能力是 `LLM as Judge`。系统需要在保持可解释性与结构稳定性的前提下，对用户提交的小说片段、开篇或大纲生成结构化评分结果。
+构建一个面向网络小说投稿评估场景的智能打分系统，核心能力是 `LLM as Judge`。系统需要在保持可解释性、结构稳定性与正式契约一致性的前提下，对作者提交的“前几章节正文 + 后续大纲规划”生成结构化评分结果。
 
 ## 当前实现基线
 
@@ -18,9 +18,9 @@
 
 由 `apps/web` 承载，用于：
 
-- 输入小说文本
-- 上传文件
-- 发起评分
+- 输入或上传前几章节正文
+- 输入或上传后续大纲规划
+- 发起联合评测任务
 - 查看评分结果、分析结果与可视化信息
 
 ### 2. 服务接口层
@@ -29,17 +29,17 @@
 
 - 通过 `FastAPI` 提供 HTTP 接口入口
 - 使用 `Pydantic` 表达请求响应 DTO 与运行时校验
-- 接收评分请求
-- 校验输入
+- 接收联合投稿包评分请求
+- 校验输入边界
 - 触发评分流程
 - 返回结构化结果
-- 提供任务状态或错误信息
+- 提供任务状态与错误信息
 
 ### 3. 异步执行层
 
 由 `apps/worker` 承载，用于：
 
-- 复用 `PocketFlow` 组织长文本任务与异步执行
+- 复用 `PocketFlow` 组织联合输入任务与异步执行
 - 长文本任务处理
 - 批量评测
 - 回归任务执行
@@ -49,10 +49,10 @@
 
 由 `packages/domain` 与 `packages/application` 承载，用于：
 
-- 表达评分对象
-- 表达评分规则和结果结构
+- 表达联合投稿包与评分对象
+- 表达 `rubric` 规则、骨架层与结果结构
 - 编排 Prompt、Provider、Schema 与输出结果
-- 承接内部 `rubric` 维度、阶段契约与聚合逻辑
+- 承接新 `8` 轴主评价层、旧四维骨架层与聚合逻辑
 - 保持业务语义不被 Web 框架或编排框架侵占
 
 ### 5. Provider 适配层
@@ -76,7 +76,7 @@
 
 由 `evals/` 承载，用于：
 
-- 维护评测样本
+- 维护联合输入评测样本
 - 执行回归验证
 - 追踪 Prompt、Schema 或 Provider / Model 调整后的质量变化
 - 复用正式评分主线做本机回归
@@ -94,9 +94,45 @@
 说明：
 
 - 该主线是当前仓库唯一正式评分路径
+- 正式输入对象以 `chapters + outline` 联合模型为中心
 - 对外正式结果结构保持稳定
 - 对内评分机制按阶段契约演进
 - 该主线通常由 `PocketFlow` 组织执行，但阶段语义仍由架构与契约文档定义
+
+## 正式评分结构
+
+系统内部正式评分结构采用三层：
+
+1. 新 `8` 轴主评价层
+2. 旧四维骨架层
+3. 对外四分投影层
+
+新 `8` 轴主评价层固定为：
+
+- `hookRetention`
+- `serialMomentum`
+- `characterDrive`
+- `narrativeControl`
+- `pacingPayoff`
+- `settingDifferentiation`
+- `platformFit`
+- `commercialPotential`
+
+旧四维骨架层固定为：
+
+- `marketAttraction`
+- `narrativeExecution`
+- `characterMomentum`
+- `noveltyUtility`
+
+对外继续保留稳定四分字段：
+
+- `signingProbability`
+- `commercialValue`
+- `writingQuality`
+- `innovationScore`
+
+此外，`fatalRisk` 作为跨层约束维度保留。
 
 ## 部署与运行假设
 

@@ -1,59 +1,49 @@
 # API v0 总契约说明
 
-## 文档目的
+## 文档角色
 
-本文档定义小说智能打分系统 `API v0` 的对外接口边界，为后端实现、前端联调、Mock 数据和适配层开发提供统一依据。
+本文档冻结 `API v0` 的资源边界、接口职责、响应 envelope 和 HTTP 语义，用于支撑：
 
-本文档回答的问题是：
+- `apps/api/` 路由设计
+- 前端 Mock / adapter 开发
+- `packages/application/` 用例输入输出对齐
+- DevFleet 后续实现 mission 的 API 真源引用
 
-- `API v0` 暴露哪些资源
-- 各接口的职责边界是什么
-- 成功响应与失败响应如何统一表达
-- 哪些语义属于 `Phase 1` 固定约束
-- 哪些内容属于后续版本再扩展
+本文档不替代：
 
-本文档不负责：
-
-- 替代正式 Schema 定义
-- 替代任务状态机真源说明
-- 替代前端页面消费模型
-- 定义数据库实现方式
+- 正式 schema 文件
+- 任务状态机主文档
+- 前端页面 View Model
+- 数据库存储设计
 
 ## 版本范围
 
-### 为什么是 v0
+当前阶段定义为 `API v0`，含义是：
 
-当前项目处于结构建设与实现准备阶段，接口需要先满足：
+- 用于仓库内部实现基线与本地协作
+- 资源语义必须稳定
+- 在进入更公开的版本治理前，仍允许做有限但受控的调整
 
-- 前后端协作稳定
-- 任务与结果语义稳定
-- 为后续 `v1` 正式外部化版本预留空间
+## 当前运行假设
 
-因此当前接口定义为 `API v0`，代表：
-
-- 用于仓库内部实现基线和协作
-- 语义需要稳定
-- 但仍允许在进入更正式公开契约前完成有限调整
+- 项目定位为开源项目、本地部署、本机联调
+- `Phase 1` 以本地单用户可用为前提
+- 当前不把公网鉴权、多租户和权限系统作为 `DevFleet-Ready` 阻塞项
+- 但接口对象应避免写死未来无法扩展的认证假设
 
 ## API 设计原则
 
 - 资源优先，路径使用名词而非动作
-- 状态语义和错误语义显式化
-- 正式结果必须以严格 JSON 契约为目标
-- 前端不接收未校验的模型原始输出
 - 任务对象与结果对象分离
-- 聚合接口只服务于明确页面，不反向成为领域主对象真源
-
-## 当前实现承接假设
-
-- `API v0` 由 `apps/api` 承接实现
-- HTTP 入口框架基线为 `FastAPI`
-- 边界请求响应 DTO 与运行时校验基线为 `Pydantic`
-- 这些实现技术不替代本文档对资源语义、状态语义和错误语义的定义权
+- 状态语义和错误语义显式化
+- 对外结果必须是严格 JSON
+- 前端不消费未校验的原始模型输出
+- 聚合摘要接口只服务页面，不反向定义领域主对象
+- 正式输入以联合投稿包模型为中心
 
 ## Base Path
 
-`API v0` 统一使用：
+统一前缀：
 
 ```text
 /api
@@ -61,22 +51,8 @@
 
 说明：
 
-- 当前不额外引入 `/v0` 路径前缀
-- 版本语义由文档与实现阶段共同约束
-- 如果未来进入公开版本治理，可再升级为显式路径版本
-
-## 认证与鉴权假设
-
-`Phase 1` 中：
-
-- 文档先不冻结最终鉴权方案
-- 但接口设计应预留认证扩展能力
-- 当前重点是资源结构、状态语义、错误语义与结果契约
-
-说明：
-
-- 若接口暂时以开发态方式开放，不代表长期不鉴权
-- 鉴权策略后续进入正式实现前可单独补充
+- 当前不额外引入 `/v0`
+- 如未来进入公开 API 版本治理，可再显式化路径版本
 
 ## 通用响应 Envelope
 
@@ -109,17 +85,17 @@
 
 - `success=true` 时，`error` 必须为 `null`
 - `success=false` 时，`data` 必须为 `null`
-- `meta` 用于分页、游标或辅助元信息
+- `meta` 只用于分页、游标和辅助元信息
 - 不允许返回“看起来成功但实际失败”的混合语义对象
 
 ## 错误对象
 
-最小错误对象包含：
+最小错误对象字段：
 
 - `code`
 - `message`
 
-可选扩展：
+可选扩展字段：
 
 - `details`
 - `fieldErrors`
@@ -127,64 +103,82 @@
 
 说明：
 
-- 用户可见语义优先使用 `message`
-- 程序处理优先使用 `code`
-- 复杂诊断信息不直接泄露为原始异常
+- 用户可见错误不泄露内部堆栈、SDK 细节、密钥或原始异常
+- 具体错误码含义以 `apps/api/contracts/job-lifecycle-and-error-semantics.md` 为准
 
 ## 核心资源模型
 
-## 1. Evaluation Task
+### 1. `EvaluationTask`
 
-表示一次评测任务。
-
-最小关注字段：
+最小字段：
 
 - `taskId`
-- `status`
-- `createdAt`
-- `inputType`
 - `title`
 - `inputSummary`
-- `resultAvailable`
+- `inputComposition`
+- `hasChapters`
+- `hasOutline`
+- `evaluationMode`
+- `status`
 - `resultStatus`
+- `resultAvailable`
+- `errorCode`
 - `errorMessage`
+- `createdAt`
+- `startedAt`
+- `completedAt`
+- `updatedAt`
 
-### 字段一致性规则
+字段约束：
 
-为避免双字段漂移，`API v0` 约定：
+- `resultAvailable=true` 当且仅当 `resultStatus=available`
+- `status` / `resultStatus` 的合法组合必须服从状态语义主文档
+- `errorCode` / `errorMessage` 在 `failed` 或 `blocked` 时必须可用
 
-- `resultAvailable = true` 当且仅当 `resultStatus = available`
-- 当 `resultStatus = not_available` 或 `blocked` 时，`resultAvailable` 必须为 `false`
-- 前端若同时消费两个字段，应以该一致性规则为准，不再自行推断第二套语义
+### 2. `EvaluationResultResource`
 
-## 2. Evaluation Result
-
-表示任务完成后的正式结构化结果。
-
-最小关注字段：
+最小字段：
 
 - `taskId`
 - `resultStatus`
 - `resultTime`
 - `result`
+- `message`
 
-其中 `result` 指向正式结果对象，正式字段语义由 `packages/schemas/` 维护。
+字段约束：
 
-## 3. Dashboard Summary
+- `resultStatus=available` 时，`result` 必须是正式结果对象
+- `resultStatus=not_available` 或 `blocked` 时，`result` 必须为 `null`
+- `message` 用于补充当前结果资源语义，不替代结构化错误码
 
-表示首页聚合摘要对象，包括：
+### 3. `EvaluationTaskSummary`
+
+用于 `dashboard` 与 `history` 的摘要对象，最小字段：
+
+- `taskId`
+- `title`
+- `inputSummary`
+- `inputComposition`
+- `status`
+- `resultStatus`
+- `resultAvailable`
+- `createdAt`
+
+### 4. `DashboardSummary`
+
+包含：
 
 - `recentTasks`
 - `activeTasks`
 - `recentResults`
 
-说明：
+### 5. `HistoryList`
 
-- `dashboard` 是页面聚合视图，不是领域真源对象
+包含：
 
-## 4. History List
-
-表示按任务组织的历史记录集合。
+- `items`
+- `meta.nextCursor`
+- `meta.limit`
 
 ## 路由总览
 
@@ -198,163 +192,153 @@
 
 ## 路由详细说明
 
-## 1. 创建任务
+### 1. 创建任务
 
-### 路径
+#### 路径
 
 ```text
 POST /api/tasks
 ```
 
-### 职责
+#### 职责
 
-- 接收用户输入
-- 执行系统边界内输入校验
+- 接收联合投稿包输入
+- 执行请求边界校验
 - 创建评测任务
 - 返回任务标识与初始状态
 
-### 请求体最小语义
+#### 请求体最小语义
 
 - `title`
-- `text`
-- `inputType`
+- `chapters`
+- `outline`
 - `sourceType`
 
-说明：
+#### 边界约束
 
-- 文件上传场景可在实现中采用 `multipart/form-data`
-- 但业务语义仍应与文本输入场景保持一致
+- `chapters` 与 `outline` 至少存在一侧
+- 单侧输入允许创建任务，但应显式进入 `degraded` 语义
+- 文件上传场景可采用 `multipart/form-data`
+- 但业务语义必须与联合投稿包模型一致
 
-### 成功语义
+#### 成功语义
 
+- 返回 `201`
 - 返回 `success=true`
 - 返回最小任务对象
-- 任务状态初始值通常为 `queued`
+- 初始状态通常为 `queued + not_available`
 
-### 失败语义
+#### 失败语义
 
-- 输入结构不合法：返回校验错误
-- 系统无法创建任务：返回系统错误
+- 请求边界错误时：
+  - 返回失败 envelope
+  - 不创建任务
+- 任务创建成功后发生的后续失败，不在本接口中伪装成创建失败
 
-## 2. 读取任务详情
+### 2. 读取任务详情
 
-### 路径
+#### 路径
 
 ```text
 GET /api/tasks/{taskId}
 ```
 
-### 职责
+#### 职责
 
 - 返回单任务详情
-- 返回任务状态
-- 返回结果是否可用的最小语义
+- 返回执行状态与结果状态
+- 返回最小联合输入语义
+- 返回失败或阻断的结构化原因
 
-### 返回关注点
+#### 返回关注点
 
-- 任务状态
-- 结果可用性
-- 基础元信息
-- 失败信息
+- `status`
+- `resultStatus`
+- `resultAvailable`
+- `evaluationMode`
+- `errorCode`
+- `errorMessage`
 
-### 说明
+#### 约束
 
-- 此接口不返回正式结果正文
-- 此接口是任务页状态展示真源
+- 已持久化的失败或阻断应表现为稳定资源状态，不重新包装为新的 `5xx`
+- `taskId` 不存在时返回 `404`
 
-## 3. 读取任务结果
+### 3. 读取任务结果
 
-### 路径
+#### 路径
 
 ```text
 GET /api/tasks/{taskId}/result
 ```
 
-### 职责
+#### 职责
 
-- 返回正式结果对象
-- 或返回结果当前不可用 / 被阻断的语义
+- 返回正式结果资源
+- 或返回结果当前不可用 / 被阻断的资源语义
 
-### 返回语义
+#### 返回语义
 
 - `available`：返回正式结果对象
-- `not_available`：返回结果暂不可用说明
-- `blocked`：返回阻断说明
+- `not_available`：返回结果暂不可展示语义
+- `blocked`：返回结果被阻断语义
 
-### 约束
+#### 约束
 
 - 仅在 `available` 时返回正式结果对象
 - `not_available` 与 `blocked` 不允许返回伪结果
-- 当 `taskId` 不存在，或对应任务资源不存在时，应返回 `404`
-- 当任务存在，但结果当前不可展示或被阻断时，应返回 `200` 且通过 `resultStatus` 明确语义
+- `taskId` 不存在时返回 `404`
+- 任务存在但结果不可读或被阻断时返回 `200`
+- 结果资源的结构语义以 `docs/contracts/json-contracts.md` 为准
 
-### `404` 与 `200` 的判定规则
+### 4. 读取工作台首页摘要
 
-应按以下方式区分：
-
-- `404 Not Found`：任务不存在
-- `200 + resultStatus=not_available`：任务存在，但当前没有可展示的正式结果，包括尚未生成、尚未就绪或当前阶段不提供正式结果正文
-- `200 + resultStatus=blocked`：任务存在，但结果被正式阻断，不能作为正式结果返回
-
-这样可以保证：
-
-- 资源不存在与结果不可展示是两类不同语义
-- 前端可以基于稳定规则决定进入“资源不存在”还是“结果语义态”
-
-## 4. 读取工作台首页摘要
-
-### 路径
+#### 路径
 
 ```text
 GET /api/dashboard
 ```
 
-### 职责
+#### 职责
 
-- 为首页提供聚合摘要数据
-- 降低首页初期联调复杂度
+- 为工作台首页提供摘要对象
+- 降低首页联调复杂度
 
-### 返回关注点
+#### 返回关注点
 
 - 最近任务摘要
 - 处理中任务摘要
 - 最近结果摘要
 
-### 说明
+#### 约束
 
-- 首页聚合接口服务于页面效率，不反向定义领域主对象
+- 只返回摘要，不返回正式结果正文
+- 聚合字段不得成为领域真源
 
-## 5. 读取历史记录
+### 5. 读取历史记录
 
-### 路径
+#### 路径
 
 ```text
 GET /api/history
 ```
 
-### Query 参数
+#### Query 参数
 
 - `q`
 - `status`
 - `cursor`
 - `limit`
 
-### 职责
+#### 职责
 
 - 返回按任务组织的历史记录
-- 支持最小搜索与状态筛选
-- 支持分页读取
+- 支持最小搜索、筛选与分页
 
-### 分页语义
+#### 约束
 
-优先采用：
-
-- 游标分页
-
-返回 `meta` 时至少应支持：
-
-- `nextCursor`
-- `limit`
+- 历史记录对象按任务摘要建模
+- 不在该接口返回完整正式结果正文
 
 ## HTTP 状态码约定
 
@@ -374,92 +358,32 @@ GET /api/history
 - `502 Bad Gateway`：上游 Provider 异常
 - `503 Service Unavailable`：服务暂不可用
 
-## 幂等性规则
+说明：
 
-### 创建任务
-
-- `POST /api/tasks` 默认视为非幂等
-- 如后续需要支持幂等创建，应通过显式幂等机制引入，不应隐式假设
-
-### 读取接口
-
-- 所有读取接口都应保持幂等
+- 读取已失败任务本身不应自动返回 `5xx`
+- `5xx` 只用于当前请求本身失败，而不是历史资源状态失败
 
 ## 同步与异步语义
 
-`Phase 1` 默认采用：
+`Phase 1` 当前采用：
 
 - 创建任务与读取状态分离
 - 结果读取与任务读取分离
-- 状态跟踪依赖轮询
+- 状态跟踪依赖 `Polling-First`
+- 是否由 `worker` 执行不改变 API 资源语义
 
-说明：
+## 与其它真源的关系
 
-- 当前不要求长连接状态流
-- 当前不把同步直返完整结果作为主方案
-
-## 分页、筛选与排序
-
-### 当前必须支持
-
-- 搜索：`q`
-- 状态筛选：`status`
-- 游标分页：`cursor`、`limit`
-
-### 当前不强制支持
-
-- 多字段复杂排序
-- 高级筛选表达式
-- 复杂组合检索
-
-## 与 Schema 的关系
-
-- 文档描述的是接口语义和资源边界
-- 正式请求/响应结构真源应位于 `packages/schemas/`
-- `Pydantic` 可用于 API 边界与运行时校验，但不替代正式 Schema 真源
-- 路由不能自行发明第二套正式字段定义
-
-## 向后兼容与变更规则
-
-以下变化可视为非破坏性变化：
-
-- 新增可选字段
-- 新增接口
-- 新增 `meta` 字段中的附加项
-
-以下变化视为破坏性变化：
-
-- 删除已有字段
-- 修改已有字段语义
-- 修改路径结构
-- 修改任务状态或结果状态枚举含义
-- 修改统一 envelope 的核心字段规则
-
-## 当前不包含的内容
-
-本文当前不定义：
-
-- 最终 OpenAPI 规范
-- 最终鉴权实现方案
-- 文件上传存储实现细节
-- 对比页接口
-- Prompt 版本显式管理接口
-- Provider 管理接口
+- 正式结果字段语义见 `docs/contracts/json-contracts.md`
+- 任务状态与错误语义见 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+- 前端最小假契约见 `docs/contracts/frontend-minimal-api-assumptions.md`
+- 领域对象语义见 `docs/architecture/domain-model.md`
 
 ## 完成标准
 
-满足以下条件时，可认为 `API v0` 契约已可用于开发：
+满足以下条件时，可认为 `API v0` 契约已足以支撑 DevFleet 后续开发：
 
-- 前端可以按该文档构造 Mock 数据与 Adapter
-- 后端可以按该文档开始路由设计
-- 任务对象、结果对象、首页聚合对象、历史对象边界清晰
-- 所有核心接口都具备统一成功/失败语义
-- 结果不可用与阻断场景不会被错误包装为成功结果正文
-
-## 与现有文档的关系
-
-- 正式结果语义见 `docs/contracts/json-contracts.md`
-- 前端最小假契约见 `docs/contracts/frontend-minimal-api-assumptions.md`
-- 前后端边界见 `docs/contracts/frontend-backend-boundary.md`
-- 页面查询策略见 `docs/contracts/frontend-api-consumption-and-query-strategy.md`
-- 任务状态与错误语义见 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+- 前后端能围绕统一资源模型联调
+- 成功、阻断、失败语义不再混写
+- 任务对象、结果对象和摘要对象边界清晰
+- 路由说明可以直接作为 API 实现 mission 的单一上游真源

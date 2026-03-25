@@ -1,62 +1,54 @@
 # 任务生命周期与错误语义说明
 
-## 文档目的
+## 文档角色
 
-本文档定义评测任务在 `API v0` 与后端实现中的统一生命周期、状态迁移规则和错误语义，用于统一：
+本文档冻结 `API v0`、`packages/application/`、`apps/worker/`、前端轮询逻辑和 `evals/` 共用的：
 
-- `apps/api/` 的接口返回语义
-- `packages/application/` 的任务推进逻辑
-- `apps/worker/` 的后台执行语义
-- 前端轮询与错误展示逻辑
-- `evals/` 中的失败分类与记录口径
+- 任务状态枚举
+- 结果状态枚举
+- 合法状态组合
+- 失败与阻断边界
+- 错误码分类与 HTTP 映射原则
 
-本文档不负责：
-
-- 定义正式结果字段内容
-- 定义 Prompt 或 Provider 的策略细节
-- 定义数据库表结构
+本文档不定义 API 路径本身；路径语义见 `apps/api/contracts/api-v0-overview.md`。
 
 ## 核心原则
 
-- 任务状态必须单一真源定义
-- 错误类别必须显式化，不以自然语言替代结构语义
-- 结果可用性与任务完成状态要区分
-- 对外可见错误与内部诊断错误要分层
-- 不允许用“伪成功结果”掩盖失败或阻断
+- `status` 与 `resultStatus` 必须分离
+- `EvaluationTask` 是状态语义的唯一主承载对象
+- 不允许用伪成功结果掩盖失败或阻断
+- 已持久化的任务失败/阻断，在读取时应表现为稳定资源状态，而不是新的接口异常
+- 对外可见错误与内部诊断错误必须分层
 
-## 任务实体关注点
+## 任务对象最小状态字段
 
-一个评测任务在 `Phase 1` 中至少需要表达：
+`EvaluationTask` 至少需要表达：
 
 - `taskId`
 - `status`
-- `createdAt`
-- `inputType`
-- `title`
-- `inputSummary`
+- `resultStatus`
+- `resultAvailable`
 - `errorCode`
 - `errorMessage`
-- `resultAvailable`
-- `resultStatus`
+- `createdAt`
+- `startedAt`
+- `completedAt`
+- `updatedAt`
 
 说明：
 
-- `status` 用于描述任务执行过程
-- `resultStatus` 用于描述结果可读性语义
-- 两者不能混为一个字段
-- `resultAvailable` 应视为 `resultStatus` 的派生布尔语义，而不是独立状态源
-- 约定 `resultAvailable = (resultStatus == available)`
+- `resultAvailable` 是 `resultStatus` 的派生布尔值
+- `errorCode` / `errorMessage` 用于表达失败或阻断原因
+- 这些字段语义必须与 `docs/architecture/domain-model.md` 保持一致
 
-## 任务状态枚举
+## 任务状态 `status`
 
-`Phase 1` 统一使用以下任务状态：
+冻结枚举：
 
 - `queued`
 - `processing`
 - `completed`
 - `failed`
-
-## 状态定义
 
 ### `queued`
 
@@ -66,71 +58,56 @@
 - 尚未开始正式执行
 - 或正在等待执行资源
 
-进入条件：
-
-- 任务创建成功
-- 后端接受任务后登记成功
-
-退出条件：
-
-- 进入 `processing`
-- 进入 `failed`
-
 ### `processing`
 
 含义：
 
-- 任务已进入正式执行阶段
-- 正在运行基线评分链路
-
-进入条件：
-
-- 执行器开始处理该任务
-
-退出条件：
-
-- 进入 `completed`
-- 进入 `failed`
+- 任务已进入正式执行链路
+- 正在运行输入预检查、分点评价、一致性整理、聚合或投影中的某一步
 
 ### `completed`
 
 含义：
 
-- 任务执行流程已结束
-- 不代表一定存在可展示的正式结果正文
-
-进入条件：
-
-- 执行流程完成
-- 已形成最终任务结论
-
-退出条件：
-
-- 终态，不再迁移
-
-说明：
-
-- `completed` 后仍可能出现 `resultStatus=not_available`
-- `completed` 后仍可能出现 `resultStatus=blocked`
+- 任务执行链路已正常结束
+- 不代表一定产出可展示正式结果正文
 
 ### `failed`
 
 含义：
 
-- 任务执行流程未能完成
-- 无法形成成功完成的任务结论
+- 任务未能形成正常结束结论
+- 原因属于技术失败、依赖失败、契约失败或执行链路崩溃
 
-进入条件：
+## 结果状态 `resultStatus`
 
-- 输入处理失败且不可继续
-- 运行时异常且不可恢复
-- 依赖故障且本次执行终止
+冻结枚举：
 
-退出条件：
+- `available`
+- `not_available`
+- `blocked`
 
-- 终态，不再迁移
+### `available`
 
-## 状态迁移规则
+含义：
+
+- 存在可供前端正式展示的结果正文
+
+### `not_available`
+
+含义：
+
+- 当前不存在可展示正式结果正文
+- 任务仍可能处于执行中，或已经技术失败
+
+### `blocked`
+
+含义：
+
+- 任务已正常结束，但因业务语义原因不允许展示正式结果正文
+- 典型原因包括：联合输入不可评、严重跨输入冲突、结果不满足正式展示条件
+
+## 状态转移规则
 
 统一状态迁移：
 
@@ -141,266 +118,186 @@ processing -> completed
 processing -> failed
 ```
 
-禁止状态迁移：
+约束：
 
-- `completed -> processing`
-- `failed -> processing`
-- `completed -> queued`
-- `failed -> queued`
+- 不允许 `completed -> processing`
+- 不允许 `failed -> processing`
+- 终态只能是 `completed` 或 `failed`
 
-## 结果状态枚举
+## 合法状态组合
 
-`Phase 1` 统一使用以下结果状态：
+当前正式允许以下组合：
 
-- `available`
-- `not_available`
-- `blocked`
+| `status` | `resultStatus` | 含义 |
+| --- | --- | --- |
+| `queued` | `not_available` | 已创建，未开始执行 |
+| `processing` | `not_available` | 执行中 |
+| `completed` | `available` | 正常完成且结果可展示 |
+| `completed` | `blocked` | 正常完成但结果被业务语义阻断 |
+| `failed` | `not_available` | 技术失败或执行失败 |
 
-说明：
+补充约束：
 
-- `fetch_failed` 是前端页面本地派生状态，不属于后端任务真源状态
+- `resultAvailable=true` 当且仅当 `resultStatus=available`
+- `completed + blocked` 必须携带阻断类 `errorCode`
+- `failed + not_available` 必须携带失败类 `errorCode`
+- 不允许 `failed + blocked`
+- 不允许 `queued/processing + available`
 
-## 结果状态定义
+## 失败与阻断边界
 
-### `available`
+### 一、请求边界错误：不创建任务
 
-含义：
+以下情况属于请求边界错误：
 
-- 存在满足正式展示条件的结构化结果
-- 前端可以进入正式结果阅读态
+- 请求体结构非法
+- 必填字段缺失
+- `sourceType` 非法
+- 提交内容为空
 
-### `not_available`
+处理原则：
 
-含义：
+- 返回错误 envelope
+- 不创建 `EvaluationTask`
+- HTTP 状态码通常为 `400` 或 `422`
 
-- 当前不存在可展示的正式结果
-- 但这不一定意味着任务失败
+### 二、业务阻断：`completed + blocked`
 
-典型场景：
+以下情况属于业务阻断：
 
-- 任务刚完成，但结果尚未就绪
-- 当前流程只完成了任务结论，未形成可展示结果
+- `JOINT_INPUT_UNRATEABLE`
+- `INSUFFICIENT_CHAPTERS_INPUT`
+- `INSUFFICIENT_OUTLINE_INPUT`
+- `JOINT_INPUT_MISMATCH`
+- `RESULT_BLOCKED`
 
-### `blocked`
+处理原则：
 
-含义：
+- 任务链路正常结束
+- 结果正文不生成
+- `EvaluationTask` 进入 `completed + blocked`
+- `GET /api/tasks/{taskId}` 与 `GET /api/tasks/{taskId}/result` 返回 `200`，由对象状态表达阻断语义
 
-- 结果不满足正式展示条件
-- 系统明确阻断其作为正式结果返回
+### 三、技术失败：`failed + not_available`
 
-典型场景：
+以下情况属于技术失败：
 
-- 结果结构不合法
-- 结果未满足正式校验规则
-- 结果进入了受控阻断路径
+- `PROVIDER_FAILURE`
+- `TIMEOUT`
+- `DEPENDENCY_UNAVAILABLE`
+- `CONTRACT_INVALID`
+- `RESULT_SCHEMA_INVALID`
+- `STAGE_SCHEMA_INVALID`
+- `INTERNAL_ERROR`
 
-## 任务状态与结果状态关系
+处理原则：
 
-### 合法组合
+- 任务未形成正常结束结论
+- `EvaluationTask` 进入 `failed + not_available`
+- 后续读取该任务时应返回稳定任务状态，而不是把历史失败重新包装成新的 `5xx`
 
-- `queued + not_available`
-- `processing + not_available`
-- `completed + available`
-- `completed + not_available`
-- `completed + blocked`
-- `failed + not_available`
+## 错误码分层
 
-### 非推荐组合
+### 1. 请求边界错误
 
-- `failed + available`
-
-说明：
-
-- 若任务已经 `failed`，原则上不应再对外暴露正式结果正文
-
-## 重试语义
-
-### `Phase 1` 规则
-
-- 文档定义重试语义，但不强制先实现复杂重试系统
-- 若实现重试，必须保持任务状态语义一致
-- 不允许通过静默重跑掩盖错误来源
-
-### 推荐原则
-
-- 可恢复错误可进入受控重试
-- 不可恢复错误直接进入 `failed`
-- 若重试发生，应记录内部诊断信息
-
-## 取消语义
-
-`Phase 1` 当前不要求支持任务取消。
-
-说明：
-
-- 后续若引入取消语义，应新增状态与迁移说明
-- 在未正式定义前，不应由实现层私自扩展 `cancelled`
-
-## 错误语义分层
-
-### 一、用户输入错误
-
-表示请求在系统边界上不满足要求。
-
-典型类别：
-
-- 输入缺失
-- 输入类型非法
-- 文件上传参数非法
-
-建议错误码：
+冻结最小集合：
 
 - `VALIDATION_ERROR`
-- `INVALID_INPUT_TYPE`
-- `EMPTY_TEXT`
+- `EMPTY_SUBMISSION`
+- `INVALID_SOURCE_TYPE`
 
-### 二、任务对象错误
+### 2. 联合输入与业务阻断错误
 
-表示任务标识或任务状态不满足读取或处理条件。
+冻结最小集合：
 
-建议错误码：
+- `JOINT_INPUT_UNRATEABLE`
+- `INSUFFICIENT_CHAPTERS_INPUT`
+- `INSUFFICIENT_OUTLINE_INPUT`
+- `JOINT_INPUT_MISMATCH`
+- `RESULT_BLOCKED`
+
+### 3. 任务与资源错误
+
+冻结最小集合：
 
 - `TASK_NOT_FOUND`
 - `TASK_STATE_CONFLICT`
-
-### 三、结果对象错误
-
-表示结果当前不可读取或不可作为正式结果展示。
-
-建议错误码：
-
-- `RESULT_NOT_AVAILABLE`
-- `RESULT_BLOCKED`
 - `RESULT_NOT_FOUND`
+- `RESULT_NOT_AVAILABLE`
 
-### 四、契约错误
+### 4. 契约与执行失败错误
 
-表示结构校验失败或内部输出不满足正式契约。
-
-建议错误码：
+冻结最小集合：
 
 - `CONTRACT_INVALID`
 - `RESULT_SCHEMA_INVALID`
 - `STAGE_SCHEMA_INVALID`
-
-### 五、执行链路错误
-
-表示运行链路中的依赖或服务错误。
-
-建议错误码：
-
 - `PROVIDER_FAILURE`
 - `TIMEOUT`
 - `DEPENDENCY_UNAVAILABLE`
 - `INTERNAL_ERROR`
 
-## 错误码命名规则
+## HTTP 状态码映射原则
 
-推荐规则：
+### 创建任务 `POST /api/tasks`
 
-- 全部使用大写下划线命名
-- 优先表达稳定语义，而不是技术异常细节
-- 同一错误码在不同接口中含义必须一致
+- `201`：任务创建成功
+- `400` / `422`：请求边界错误，不创建任务
+- `409`：状态冲突或幂等冲突
+- `502` / `503`：当前请求依赖不可用且未形成任务
+- `500`：当前请求处理失败且未形成任务
 
-## HTTP 状态码映射建议
+### 读取任务与读取结果
 
-- 输入校验失败：`400` 或 `422`
-- 任务不存在：`404`
-- 结果不存在：`404`
-- 状态冲突：`409`
-- 限流：`429`
-- Provider / 依赖失败：`502` 或 `503`
-- 内部未分类错误：`500`
+- `200`：资源读取成功，包括：
+  - 任务执行中
+  - 任务已完成且结果可用
+  - 任务已完成但结果被阻断
+  - 任务已失败且失败状态已被持久化
+- `404`：`taskId` 或结果资源不存在
+- `500` / `502` / `503`：当前读取请求本身失败，而不是历史任务失败
 
-## 用户可见错误 vs 内部诊断错误
+## 用户可见错误与内部诊断错误
 
 ### 用户可见错误
 
-对外返回时至少包含：
+对外最小字段：
 
 - `code`
 - `message`
 
 要求：
 
-- 语义清晰
-- 不泄露内部 SDK、堆栈、密钥或敏感信息
+- 可被前端稳定映射
+- 不泄露内部 SDK、堆栈、密钥或原始敏感输出
 
 ### 内部诊断错误
 
 内部可额外记录：
 
-- 原始异常信息
+- 原始异常摘要
 - Provider 响应摘要
-- 超时详情
-- 重试次数
-- 跟踪 ID
-
-说明：
-
-- 这些信息应在日志或内部追踪系统中保留
-- 不作为正式 API 对外字段默认暴露
-
-## 日志与追踪字段建议
-
-建议内部至少记录：
-
-- `taskId`
 - `requestId`
-- `status`
-- `resultStatus`
-- `errorCode`
-- `providerId`
-- `modelId`
+- 重试次数
+- `inputComposition`
 - `promptVersion`
 - `schemaVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
 
-说明：
+## 前端与 Evals 必须遵守的规则
 
-- `Phase 1` 前端首期不强制展示这些扩展信息
-- 但后端和回归体系应尽量保留
-
-## 与 API Envelope 的关系
-
-统一规则：
-
-- 接口调用成功时，不代表业务结果一定可展示
-- `success=true` 可以与 `resultStatus=not_available` 或 `blocked` 同时成立
-- 这是因为接口本身返回成功，而业务结果语义可能是“不可展示”
-
-举例：
-
-- `GET /api/tasks/{taskId}/result` 返回 `200` 且 `success=true`
-- `data.resultStatus=blocked`
-- 这表示“结果读取接口调用成功，但结果被业务规则阻断”
-
-## 与 Evals 的关系
-
-`evals/` 在记录执行结果时应至少区分：
-
-- 输入错误导致失败
-- Provider 失败导致失败
-- 契约失败导致阻断
-- 结果可用但质量待比对
-
-说明：
-
-- 任务失败与结果阻断要分别统计
-- 不能只记录“成功/失败”二元结论
+- 前端不得把 `fetch_failed` 反向写回后端任务枚举
+- `evals/` 必须区分业务阻断与技术失败
+- 结果页只有在 `resultStatus=available` 时进入正式正文态
+- `blocked` 与 `failed` 都不能伪装成“低分但可看”的结果正文
 
 ## 完成标准
 
-满足以下条件时，可认为任务生命周期与错误语义已足以支撑开发：
+满足以下条件时，可认为状态与错误语义已足以支撑 DevFleet 后续开发：
 
-- 前端、后端、Evals 对任务状态名称与含义一致
-- 结果可用性不再被混入任务状态字段
-- 每类主要失败场景都有稳定错误码归属
-- 接口实现可以按统一规则映射 HTTP 状态码
+- API、frontend、worker、evals 对状态组合理解一致
+- 请求边界错误、业务阻断和技术失败有稳定分层
+- 已持久化的失败/阻断在读取时不再引发语义漂移
 - 不会再通过伪结果掩盖阻断或失败
-
-## 与现有文档的关系
-
-- API 边界见 `apps/api/contracts/api-v0-overview.md`
-- 评分流程见 `docs/architecture/scoring-pipeline.md`
-- 前端状态流见 `docs/architecture/frontend-task-and-state-flow.md`
-- 前端最小 API 假设见 `docs/contracts/frontend-minimal-api-assumptions.md`

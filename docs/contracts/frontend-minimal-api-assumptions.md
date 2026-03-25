@@ -1,60 +1,62 @@
 # 前端最小 API 假设契约
 
-## 文档定位
+## 文档角色
 
-本文用于在后端尚未完整设计完成前，为前端提供一套可直接开工的最小 API 假设契约，用于：
+本文档基于当前已落地的 `apps/api/src/api/routes.py`、`apps/api/src/api/errors.py` 与 `packages/schemas/`，为前端提供“现在真实可联调”的最小 API 消费假设。
 
-- 本地 Mock
-- 页面骨架开发
-- 查询层与适配层开发
-- 后续真实后端接入前的接口占位
-
-本文不是最终正式 API 文档，也不替代 `packages/schemas/`。它的目标是让前端先稳定施工，并把未来返工尽量压缩在适配层。
+它的目标不是补写未来接口，而是把当前仓库已经存在的最小后端事实收敛清楚，方便前端继续按 `Mock-First`、`Adapter-First`、`Polling-First` 开发。
 
 ## 使用原则
 
-- 本文中的路径、字段与 envelope 是“前端当前实现假设”
-- 后端后续即使调整具体路径或响应结构，也应优先通过适配层吸收差异
-- 正式结果字段语义仍以 `docs/contracts/json-contracts.md` 和后续 `packages/schemas/` 为准
-- 前端页面不直接绑定本文中的 DTO 结构，而应通过 mapper 转为 View Model
+- 正式字段与枚举真源仍以 `packages/schemas/` 为准
+- 本文只描述前端当前可稳定消费的最小运行事实
+- 已规划但尚未落地的能力，不得反向写成当前运行接口事实
+- 页面不直接绑定 DTO，应先经过 adapter / mapper 转为 View Model
+
+## 当前已落地接口
+
+当前仓库已落地的 API 读写入口只有：
+
+- `POST /api/tasks`
+- `GET /api/tasks/{taskId}`
+- `GET /api/tasks/{taskId}/result`
+- `GET /api/dashboard`
+- `GET /api/history`
+
+说明：
+
+- 当前 `/api/history` 还没有公开查询参数、筛选参数和游标入参
+- 当前没有鉴权、多租户和用户隔离语义
+- 当前返回对象直接对应 `packages/schemas/output/` 中的结构模型
 
 ## 通用约定
 
 ### 路径前缀
 
-当前前端默认假设业务接口前缀为：
-
 ```text
 /api
 ```
 
-说明：
-
-- 这里只是前端当前实现假设
-- 后端后续如采用不同前缀，可在 API client 层统一适配
-
 ### 字段命名
 
-当前前端默认假设接口返回使用 `camelCase` 字段命名。
+- 请求与响应字段使用 `camelCase`
+- 路径参数名可在实现层使用 `task_id`，但前端语义仍按 `taskId` 理解
 
 ### 时间字段
 
-当前前端默认假设时间字段使用 `ISO 8601` 字符串，例如：
-
-```text
-2026-03-24T10:30:00Z
-```
+- 时间字段使用 `ISO 8601` 字符串
 
 ### 标识字段
 
-当前前端默认假设：
-
 - `taskId` 为不透明字符串
-- 前端不依赖其具体生成规则
+- 前端不依赖其生成规则
 
 ## 通用响应 Envelope
 
-当前前端默认假设所有业务接口都返回统一 envelope：
+当前后端使用：
+
+- `SuccessEnvelope`
+- `ErrorEnvelope`
 
 ### 成功响应
 
@@ -74,58 +76,50 @@
   "success": false,
   "data": null,
   "error": {
-    "code": "INTERNAL_ERROR",
-    "message": "服务暂时不可用"
+    "code": "VALIDATION_ERROR",
+    "message": "输入参数不合法",
+    "details": null,
+    "fieldErrors": {
+      "title": "Field required"
+    },
+    "retryable": null
   },
   "meta": null
 }
 ```
 
-### 错误对象约定
+说明：
 
-建议最小错误对象包含：
+- `fieldErrors`、`details`、`retryable` 当前均为可选字段
+- `422` 校验错误当前由 `apps/api/src/api/errors.py` 统一包装为 `VALIDATION_ERROR`
 
-- `code`
-- `message`
+## 前端当前必须采用的最小枚举
 
-必要时可扩展：
+### 输入组成 `inputComposition`
 
-- `details`
-- `fieldErrors`
-
-## 前端当前采用的最小枚举假设
-
-以下枚举值用于前端直接开工，不等于后端最终唯一方案。
-
-### 输入类型 `inputType`
-
-建议前端当前采用：
-
-- `opening`
-- `chapter`
-- `outline`
-- `other`
+- `chapters_outline`
+- `chapters_only`
+- `outline_only`
 
 ### 来源类型 `sourceType`
-
-建议前端当前采用：
 
 - `direct_input`
 - `file_upload`
 - `history_derived`
 
-### 任务状态 `status`
+### 评估模式 `evaluationMode`
 
-当前与前端状态文档保持一致：
+- `full`
+- `degraded`
+
+### 任务状态 `status`
 
 - `queued`
 - `processing`
 - `completed`
 - `failed`
 
-### 结果语义状态 `resultStatus`
-
-当前最小假设为：
+### 结果状态 `resultStatus`
 
 - `available`
 - `not_available`
@@ -133,8 +127,22 @@
 
 说明：
 
-- `fetch_failed` 是前端读取失败后的本地派生状态
-- 不要求后端显式返回 `fetch_failed`
+- `fetch_failed` 仍然只是前端本地派生状态，不属于后端正式枚举
+
+## 合法状态组合
+
+当前后端任务对象只允许以下组合：
+
+- `queued + not_available`
+- `processing + not_available`
+- `completed + available`
+- `completed + blocked`
+- `failed + not_available`
+
+约束：
+
+- `resultAvailable = true` 当且仅当 `resultStatus = available`
+- 不应把未出现在上述集合中的组合写成前端稳定依赖
 
 ## 一、创建任务
 
@@ -144,40 +152,70 @@
 POST /api/tasks
 ```
 
-### 请求
+### 请求体最小语义
 
-#### 文本输入场景
+当前请求对象直接对应 `JointSubmissionRequest`：
 
 ```json
 {
-  "title": "测试开篇",
-  "text": "小说正文内容",
-  "inputType": "opening",
+  "title": "测试稿件",
+  "chapters": [
+    {
+      "title": "第一章",
+      "content": "章节正文内容"
+    }
+  ],
+  "outline": {
+    "content": "后续大纲规划内容"
+  },
   "sourceType": "direct_input"
 }
 ```
 
-#### 文件上传场景
+说明：
 
-前端当前默认假设：
-
-- 存在文件时可使用 `multipart/form-data`
-- 其余结构字段与文本输入场景保持一致
+- `chapters` 与 `outline` 至少存在一侧
+- 双侧齐备时为 `full`，单侧输入时会派生为 `degraded`
+- 当前 API 路由本身尚未区分文件上传专用接口
 
 ### 成功响应
+
+当前实现返回完整 `EvaluationTask`：
 
 ```json
 {
   "success": true,
   "data": {
-    "taskId": "task_20260324_001",
+    "taskId": "task_20260325_001",
+    "title": "测试稿件",
+    "inputSummary": "已提交 1 章正文和 1 份大纲",
+    "inputComposition": "chapters_outline",
+    "hasChapters": true,
+    "hasOutline": true,
+    "evaluationMode": "full",
     "status": "queued",
-    "createdAt": "2026-03-24T10:30:00Z"
+    "resultStatus": "not_available",
+    "errorCode": null,
+    "errorMessage": null,
+    "schemaVersion": "1.0.0",
+    "promptVersion": "prompt-v1",
+    "rubricVersion": "rubric-v1",
+    "providerId": "provider-local",
+    "modelId": "model-local",
+    "createdAt": "2026-03-25T00:00:00Z",
+    "startedAt": null,
+    "completedAt": null,
+    "updatedAt": "2026-03-25T00:00:00Z",
+    "resultAvailable": false
   },
   "error": null,
   "meta": null
 }
 ```
+
+说明：
+
+- `provider-local` / `model-local` 是当前本地占位元数据，不代表正式外部 Provider 已接入
 
 ### 失败响应示例
 
@@ -189,7 +227,7 @@ POST /api/tasks
     "code": "VALIDATION_ERROR",
     "message": "输入参数不合法",
     "fieldErrors": {
-      "text": "正文不能为空"
+      "body": "Value error, chapters 与 outline 至少存在一侧。"
     }
   },
   "meta": null
@@ -204,47 +242,52 @@ POST /api/tasks
 GET /api/tasks/{taskId}
 ```
 
-### 成功响应
+### 成功响应示例
 
 ```json
 {
   "success": true,
   "data": {
-    "taskId": "task_20260324_001",
-    "title": "测试开篇",
-    "inputSummary": "小说正文前 120 字摘要",
-    "inputType": "opening",
+    "taskId": "task_20260325_001",
+    "title": "测试稿件",
+    "inputSummary": "已提交 1 章正文和 1 份大纲",
+    "inputComposition": "chapters_outline",
+    "hasChapters": true,
+    "hasOutline": true,
+    "evaluationMode": "full",
     "status": "processing",
-    "createdAt": "2026-03-24T10:30:00Z",
+    "resultStatus": "not_available",
+    "errorCode": null,
     "errorMessage": null,
-    "resultAvailable": false,
-    "resultStatus": "not_available"
+    "schemaVersion": "1.0.0",
+    "promptVersion": "prompt-v1",
+    "rubricVersion": "rubric-v1",
+    "providerId": "provider-local",
+    "modelId": "model-local",
+    "createdAt": "2026-03-25T00:00:00Z",
+    "startedAt": "2026-03-25T00:00:05Z",
+    "completedAt": null,
+    "updatedAt": "2026-03-25T00:00:05Z",
+    "resultAvailable": false
   },
   "error": null,
   "meta": null
 }
 ```
 
-### 字段说明
+### `404` 响应示例
 
-最小任务详情对象建议包含：
-
-- `taskId`
-- `title`
-- `inputSummary`
-- `inputType`
-- `status`
-- `createdAt`
-- `errorMessage`
-- `resultAvailable`
-- `resultStatus`
-
-说明：
-
-- `resultAvailable` 主要用于任务页是否展示结果入口
-- `resultStatus` 用于任务页补充结果可用性语义
-- 前端最小假契约应遵守：`resultAvailable = true` 当且仅当 `resultStatus = available`
-- 当 `resultStatus = not_available` 或 `blocked` 时，`resultAvailable` 必须为 `false`
+```json
+{
+  "success": false,
+  "data": null,
+  "error": {
+    "code": "TASK_NOT_FOUND",
+    "message": "任务不存在"
+  },
+  "meta": null
+}
+```
 
 ## 三、读取结果详情
 
@@ -256,18 +299,29 @@ GET /api/tasks/{taskId}/result
 
 ### 结果可用时的响应
 
+当前实现返回 `EvaluationResultResource`，其中 `resultTime` 同时出现在资源层与正式结果对象中：
+
 ```json
 {
   "success": true,
   "data": {
-    "taskId": "task_20260324_001",
+    "taskId": "task_20260325_001",
     "resultStatus": "available",
-    "resultTime": "2026-03-24T10:35:00Z",
+    "resultTime": "2026-03-25T00:10:00Z",
     "result": {
-      "signingProbability": 78,
-      "commercialValue": 81,
-      "writingQuality": 74,
-      "innovationScore": 69,
+      "taskId": "task_20260325_001",
+      "schemaVersion": "1.0.0",
+      "promptVersion": "prompt-v1",
+      "rubricVersion": "rubric-v1",
+      "providerId": "provider-local",
+      "modelId": "model-local",
+      "resultTime": "2026-03-25T00:10:00Z",
+      "signingProbability": 80,
+      "commercialValue": 78,
+      "writingQuality": 76,
+      "innovationScore": 74,
+      "strengths": ["题材明确"],
+      "weaknesses": ["开篇冲突偏弱"],
       "platforms": [
         {
           "name": "女频平台 A",
@@ -278,15 +332,13 @@ GET /api/tasks/{taskId}/result
       "marketFit": "具备一定市场接受度",
       "editorVerdict": "可继续观察",
       "detailedAnalysis": {
-        "plot": "情节推进较稳定",
-        "character": "角色动机较清晰",
-        "pacing": "节奏前中段略慢",
-        "worldBuilding": "设定表达较完整"
-      },
-      "strengths": ["题材明确", "人物关系清晰"],
-      "weaknesses": ["开篇冲突偏弱"],
-      "visualizationData": null
-    }
+        "plot": "情节推进稳定",
+        "character": "角色动机明确",
+        "pacing": "节奏略慢",
+        "worldBuilding": "设定表达完整"
+      }
+    },
+    "message": null
   },
   "error": null,
   "meta": null
@@ -299,7 +351,7 @@ GET /api/tasks/{taskId}/result
 {
   "success": true,
   "data": {
-    "taskId": "task_20260324_001",
+    "taskId": "task_20260325_001",
     "resultStatus": "not_available",
     "resultTime": null,
     "result": null,
@@ -316,7 +368,7 @@ GET /api/tasks/{taskId}/result
 {
   "success": true,
   "data": {
-    "taskId": "task_20260324_001",
+    "taskId": "task_20260325_002",
     "resultStatus": "blocked",
     "resultTime": null,
     "result": null,
@@ -326,14 +378,6 @@ GET /api/tasks/{taskId}/result
   "meta": null
 }
 ```
-
-### 说明
-
-- `result` 仅在 `resultStatus = available` 时存在
-- `not_available` 与 `blocked` 均不应返回伪正式结果
-- 若任务不存在，应返回 `404`
-- 若任务存在但结果尚未生成、尚未就绪、当前不可展示或被阻断，应返回 `200` 且通过 `resultStatus` 表达语义
-- 前端应基于 `resultStatus` 进入对应展示态
 
 ## 四、读取工作台首页摘要
 
@@ -345,39 +389,26 @@ GET /api/dashboard
 
 ### 成功响应
 
+当前实现返回 `DashboardSummary`：
+
 ```json
 {
   "success": true,
   "data": {
     "recentTasks": [
       {
-        "taskId": "task_20260324_001",
-        "title": "测试开篇",
-        "inputType": "opening",
-        "status": "processing",
-        "createdAt": "2026-03-24T10:30:00Z",
-        "hasResult": false
+        "taskId": "task_20260325_001",
+        "title": "测试稿件",
+        "inputSummary": "已提交 1 章正文和 1 份大纲",
+        "inputComposition": "chapters_outline",
+        "status": "queued",
+        "resultStatus": "not_available",
+        "createdAt": "2026-03-25T00:00:00Z",
+        "resultAvailable": false
       }
     ],
-    "activeTasks": [
-      {
-        "taskId": "task_20260324_001",
-        "title": "测试开篇",
-        "inputType": "opening",
-        "status": "processing",
-        "createdAt": "2026-03-24T10:30:00Z",
-        "hasResult": false
-      }
-    ],
-    "recentResults": [
-      {
-        "taskId": "task_20260320_003",
-        "title": "另一篇测试稿",
-        "resultTime": "2026-03-20T09:30:00Z",
-        "signingProbability": 84,
-        "editorVerdict": "有签约潜力"
-      }
-    ]
+    "activeTasks": [],
+    "recentResults": []
   },
   "error": null,
   "meta": null
@@ -389,17 +420,12 @@ GET /api/dashboard
 ### 路径
 
 ```text
-GET /api/history?q={query}&status={status}&cursor={cursor}&limit={limit}
+GET /api/history
 ```
 
-### 参数说明
-
-- `q`：搜索词，可为空
-- `status`：任务状态筛选，可为空
-- `cursor`：游标，可为空
-- `limit`：分页大小
-
 ### 成功响应
+
+当前实现返回 `HistoryList`，并把 `meta` 同时放在 `data.meta` 与 envelope 顶层 `meta`：
 
 ```json
 {
@@ -407,77 +433,97 @@ GET /api/history?q={query}&status={status}&cursor={cursor}&limit={limit}
   "data": {
     "items": [
       {
-        "taskId": "task_20260324_001",
-        "title": "测试开篇",
-        "inputSummary": "小说正文前 120 字摘要",
-        "inputType": "opening",
-        "status": "completed",
-        "createdAt": "2026-03-24T10:30:00Z",
-        "resultAvailable": true
+        "taskId": "task_20260325_001",
+        "title": "测试稿件",
+        "inputSummary": "已提交 1 章正文和 1 份大纲",
+        "inputComposition": "chapters_outline",
+        "status": "queued",
+        "resultStatus": "not_available",
+        "createdAt": "2026-03-25T00:00:00Z",
+        "resultAvailable": false
       }
-    ]
+    ],
+    "meta": {
+      "nextCursor": null,
+      "limit": 20,
+      "extra": null
+    }
   },
   "error": null,
   "meta": {
     "nextCursor": null,
-    "limit": 20
+    "limit": 20,
+    "extra": null
   }
 }
 ```
 
-## 推荐错误码最小集合
+说明：
 
-建议前端当前至少预留以下错误码映射：
+- 当前历史列表固定返回最近 `20` 条
+- 搜索、状态筛选、游标入参仍属于规划能力，不是当前运行事实
+
+## 当前已冻结但未全部发射的能力
+
+以下能力可以继续保留在规划文档和前端 adapter 设计中，但当前不能写成后端已实现：
+
+- 历史搜索与状态筛选入参
+- 结果页自动轮询
+- 鉴权与多租户
+- 文件上传专用 API
+- SDK 化查询封装
+
+## 推荐错误码集合
+
+前端当前应至少识别以下错误码：
 
 - `VALIDATION_ERROR`
-- `TASK_NOT_FOUND`
-- `RESULT_NOT_AVAILABLE`
+- `EMPTY_SUBMISSION`
+- `INVALID_SOURCE_TYPE`
+- `JOINT_INPUT_UNRATEABLE`
+- `INSUFFICIENT_CHAPTERS_INPUT`
+- `INSUFFICIENT_OUTLINE_INPUT`
+- `JOINT_INPUT_MISMATCH`
 - `RESULT_BLOCKED`
+- `TASK_NOT_FOUND`
+- `TASK_STATE_CONFLICT`
+- `RESULT_NOT_FOUND`
+- `RESULT_NOT_AVAILABLE`
+- `CONTRACT_INVALID`
+- `RESULT_SCHEMA_INVALID`
+- `STAGE_SCHEMA_INVALID`
+- `PROVIDER_FAILURE`
+- `TIMEOUT`
+- `DEPENDENCY_UNAVAILABLE`
 - `INTERNAL_ERROR`
 
 说明：
 
-- 这些错误码用于前端错误态分类与文案映射
-- `RESULT_NOT_AVAILABLE` 与 `RESULT_BLOCKED` 不是结果读取主路径的常态 envelope；主路径优先使用 `200 + data.resultStatus`
-- 后端后续可以扩展，但不建议把错误语义全部塞进自然语言 message
+- 不是所有错误码都已在当前路由层直接发射
+- 但它们已经属于正式错误枚举冻结范围，前端不应自创第二套错误码体系
 
 ## View Model 映射建议
 
-前端不直接让页面消费上述 DTO。
+前端建议按以下方向吸收 DTO：
 
-建议映射方向如下：
-
-- `POST /api/tasks` -> 跳转参数与初始任务状态
+- `POST /api/tasks` -> 初始任务态与跳转参数
 - `GET /api/tasks/{taskId}` -> `TaskDetailView`
-- `GET /api/tasks/{taskId}/result` -> `ResultDetailView` 或结果错误态
+- `GET /api/tasks/{taskId}/result` -> `ResultDetailView` 或结果阻断态
 - `GET /api/dashboard` -> `DashboardTaskSummaryView[]` + `DashboardResultSummaryView[]`
 - `GET /api/history` -> `HistoryTaskItemView[]`
 
-## 允许后续变化但不应扩散到页面层的内容
-
-后续真实后端接入时，以下变化允许存在，但应优先通过适配层吸收：
-
-- 路径前缀变化
-- snake_case / camelCase 差异
-- dashboard 聚合接口拆分
-- 分页元信息结构变化
-- 文件上传参数组织方式变化
-- 错误 envelope 字段扩展
-
-## 当前不包含的内容
-
-本文当前不定义：
-
-- 最终 OpenAPI 文档
-- 最终鉴权方案
-- 最终上传存储方案
-- 对比页接口
-- Prompt 版本与 Provider 扩展接口
-
 ## 与其他文档的关系
 
-- 前后端边界见 `docs/contracts/frontend-backend-boundary.md`
-- 输入边界见 `docs/contracts/frontend-input-and-submit-spec.md`
-- 页面消费对象见 `docs/contracts/frontend-view-models.md`
-- 查询策略见 `docs/contracts/frontend-api-consumption-and-query-strategy.md`
+- API 主契约见 `apps/api/contracts/api-v0-overview.md`
+- 状态与错误语义见 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
 - 正式结果语义见 `docs/contracts/json-contracts.md`
+- 前端状态流见 `docs/architecture/frontend-task-and-state-flow.md`
+
+## 完成标准
+
+满足以下条件时，可认为本文档足以支撑当前前端联调：
+
+- 前端知道当前真实存在哪些 API 入口
+- 前端知道当前真实返回的 DTO 形状
+- 已规划但未落地能力不再被误写成运行事实
+- adapter 层可以在不反向发明后端真源的前提下继续开发

@@ -1,288 +1,185 @@
-# 全 LLM Rubric 评分实施计划
+# 面向网络小说联合投稿包全 LLM Rubric 主线的 DevFleet 实施计划
 
-## 目标
+## 文档目的
 
-本文档将“全 `LLM` 分阶段 `rubric` 评分主线”拆解为可执行的文档、契约、Prompt、Schema、Evals 与运行时建设步骤，用于指导仓库从当前结构建设阶段逐步演进到可治理、可回归、可实现的正式评分系统。
+本文档是当前仓库进入 `/orchestrate` 与 `devfleet` 前的总计划入口。
 
-## 当前前提
+它回答四个问题：
 
-当前仓库已明确以下约束：
+- 当前仓库处于哪一个 readiness 层级
+- 当前哪些结构真源已经真实落地
+- 后续 implementation mission 应如何按窄任务拆分
+- 在进入实现阶段前，哪些边界仍然不能被跳过
 
-- Prompt 只能在后端治理
-- 正式输出必须是严格 JSON
-- `packages/schemas/` 是正式结构的唯一真源
-- `evals/` 用于评测样本、用例、基线与报告
-- 当前仓库仍处于文档与结构优先阶段
+本文档当前用于**文档收口后的实施准备**，不授权无边界并行开发。
 
-因此，本实施计划遵循：
+## Readiness 分层
 
-- 先文档和契约
-- 再评测和版本治理
-- 最后再进入具体运行时实现
+### 1. `Doc-Ready`
 
-## 总体策略
+表示核心架构、范围、术语、状态语义和目录边界已经可独立理解。
 
-推荐采用“全 `LLM` 单主线、固定阶段、先文档后实现”的策略：
+### 2. `DevFleet-Ready`
 
-- **正式主线**：输入预检查 + `LLM rubric` 分点评价 + 轻量一致性整理 + 新模型聚合输出 + 正式结果投影
-- **当前落地起点**：先冻结主线、词表、契约和评测标准，再围绕该主线推进 Prompt、Schema 与运行时设计
+表示仓库已经具备以下条件：
 
-这样做的原因：
+- 关键文档有明确真源
+- mission 已可拆成单文件集、单验收标准的窄任务
+- mission 之间存在明确 `depends_on` DAG
+- 每个 mission 都有边界、非目标、验收标准和终止型验证入口
+- 并行与串行边界已经写清楚
 
-- 可以先冻结主线与阶段边界
-- 可以避免在仓库早期保留多条评分路径
-- 可以让后续 Prompt、Schema、Evals 与运行时围绕同一主线演进
+### 3. `Implementation-Ready`
 
-## 交付范围
+表示除了满足 `DevFleet-Ready` 外，还额外满足：
 
-### 文档交付
+- 剩余关键运行时占位已经收口为可执行模块
+- Prompt runtime、provider adapter、worker、evals runner 具备最小执行闭环
+- 模块 I/O 契约已能直接指导代码落位
+- 运行时实现不再依赖大面积占位常量或 README 解释补洞
 
-- `docs/architecture/layered-rubric-evaluation-architecture.md`
-- `docs/contracts/rubric-stage-contracts.md`
-- `docs/decisions/ADR-004-layered-rubric-evaluation.md`
-- 对现有评分流水线、JSON 契约、评测框架文档的同步重写
+## 当前判断
 
-### Prompt 交付
+- `Doc-Ready = Yes`
+- `DevFleet-Ready = Yes`
+- `Implementation-Ready = Not Yet`
 
-后续应逐步补齐：
+## 当前仓库基线
 
-- `prompts/scoring/screening/`：输入预检查 Prompt
-- `prompts/scoring/rubric/`：Rubric 分点评价 Prompt
-- `prompts/scoring/aggregation/`：聚合输出 Prompt
-- `prompts/versions/`：版本记录
-- `prompts/registry/`：元数据与启用规则
+当前已确认的真实基线如下：
 
-### Schema 交付
+### 已落地的正式结构与最小实现
 
-后续应逐步补齐：
+- `packages/schemas/` 已落地 `common/`、`input/`、`output/`、`stages/` 正式 schema 类
+- `packages/application/` 已落地最小 `EvaluationService`、`TaskRepository` port 与本地内存实现
+- `apps/api/` 已落地 `FastAPI` 应用、路由、错误映射和测试基线
+- `apps/api/tests/` 已覆盖 schema、application 与 API 最小语义
 
-- 正式输出结构
-- 阶段中间契约结构
-- 评测与回归报告结构
+### 仍处于文档/占位阶段的面
 
-### Evals 交付
+- `packages/schemas/evals/` 仍只有 `README.md`，正式 schema 类尚未落地
+- `packages/provider-adapters/` 仍处于合同文档阶段
+- `packages/prompt-runtime/` 仍处于合同文档阶段
+- `apps/worker/` 仍处于合同文档阶段
+- `evals/runners/` 与 `evals/reports/` 仍处于治理文档阶段
+- `prompts/` 目前主要是治理文档与占位目录，尚未形成可执行资产闭环
 
-后续应逐步补齐：
+### 当前实现中的占位约束
 
-- 样本分类与基线规则
-- 分点评价结果结构
-- 聚合输出对比报告
-- 阶段稳定性与结果漂移指标
+- `packages/application/services/evaluation_service.py` 当前仍使用 `provider-local` / `model-local` 和固定版本常量作为本地占位基线
+- 这说明仓库已经具备最小工程基线，但尚未进入正式 provider / prompt runtime / worker 闭环
 
-## 分阶段路线
+## 当前阻塞 `Implementation-Ready` 的剩余项
 
-### Phase 0：正式主线冻结
+当前阻塞的不是文档真源，而是剩余运行时空位：
 
-目标：
+- `packages/schemas/evals/` 正式对象尚未落地
+- provider adapter 尚未以代码方式收口
+- prompt runtime 尚未以代码方式收口
+- application service 尚未去除对本地占位 provider / prompt 常量的直接依赖
+- worker 执行入口尚未落地
+- evals runner 与报告写出入口尚未落地
+- `prompts/` 仍缺少与 registry / versions 绑定的首批正式资产实例
 
-- 冻结正式评分主线与阶段名称
-- 统一输入类型边界
-- 统一内部维度与外部字段映射口径
-- 明确全 `LLM` 分阶段流程是唯一正式主线
+## 当前阶段目标
 
-交付物：
+当前阶段只做两件事：
 
-- 本文档
-- 架构文档
-- 契约文档
-- ADR 文档
+- 维持文档真源稳定
+- 在文档真源基础上按窄 mission 推进 implementation-prep
 
-完成标准：
+这意味着当前阶段**不允许**：
 
-- 团队能使用统一词表讨论评分机制
-- 不再把 `rubric`、Prompt、聚合输出与最终结果混为同一层概念
-- 文档层已明确只保留一条正式主线
+- 跳过 `mission-catalog` 与 `mission-dag` 直接发起大任务
+- 把 README 占位解释为已实现运行时能力
+- 在 schema / 状态 / Prompt 真源未指明时跨模块同时开工
+- 引入 `pairwise`、额外评分分支或多路径正式主线
 
-### Phase 1：冻结 Rubric 与分点评价契约
+## 文档真源层级
 
-目标：
+当前阶段统一采用以下真源优先级：
 
-- 保持现有对外结果字段稳定
-- 冻结一级维度、二级子维度与分点评价项结构
-- 让后续所有实现和评测都围绕同一套分点评价契约展开
+1. 已落地的 `packages/schemas/**/*.py`
+2. `docs/contracts/canonical-schema-index.md`
+3. `docs/contracts/rubric-stage-contracts.md`
+4. `docs/contracts/json-contracts.md`
+5. `apps/api/contracts/api-v0-overview.md` 与 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+6. `docs/planning/devfleet-mission-catalog.md` 与 `docs/planning/devfleet-mission-dag.md`
+7. `docs/operations/quality-gates-and-regression.md` 与 `docs/operations/rollback-and-fallback.md`
 
-建议工作：
+说明：
 
-- 冻结一级维度与二级子维度词表
-- 冻结分点评价项结构与评分锚点
-- 定义顶层字段的来源关系与上限约束
-- 为分点评价阶段补充结构化解释要求
+- 已落地的 schema 类优先级高于所有文档说明
+- 对尚未落地的对象，`canonical-schema-index.md` 是唯一对象级索引真源
+- 前端假契约、API DTO 文档、README 和 Evals 文档都不得反向成为正式字段真源
 
-完成标准：
+## 当前允许下发的任务类型
 
-- 顶层四个分数与内部一级维度关系明确
-- 至少一版 `rubric_scoring` Prompt 能围绕新主线产出稳定结构
-- 分点评价结果可以进入后续聚合阶段
+当前允许下发的是**窄实现准备 mission**，特点必须同时满足：
 
-### Phase 2：冻结聚合模型输入输出契约
+- 单一文件集
+- 单一上游真源
+- 单一非目标边界
+- 单一终止型验收入口
 
-目标：
+正式任务拆分与顺序以：
 
-- 明确聚合模型正式读取哪些阶段对象
-- 明确聚合模型输出哪些中间结果与最终结果草案
-- 防止聚合阶段重新退化为无约束整体直评
+- `docs/planning/devfleet-mission-catalog.md`
+- `docs/planning/devfleet-mission-dag.md`
 
-建议工作：
+为准。
 
-- 定义 `ConsistencyCheckResult` 的最小整理语义
-- 定义 `AggregatedRubricResult`
-- 定义 `FinalEvaluationProjection`
-- 冻结 `signingProbability`、`commercialValue`、`writingQuality`、`innovationScore` 的来源关系
+## 当前推荐的下发顺序
 
-完成标准：
+### Wave 1：并行收口基础运行时空位
 
-- 聚合模型输入边界明确
-- 聚合模型输出字段与正式结果字段映射明确
-- 顶层字段逻辑关系可解释且可校验
+- `I1`：落地 `packages/schemas/evals/` 正式 schema
+- `I2`：落地 `packages/provider-adapters/` provider port 与本地占位 adapter
+- `I3`：落地 `packages/prompt-runtime/` registry / versions 读取能力
+- `I4`：落地首批 Prompt registry / versions 实例与 scoring 资产骨架
 
-### Phase 3：同步 Prompt / JSON / Evals 治理
+### Wave 2：让 application 去硬编码化
 
-目标：
+- `I5`：让 `packages/application/` 通过 port 消费 prompt/provider，而不是直接使用本地常量
 
-- 让 Prompt 分类、JSON 契约与 Evals 框架都对齐新主线
-- 让主线版本变化可以通过回归被观测
+### Wave 3：补齐执行入口
 
-建议工作：
+- `I6`：落地 `apps/api/` 依赖注入与 DTO 对齐收口
+- `I7`：落地 `apps/worker/` 最小执行入口
+- `I8`：落地 `evals/runners/` 最小本地 runner 与报告输出
 
-- 重写 Prompt 生命周期文档中的阶段分类
-- 重写 JSON 契约中的内部来源说明
-- 重写 Evals 指标，重点观察阶段稳定性与最终结果漂移
-- 定义样本组织方式与基线记录方式
+### Wave 4：统一验收
 
-完成标准：
+- `I9`：执行收口验证并复审 readiness
 
-- Prompt、Schema 与 Evals 围绕同一主线版本治理
-- 变更后能明确知道何时必须跑回归
-- 阶段级结构变化与最终结果变化可以被同时记录
+## 进入 `Implementation-Ready` 的判断门槛
 
-### Phase 4：进入运行时实现规划
+满足以下条件时，可判定仓库达到 `Implementation-Ready`：
 
-目标：
+- `packages/schemas/evals/` 已有正式 schema 类
+- provider adapter 与 prompt runtime 已有最小代码闭环
+- application service 不再直接写死占位 provider / prompt 元信息
+- worker 与 evals runner 至少各有一个终止型本地执行入口
+- Prompt 资产、registry、versions 与运行时加载逻辑已经绑定
+- API / application / worker / evals 的最小验证命令可实际执行并通过
 
-- 将冻结后的文档边界转化为 API、应用层、Provider 与 Worker 的实现边界
+## 当前仍明确不做
 
-建议工作：
+- 不在当前阶段引入公网鉴权、多租户和复杂部署前提
+- 不把本地占位 provider 误写成正式多 provider 策略
+- 不把研究目录或 README 文本当成运行时代码能力
+- 不在 `Implementation-Ready` 之前启动无依赖约束的并行改造
 
-- 确定 API v0 的任务与结果消费语义
-- 确定应用层的阶段编排职责
-- 确定 Provider 调用的输入输出封装方式
-- 确定 Worker 在批量评测与回归中的位置
+## 完成后预期结论
 
-完成标准：
+当前文档收口完成后，仓库的正确结论应是：
 
-- 文档足以支撑后端接口与应用层最小实现
-- 不需要再次澄清正式主线边界即可开始开发
+- `Doc-Ready = Yes`
+- `DevFleet-Ready = Yes`
+- `Implementation-Ready = Not Yet`
 
-## 推荐样本分层
+这意味着：
 
-后续 `evals/` 建议至少覆盖以下样本类型：
-
-- 常规样本：主流网文开篇、普通章节、标准大纲
-- 边界样本：题材混搭、视角复杂、实验性表达
-- 冲突样本：市场吸引力强但写作执行差，或反之
-- 证据不足样本：过短、断裂、信息不足
-- 风险样本：明显 AI 味、术语污染、套路拼贴
-- 漂移关注样本：同一文本在 Prompt / Model 变化后容易出现判断偏移的样本
-
-## 关键指标
-
-### 结构指标
-
-- 最终结果 JSON 合法率
-- 阶段契约 JSON 合法率
-- 缺失字段率
-- 分点评价项覆盖率
-
-### 质量指标
-
-- 顶层分数稳定性
-- 分点评价稳定性
-- 依据与结论一致率
-- 不可评识别准确率
-- 风险标签命中稳定性
-
-### 聚合指标
-
-- 聚合输出稳定性
-- 顶层字段逻辑一致性
-- 分点评价到最终结果的映射一致性
-- 聚合后差异解释完整性
-
-### 回归指标
-
-- Prompt 变更前后漂移
-- Provider / Model 变更前后漂移
-- 分点评价漂移
-- 最终结果漂移
-
-## 仓库落位建议
-
-### 文档
-
-- `docs/architecture/`：放架构说明
-- `docs/contracts/`：放阶段契约说明
-- `docs/decisions/`：记录为什么采用该架构
-- `docs/planning/`：记录实施路线与里程碑
-
-### Prompt
-
-- `prompts/scoring/screening/`：输入预检查 Prompt
-- `prompts/scoring/rubric/`：分点评价 Prompt
-- `prompts/scoring/aggregation/`：聚合输出 Prompt
-- `prompts/versions/`：版本记录
-- `prompts/registry/`：启用规则与元数据
-
-### Schema
-
-- `packages/schemas/output/`：最终结果对象
-- `packages/schemas/evals/`：评测样本与报告对象
-- 后续按正式主线扩展内部中间对象
-
-### 实现
-
-- `packages/domain/`：评分维度与领域对象
-- `packages/application/`：阶段流水线编排
-- `apps/api/`：对外接口与任务入口
-- `apps/worker/`：批量评测与回归任务
-
-## 风险与约束
-
-### 风险 1：分阶段调用成本上升
-
-应对：
-
-- 先冻结必要阶段，避免无限拆分
-- 优先保持单主线，而不是重新引入分叉路径
-- 在 Evals 中同时观察结构收益与成本变化
-
-### 风险 2：聚合模型重新黑盒化
-
-应对：
-
-- 聚合模型必须只读取正式阶段结果
-- 聚合输出必须保留来源映射
-- 分点评价结果必须稳定且可解释
-
-### 风险 3：阶段契约太早冻结，限制演进
-
-应对：
-
-- 先冻结对外结果结构
-- 内部阶段契约采用版本化演进
-- 先固定字段语义，再逐步细化
-
-### 风险 4：文档残留旧主线术语，导致双真源
-
-应对：
-
-- 主真源文档先重写
-- 强联动文档再同步
-- 通过全文检索清理旧主线遗留术语与历史分叉表述
-
-## 验收标准
-
-- 已有文档能说明“为什么使用全 LLM 分阶段 `rubric` 机制”
-- 已有文档能说明每一层的职责、输入、输出与失败语义
-- 已有文档能说明该机制如何映射到 Prompt、Schema、Evals 与后续实现目录
-- 已有文档不再保留旧主线术语与旧阶段定义
-- 已有文档不破坏当前对外结果契约和 Prompt 治理原则
+- 可以安全进入 mission DAG
+- 可以开始下发窄 implementation-prep mission
+- 但不能跳过 DAG 直接展开大规模业务实现

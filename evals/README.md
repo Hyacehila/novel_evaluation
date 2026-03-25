@@ -1,207 +1,121 @@
 # `evals`
 
-该目录用于承载正式评测与回归体系。
+## 目录角色
 
-## 文档目的
+该目录用于承载正式评测与回归治理入口。
 
-本文档将 `evals/` 从目录说明扩展为最小可执行的基线评测说明，回答以下问题：
+它的目标不是在当前阶段假装已经有完整 eval harness，而是把后续样本、case、runner、baseline、report 的边界、回归触发规则和最小记录要求冻结下来。
 
-- `evals/` 中应放什么、不应放什么
-- 样本应如何组织
-- 基线如何定义
-- Prompt / Schema / Provider 变化时何时需要回归
-- 评测结果应如何记录与比较
+## 当前仓库现实
+
+当前 `evals/` 已存在：
+
+- `datasets/`
+- `cases/`
+- `runners/`
+- `reports/`
+- `baselines/`
+
+但当前实际落地内容仍以 README 与 `.gitkeep` 占位为主：
+
+- 还没有正式 `EvalCase` 实例文件
+- 还没有正式 baseline 记录实例
+- 还没有正式 report 实例
+- 还没有 runner 脚本实现
+- `packages/schemas/evals/` 也仍处于 README 级说明
+
+因此当前 `evals/` 的状态是：
+
+- 治理合同已冻结
+- 执行实例与 schema 仍待后续窄 mission 落地
 
 ## 核心目标
 
-`evals/` 的目标是：
+`evals/` 当前至少要回答：
 
-- 让 Prompt 调整可验证
-- 让 Schema 演进可验证
-- 让 Provider / Model 切换可验证
-- 让回归比较有统一入口
-- 为正式评分主线提供最小质量观测能力
+- 什么时候必须跑回归
+- 回归至少比较哪些信息
+- 结果至少要记录哪些元数据
+- Prompt / Schema / Provider 变化后如何保持可追踪比较
 
-## 目录说明
+## 与正式主线的关系
 
-- `datasets/`：样本、金标准、测试夹具
-- `cases/`：结构化评测用例
-- `runners/`：评测执行入口
-- `reports/`：评测报告输出
-- `baselines/`：历史基线结果
+Evals 必须服务于当前单主线正式评分方案：
 
-## 样本分类方式
+- `input_screening`
+- `rubric_evaluation`
+- `consistency_check`
+- `aggregation`
+- `final_projection`
 
-结合当前项目目标，样本至少应考虑以下分类：
+同时必须服从当前联合输入主线：
 
-- 常规样本
-- 边界样本
-- 依据不足样本
-- 风险样本
-- 回归关注样本
+- `chapters_outline`
+- `chapters_only`
+- `outline_only`
 
 说明：
 
-- 当前阶段不要求一次性补全全部复杂样本矩阵
-- 但至少应保证“有代表性、有对比价值、有失败样本”
+- 不允许为旧多路径评分、`pairwise` 或伪结果展示单独设计正式 eval 主线
+- `evals/` 不能反向定义第二套 schema 或结果语义
 
-## 基线定义方式
+## 样本与回归最小要求
 
-当前基线应围绕正式评分主线建立，而不是围绕旧的多路径方案。
+当前最小回归记录至少应关联：
 
-一个最小基线记录应至少关联：
-
-- 样本标识
-- Prompt 版本
-- Schema 版本
-- Provider / Model 标识
+- `caseId`
+- `inputComposition`
+- `promptVersion`
+- `schemaVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
 - 结果结构是否合法
-- 输出结果摘要
-- 执行结论
+- 任务是 `failed`、`blocked` 还是 `available`
+- 顶层结果摘要或阻断 / 失败结论
 
-## 与 Schema 的关系
+## 何时必须触发受控回归
 
-- `evals/` 中所有结构化样本、结果与报告应引用正式 Schema 语义
-- `packages/schemas/` 仍是结构真源
-- `evals/` 不反向定义正式结果字段
+以下变化至少应触发一次受控回归审查：
 
-## 与 Prompt 的关系
+- 正式 Prompt 版本变化
+- `schemaVersion` 变化
+- `rubricVersion` 变化
+- `providerId` / `modelId` 变化
+- 任务状态与结果状态语义变化
+- 错误码集合变化
+- 联合输入边界变化
+- `fatalRisk` 词表变化
 
-- 进入正式候选或正式启用的 Prompt，应有对应 Evals 使用方式
-- Prompt 变化后，应能明确是沿用旧基线还是生成新基线
-- 没有回归依据的 Prompt 变更不应被视为正式稳定更新
+## 当前目录解释
 
-## 与 Provider 的关系
-
-- Provider 可以切换，但切换后应保留可比性记录
-- 当前阶段不要求完整多 Provider 评测矩阵
-- 但至少要能记录“本次结果来自哪个 Provider / Model”
-
-## 执行模式说明
-
-### 本地执行
-
-适用于：
-
-- Prompt 修改前验证
-- Schema 修改后局部回归
-- API / 应用层本地联调
-
-### 受控回归执行
-
-适用于：
-
-- Prompt 生命周期进入 `candidate` 或 `active`
-- Schema 发生破坏性变化
-- Provider / Model 切换
-
-说明：
-
-- 当前阶段不强制先接 CI
-- 但文档必须先把“何时应该跑 eval”写清楚
-
-## 何时必须触发回归
-
-以下变更至少应触发受控回归：
-
-- 正式 Prompt 版本变更
-- 正式结果结构变更
-- 阶段结构语义变更
-- Provider / Model 切换
-- 任务状态与结果状态语义变更
-
-## 结果产物说明
-
-评测产物应至少能回答：
-
-- 本次使用了哪组输入样本
-- 使用了哪个 Prompt 版本
-- 使用了哪个 Schema 版本
-- 使用了哪个 Provider / Model
-- 结果结构是否合法
-- 与基线相比发生了什么差异
-
-## 回归比较维度
-
-当前阶段至少比较以下内容：
-
-- 结果结构合法性
-- 关键字段是否缺失
-- 分点评价结果是否稳定
-- 聚合输出是否稳定
-- 输出结果是否可用于前端正式消费
-
-说明：
-
-- 当前阶段不强制先引入复杂统计仪表盘
-- 但至少应先保证“结构稳定、语义稳定、可消费”
-
-## 失败分类与记录方式
-
-评测失败至少应区分：
-
-- 输入错误
-- 任务执行失败
-- Provider 失败
-- 结构校验失败
-- 结果被阻断
-- 结果质量异常但结构合法
-
-说明：
-
-- 不能只记录“成功 / 失败”二元结论
-- 任务失败和结果阻断必须分开记录
-
-## 新增样本流程
-
-新增样本时应至少说明：
-
-- 样本用途
-- 样本分类
-- 是否进入基线
-- 是否需要关联 Prompt / Schema 变更
-
-## 更新基线流程
-
-更新基线前至少确认：
-
-- 为什么旧基线不再适用
-- 是否是 Prompt 变化导致
-- 是否是 Schema 变化导致
-- 是否是 Provider 变化导致
-- 更新后是否保留旧基线的可追踪记录
+- `datasets/`：样本、金标准、夹具治理入口
+- `cases/`：结构化回归用例治理入口
+- `runners/`：执行入口合同
+- `reports/`：报告产物合同
+- `baselines/`：基线记录合同
 
 ## 当前不包含的内容
 
-本文当前不定义：
+本文档当前不代表：
 
-- 完整自动化评测框架实现细节
-- 复杂统计指标仪表盘
-- 大规模多 Provider 对比系统
-- 完整人工标注工作流
+- 完整自动化 runner 已落地
+- 完整 baseline 与 report 实例已生成
+- 多 Provider 对比矩阵已实现
+- CI 已自动执行回归
 
-## 当前阶段最小要求
+## 验收方式
 
-当前阶段至少应保证：
+当前最小验收方式：
 
-- 有最小可用样本集合
-- 有基线记录方式
-- 有回归触发规则
-- 有最小失败分类
-- 有报告产物组织方式
+- `git diff --check`
+- `rg "caseId|inputComposition|promptVersion|schemaVersion|rubricVersion|providerId|modelId|blocked|failed|available" evals docs/operations docs/contracts`
 
 ## 完成标准
 
-满足以下条件时，可认为 `evals/` 已具备最小可开发闭环：
+满足以下条件时，可认为 `evals/` 已具备最小治理闭环：
 
 - 团队知道什么时候必须跑回归
-- 团队知道评测结果至少要记录哪些信息
-- Prompt / Schema / Provider 变化不再脱离基线比较
-- `evals/` 不再只是样本堆放区，而是有清晰治理入口
-
-## 与其他文档的关系
-
-- 评分流程见 `docs/architecture/scoring-pipeline.md`
-- 当前范围见 `docs/planning/mvp-phase-1-scope.md`
-- Schema 治理见 `docs/contracts/schema-versioning-policy.md`
-- Prompt 生命周期见 `docs/prompting/prompt-lifecycle.md`
+- 团队知道结果至少要记录哪些元数据
+- README 不再把占位目录误写成已落地执行系统
+- Prompt / Schema / Provider 变化不再脱离回归讨论
