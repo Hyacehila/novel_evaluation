@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
+from datetime import datetime
 
 from packages.application.ports.runtime_metadata import (
     PromptRuntimePort,
@@ -12,6 +15,7 @@ from packages.application.ports.runtime_metadata import (
 from packages.application.ports.task_repository import TaskRepository
 from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
+from packages.schemas.common.base import MetaData
 from packages.schemas.common.enums import (
     AxisId,
     EvaluationMode,
@@ -289,14 +293,59 @@ class EvaluationService:
             recentResults=recent_results,
         )
 
-    def get_history(self) -> HistoryList:
-        limit = 20
+    def get_history(
+        self,
+        *,
+        q: str | None = None,
+        status: TaskStatus | None = None,
+        cursor: str | None = None,
+        limit: int = 20,
+    ) -> HistoryList:
         tasks = self._task_repository.list_tasks()
-        recent_tasks = tasks[:limit]
+        if q is not None and q != "":
+            tasks = [task for task in tasks if q in task.title]
+        if status is not None:
+            tasks = [task for task in tasks if task.status is status]
+        start_index = 0
+        if cursor:
+            cursor_key = self._decode_cursor(cursor)
+            start_index = self._resolve_cursor_index(tasks, cursor_key)
+        page_items = tasks[start_index : start_index + limit]
+        next_cursor = None
+        if page_items and start_index + limit < len(tasks):
+            next_cursor = self._encode_cursor(page_items[-1])
         return HistoryList(
-            items=[self._to_summary(task) for task in recent_tasks],
-            meta={"nextCursor": None, "limit": limit},
+            items=[self._to_summary(task) for task in page_items],
+            meta=MetaData(nextCursor=next_cursor, limit=limit),
         )
+
+    def _resolve_cursor_index(
+        self,
+        tasks: list[EvaluationTask],
+        cursor_key: tuple[str, str],
+    ) -> int:
+        for index, task in enumerate(tasks):
+            if (task.createdAt.isoformat(), task.taskId) == cursor_key:
+                return index + 1
+        raise ValueError("cursor 无效。")
+
+    def _encode_cursor(self, task: EvaluationTask) -> str:
+        raw_cursor = f"{task.createdAt.isoformat()}|{task.taskId}".encode("utf-8")
+        return base64.urlsafe_b64encode(raw_cursor).decode("ascii")
+
+    def _decode_cursor(self, cursor: str) -> tuple[str, str]:
+        try:
+            raw_value = base64.urlsafe_b64decode(cursor.encode("ascii")).decode("utf-8")
+        except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
+            raise ValueError("cursor 无效。") from exc
+        created_at, separator, task_id = raw_value.partition("|")
+        if not separator or not created_at or not task_id:
+            raise ValueError("cursor 无效。")
+        try:
+            datetime.fromisoformat(created_at)
+        except ValueError as exc:
+            raise ValueError("cursor 无效。") from exc
+        return created_at, task_id
 
     def _to_summary(self, task: EvaluationTask) -> EvaluationTaskSummary:
         return EvaluationTaskSummary(

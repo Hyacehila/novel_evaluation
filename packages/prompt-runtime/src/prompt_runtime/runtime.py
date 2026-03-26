@@ -4,12 +4,14 @@ from pathlib import Path
 import re
 from typing import Any
 
+from pydantic import ValidationError
+
 from .errors import (
     PromptAssetAmbiguityError,
     PromptAssetInvalidError,
     PromptAssetNotFoundError,
 )
-from .models import PromptRegistryRecord, PromptVersionRecord, ResolvedPrompt
+from .models import PromptRegistryRecord, PromptStage, PromptVersionRecord, ResolvedPrompt
 
 _FORMAL_STAGE_DIRECTORIES = {
     "input_screening": "screening",
@@ -53,11 +55,26 @@ class FilePromptRuntime:
         self._registry_root = self._prompts_root / "registry"
         self._versions_root = self._prompts_root / "versions"
         self._scoring_root = self._prompts_root / "scoring"
+        _ensure_path_within_root(
+            label="registry 目录",
+            path=self._registry_root,
+            root=self._prompts_root,
+        )
+        _ensure_path_within_root(
+            label="versions 目录",
+            path=self._versions_root,
+            root=self._prompts_root,
+        )
+        _ensure_path_within_root(
+            label="scoring 目录",
+            path=self._scoring_root,
+            root=self._prompts_root,
+        )
 
     def resolve(
         self,
         *,
-        stage: str,
+        stage: PromptStage,
         input_composition: str,
         evaluation_mode: str,
         provider_id: str,
@@ -87,7 +104,7 @@ class FilePromptRuntime:
     def _select_registry_record(
         self,
         *,
-        stage: str,
+        stage: PromptStage,
         input_composition: str,
         evaluation_mode: str,
         provider_id: str,
@@ -152,14 +169,29 @@ class FilePromptRuntime:
         return tuple(records)
 
     def _load_registry_record(self, path: Path) -> PromptRegistryRecord:
-        payload = _read_flat_yaml(path)
-        _ensure_required_fields(payload=payload, required_fields=_REQUIRED_REGISTRY_FIELDS, path=path)
-        record = PromptRegistryRecord(**payload)
+        safe_path = _ensure_path_within_root(
+            label="registry YAML",
+            path=path,
+            root=self._registry_root,
+        )
+        payload = _read_flat_yaml(safe_path)
+        _ensure_required_fields(payload=payload, required_fields=_REQUIRED_REGISTRY_FIELDS, path=safe_path)
+        record = _build_registry_record(payload=payload, path=safe_path)
         _ensure_safe_asset_name(label="promptId", value=record.promptId)
+        _ensure_file_stem_matches_value(
+            label="promptId",
+            expected_value=safe_path.stem,
+            actual_value=record.promptId,
+            path=safe_path,
+        )
         return record
 
     def _select_version_record(self, registry_record: PromptRegistryRecord) -> PromptVersionRecord:
-        version_root = self._versions_root / registry_record.promptId
+        version_root = _ensure_path_within_root(
+            label="version 目录",
+            path=self._versions_root / registry_record.promptId,
+            root=self._versions_root,
+        )
         if not version_root.exists():
             raise PromptAssetNotFoundError(f"version 目录不存在：{version_root}")
         version_records = [self._load_version_record(path) for path in sorted(version_root.glob("*.yaml"))]
@@ -191,15 +223,31 @@ class FilePromptRuntime:
         return version_record
 
     def _load_version_record(self, path: Path) -> PromptVersionRecord:
-        payload = _read_flat_yaml(path)
-        _ensure_required_fields(payload=payload, required_fields=_REQUIRED_VERSION_FIELDS, path=path)
-        return PromptVersionRecord(**payload)
+        safe_path = _ensure_path_within_root(
+            label="version YAML",
+            path=path,
+            root=self._versions_root,
+        )
+        payload = _read_flat_yaml(safe_path)
+        _ensure_required_fields(payload=payload, required_fields=_REQUIRED_VERSION_FIELDS, path=safe_path)
+        record = _build_version_record(payload=payload, path=safe_path)
+        _ensure_file_stem_matches_value(
+            label="promptVersion",
+            expected_value=safe_path.stem,
+            actual_value=record.promptVersion,
+            path=safe_path,
+        )
+        return record
 
-    def _read_prompt_body(self, *, stage: str, prompt_id: str, prompt_version: str) -> str:
+    def _read_prompt_body(self, *, stage: PromptStage, prompt_id: str, prompt_version: str) -> str:
         stage_directory = _FORMAL_STAGE_DIRECTORIES.get(stage)
         if stage_directory is None:
             raise PromptAssetNotFoundError(f"stage={stage} 没有正式 scoring 目录映射。")
-        body_path = self._scoring_root / stage_directory / prompt_id / f"{prompt_version}.md"
+        body_path = _ensure_path_within_root(
+            label="Markdown 正文",
+            path=self._scoring_root / stage_directory / prompt_id / f"{prompt_version}.md",
+            root=self._scoring_root,
+        )
         if not body_path.exists():
             raise PromptAssetNotFoundError(f"Markdown 正文不存在：{body_path}")
         body = body_path.read_text(encoding="utf-8")
@@ -228,19 +276,49 @@ class FilePromptRuntime:
         return exact_candidates if exact_candidates else matching_candidates
 
 
-
 def _scope_matches(scope_value: str, request_value: str) -> bool:
     return scope_value == request_value or scope_value == _WILDCARD_SCOPE
 
 
-
-def _prefer_status(records: list[PromptRegistryRecord] | list[PromptVersionRecord]) -> list[PromptRegistryRecord] | list[PromptVersionRecord]:
+def _prefer_status(
+    records: list[PromptRegistryRecord] | list[PromptVersionRecord],
+) -> list[PromptRegistryRecord] | list[PromptVersionRecord]:
     for status in _STATUS_PRIORITY:
         prioritized = [record for record in records if record.status == status]
         if prioritized:
             return prioritized
     return records
 
+
+def _build_registry_record(*, payload: dict[str, Any], path: Path) -> PromptRegistryRecord:
+    try:
+        return PromptRegistryRecord(**payload)
+    except ValidationError as error:
+        raise PromptAssetInvalidError(f"registry 元数据非法：{path} -> {error}") from error
+
+
+def _build_version_record(*, payload: dict[str, Any], path: Path) -> PromptVersionRecord:
+    try:
+        return PromptVersionRecord(**payload)
+    except ValidationError as error:
+        raise PromptAssetInvalidError(f"version 元数据非法：{path} -> {error}") from error
+
+
+def _ensure_file_stem_matches_value(*, label: str, expected_value: str, actual_value: str, path: Path) -> None:
+    if expected_value != actual_value:
+        raise PromptAssetInvalidError(
+            f"{label} 与文件名不一致：{path} -> {expected_value} != {actual_value}"
+        )
+
+
+def _ensure_path_within_root(*, label: str, path: Path, root: Path) -> Path:
+    resolved_root = root.resolve()
+    resolved_path = path.resolve(strict=False)
+    try:
+        resolved_path.relative_to(resolved_root)
+    except ValueError as error:
+        raise PromptAssetInvalidError(f"{label} 超出允许目录边界：{resolved_path}") from error
+    return resolved_path
 
 
 def _ensure_required_fields(*, payload: dict[str, Any], required_fields: tuple[str, ...], path: Path) -> None:
@@ -250,7 +328,6 @@ def _ensure_required_fields(*, payload: dict[str, Any], required_fields: tuple[s
         raise PromptAssetInvalidError(f"YAML 缺少必填字段：{path} -> {joined}")
 
 
-
 def _ensure_safe_asset_name(*, label: str, value: str) -> None:
     if not value or any(token in value for token in ("/", "\\", "..")):
         raise PromptAssetInvalidError(f"{label} 包含非法路径片段：{value}")
@@ -258,7 +335,6 @@ def _ensure_safe_asset_name(*, label: str, value: str) -> None:
         raise PromptAssetInvalidError(f"{label} 包含非法资产名：{value}")
     if not _SAFE_ASSET_NAME_PATTERN.fullmatch(value):
         raise PromptAssetInvalidError(f"{label} 包含非法资产名：{value}")
-
 
 
 def _read_flat_yaml(path: Path) -> dict[str, Any]:
@@ -279,7 +355,6 @@ def _read_flat_yaml(path: Path) -> dict[str, Any]:
             raise PromptAssetInvalidError(f"YAML key 重复：{path}:{line_number} -> {normalized_key}")
         payload[normalized_key] = _parse_scalar(raw_value.strip())
     return payload
-
 
 
 def _parse_scalar(raw_value: str) -> Any:

@@ -21,6 +21,7 @@ coverage/
 *.log
 *.tmp
 *.temp
+apps/**/var/
 
 # DevFleet 本地工作树
 .devfleet-worktrees/

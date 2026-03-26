@@ -5,6 +5,7 @@ import socket
 import sys
 from pathlib import Path
 
+import httpx
 import pytest
 from pydantic import ValidationError
 
@@ -18,6 +19,7 @@ if provider_adapters_src not in sys.path:
     sys.path.insert(0, provider_adapters_src)
 
 from provider_adapters import (  # noqa: E402
+    DeepSeekProviderAdapter,
     LocalAdapterMode,
     LocalDeterministicProviderAdapter,
     ProviderExecutionFailure,
@@ -29,13 +31,17 @@ from provider_adapters import (  # noqa: E402
     map_failure_type_to_error_code,
 )
 
+_USE_DEFAULT_RESPONSE_FORMAT = object()
+
 
 def build_request(
     *,
     messages: list[ProviderMessage] | None = None,
     provider_id: str = "provider-local",
     model_id: str = "model-local",
+    response_format: str | dict[str, object] | None | object = _USE_DEFAULT_RESPONSE_FORMAT,
 ) -> ProviderExecutionRequest:
+    resolved_response_format = {"type": "json_object"} if response_format is _USE_DEFAULT_RESPONSE_FORMAT else response_format
     return ProviderExecutionRequest(
         taskId="task_20260326_001",
         stage=StageName.RUBRIC_EVALUATION,
@@ -50,8 +56,64 @@ def build_request(
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         evaluationMode=EvaluationMode.FULL,
         timeoutMs=3000,
-        responseFormat={"type": "json_object"},
+        responseFormat=resolved_response_format,
     )
+
+
+class FakeDeepSeekResponse:
+    def __init__(
+        self,
+        *,
+        content: str = '{"score": 95}',
+        request_id: str = "deepseek-request-001",
+        parsed: object | None = None,
+    ) -> None:
+        self.id = request_id
+        self.choices = [
+            type(
+                "FakeChoice",
+                (),
+                {
+                    "message": type(
+                        "FakeMessage",
+                        (),
+                        {
+                            "content": content,
+                            "parsed": parsed,
+                        },
+                    )()
+                },
+            )()
+        ]
+
+
+class FakeDeepSeekClient:
+    def __init__(self, *, response: object | None = None, error: Exception | None = None) -> None:
+        self._response = response
+        self._error = error
+        self.calls: list[dict[str, object]] = []
+        self.options: list[dict[str, object]] = []
+        self.chat = type(
+            "FakeChat",
+            (),
+            {
+                "completions": type(
+                    "FakeCompletions",
+                    (),
+                    {"create": self._create},
+                )()
+            },
+        )()
+
+    def with_options(self, **kwargs: object) -> "FakeDeepSeekClient":
+        self.options.append(kwargs)
+        return self
+
+    def _create(self, **kwargs: object) -> object:
+        self.calls.append(kwargs)
+        if self._error is not None:
+            raise self._error
+        return self._response
 
 
 def test_provider_request_matches_phase_one_contract() -> None:
@@ -220,3 +282,298 @@ def test_local_adapter_never_accesses_network(monkeypatch: pytest.MonkeyPatch) -
     result = adapter.execute(build_request())
 
     assert isinstance(result, ProviderExecutionSuccess)
+
+
+def test_deepseek_adapter_returns_typed_success() -> None:
+    fake_client = FakeDeepSeekClient(
+        response=FakeDeepSeekResponse(
+            content='{"summary": "ok"}',
+            parsed={"summary": "ok"},
+        )
+    )
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert result.providerId == "provider-deepseek"
+    assert result.modelId == "deepseek-chat"
+    assert result.requestId == "req_20260326_001"
+    assert result.providerRequestId == "deepseek-request-001"
+    assert result.durationMs >= 0
+    assert result.rawText == '{"summary": "ok"}'
+    assert dict(result.rawJson) == {"summary": "ok"}
+    assert fake_client.options == [{"timeout": 3.0}]
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "model": "deepseek-chat",
+            "response_format": {"type": "json_object"},
+        }
+    ]
+
+
+def test_deepseek_adapter_maps_failure_modes() -> None:
+    cases = [
+        (
+            httpx.HTTPStatusError(
+                "server error",
+                request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+                response=httpx.Response(503, headers={"x-request-id": "status-req-001"}),
+            ),
+            ProviderFailureType.PROVIDER_FAILURE,
+            ErrorCode.PROVIDER_FAILURE,
+            True,
+            "status-req-001",
+        ),
+        (
+            httpx.HTTPStatusError(
+                "unauthorized",
+                request=httpx.Request("POST", "https://api.deepseek.com/chat/completions"),
+                response=httpx.Response(401, headers={"x-request-id": "status-req-401"}),
+            ),
+            ProviderFailureType.PROVIDER_FAILURE,
+            ErrorCode.PROVIDER_FAILURE,
+            False,
+            "status-req-401",
+        ),
+        (
+            httpx.TimeoutException("timeout"),
+            ProviderFailureType.TIMEOUT,
+            ErrorCode.TIMEOUT,
+            True,
+            None,
+        ),
+        (
+            ModuleNotFoundError("openai"),
+            ProviderFailureType.DEPENDENCY_UNAVAILABLE,
+            ErrorCode.DEPENDENCY_UNAVAILABLE,
+            False,
+            None,
+        ),
+        (
+            None,
+            ProviderFailureType.CONTRACT_INVALID,
+            ErrorCode.CONTRACT_INVALID,
+            False,
+            "deepseek-request-001",
+        ),
+    ]
+
+    for error, failure_type, error_code, retryable, provider_request_id in cases:
+        if failure_type is ProviderFailureType.CONTRACT_INVALID:
+            fake_client = FakeDeepSeekClient(
+                response=FakeDeepSeekResponse(content="", request_id="deepseek-request-001", parsed={"invalid": object()}),
+            )
+        else:
+            fake_client = FakeDeepSeekClient(error=error)
+        adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+        result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+        assert isinstance(result, ProviderExecutionFailure)
+        assert result.failureType is failure_type
+        assert map_failure_type_to_error_code(result.failureType) is error_code
+        assert result.retryable is retryable
+        assert result.providerRequestId == provider_request_id
+        assert result.durationMs >= 0
+
+
+def test_deepseek_adapter_rejects_mismatched_provider_identity() -> None:
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=FakeDeepSeekClient())
+
+    result = adapter.execute(build_request(provider_id="provider-other", model_id="model-other"))
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.CONTRACT_INVALID
+    assert result.providerId == "provider-deepseek"
+    assert result.modelId == "deepseek-chat"
+    assert result.retryable is False
+    assert result.providerRequestId is None
+
+
+def test_deepseek_adapter_reads_api_key_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "env-key")
+
+    adapter = DeepSeekProviderAdapter(client=FakeDeepSeekClient(response=FakeDeepSeekResponse()))
+
+    assert adapter.api_key == "env-key"
+
+
+def test_deepseek_adapter_without_api_key_maps_to_dependency_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    adapter = DeepSeekProviderAdapter(client=FakeDeepSeekClient(response=FakeDeepSeekResponse()))
+
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.DEPENDENCY_UNAVAILABLE
+    assert result.retryable is False
+    assert result.providerRequestId is None
+
+
+def test_deepseek_adapter_hides_api_key_in_repr(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "env-key")
+
+    adapter = DeepSeekProviderAdapter(client=FakeDeepSeekClient(response=FakeDeepSeekResponse()))
+
+    assert "env-key" not in repr(adapter)
+
+
+def test_deepseek_adapter_returns_deeply_frozen_raw_json() -> None:
+    adapter = DeepSeekProviderAdapter(
+        api_key="test-key",
+        client=FakeDeepSeekClient(
+            response=FakeDeepSeekResponse(
+                content='{"summary": {"score": 95}, "items": [{"label": "ok"}]}',
+                parsed={"summary": {"score": 95}, "items": [{"label": "ok"}]},
+            )
+        ),
+    )
+
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    with pytest.raises(TypeError):
+        result.rawJson["summary"]["score"] = 90
+    with pytest.raises(TypeError):
+        result.rawJson["items"][0]["label"] = "changed"
+
+
+def test_deepseek_adapter_reraises_unknown_exceptions() -> None:
+    adapter = DeepSeekProviderAdapter(
+        api_key="test-key",
+        client=FakeDeepSeekClient(error=RuntimeError("unexpected")),
+    )
+
+    with pytest.raises(RuntimeError, match="unexpected"):
+        adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+
+def test_deepseek_adapter_rejects_response_format_with_extra_fields() -> None:
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=FakeDeepSeekClient(response=FakeDeepSeekResponse()))
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format={"type": "json_object", "schema": "ignored"},
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.CONTRACT_INVALID
+    assert result.retryable is False
+    assert result.providerRequestId is None
+
+
+def test_deepseek_adapter_supports_string_response_format() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "model": "deepseek-chat",
+            "response_format": {"type": "json_object"},
+        }
+    ]
+
+
+def test_deepseek_adapter_omits_response_format_when_not_provided() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format=None,
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "model": "deepseek-chat",
+        }
+    ]
+
+
+def test_deepseek_adapter_accepts_text_response_format_with_plain_text() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(content="纯文本响应", parsed=None))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format="text",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert result.rawText == "纯文本响应"
+    assert result.rawJson == "纯文本响应"
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "model": "deepseek-chat",
+            "response_format": {"type": "text"},
+        }
+    ]
+
+
+def test_deepseek_adapter_rejects_non_object_json_for_json_object_response_format() -> None:
+    adapter = DeepSeekProviderAdapter(
+        api_key="test-key",
+        client=FakeDeepSeekClient(response=FakeDeepSeekResponse(content="[1, 2, 3]")),
+    )
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format={"type": "json_object"},
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.CONTRACT_INVALID
+    assert result.retryable is False
+    assert result.providerRequestId == "deepseek-request-001"
+
+
+def test_deepseek_adapter_maps_openai_status_subclass_exceptions() -> None:
+    authentication_error = type(
+        "AuthenticationError",
+        (Exception,),
+        {"__module__": "openai._exceptions", "status_code": 401},
+    )("unauthorized")
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=FakeDeepSeekClient(error=authentication_error))
+
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.PROVIDER_FAILURE
+    assert result.retryable is False
+
+
+def test_deepseek_adapter_rejects_non_official_base_url() -> None:
+    with pytest.raises(ValueError, match="官方 API 域名"):
+        DeepSeekProviderAdapter(api_key="test-key", base_url="https://evil.example.com")
+
+
+def test_deepseek_adapter_rejects_non_default_official_port() -> None:
+    with pytest.raises(ValueError, match="官方 API 域名"):
+        DeepSeekProviderAdapter(api_key="test-key", base_url="https://api.deepseek.com:8443")

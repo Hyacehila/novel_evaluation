@@ -24,8 +24,8 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
         (
             InputComposition.CHAPTERS_OUTLINE.value,
             EvaluationMode.FULL.value,
-            "provider-local",
-            "model-local",
+            "provider-deepseek",
+            "deepseek-chat",
         )
     }
 )
@@ -114,7 +114,7 @@ def get_evaluation_service() -> EvaluationService:
     return EvaluationService(
         task_repository=get_task_repository(),
         prompt_runtime=ApiPromptRuntime(),
-        provider_adapter=provider_adapters_module.LocalDeterministicProviderAdapter(),
+        provider_adapter=provider_adapters_module.DeepSeekProviderAdapter(),
     )
 
 

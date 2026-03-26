@@ -5,7 +5,7 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 inputCompositionScope: chapters_outline
 evaluationModeScope: full
-providerScope: provider-local
-modelScope: model-local
+providerScope: provider-deepseek
+modelScope: deepseek-chat
 enabled: true
 notes: 首批 screening 正式资产骨架，用于 I4 runtime 真实目录加载验证。

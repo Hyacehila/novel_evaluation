@@ -326,6 +326,84 @@ def test_get_history_limits_items_to_20() -> None:
     assert history.meta.limit == 20
 
 
+def test_get_history_filters_by_title_status_and_cursor() -> None:
+    repository = InMemoryTaskRepository()
+    first_time = datetime(2026, 3, 25, 0, 0, tzinfo=timezone.utc)
+    second_time = datetime(2026, 3, 25, 0, 1, tzinfo=timezone.utc)
+    third_time = datetime(2026, 3, 25, 0, 2, tzinfo=timezone.utc)
+    repository.create_task(
+        EvaluationTask(
+            taskId="task_a",
+            title="星际序章",
+            inputSummary="已提交 1 章正文和 1 份大纲",
+            inputComposition=InputComposition.CHAPTERS_OUTLINE,
+            hasChapters=True,
+            hasOutline=True,
+            evaluationMode=EvaluationMode.FULL,
+            status=TaskStatus.COMPLETED,
+            resultStatus=ResultStatus.AVAILABLE,
+            createdAt=first_time,
+            startedAt=first_time,
+            completedAt=first_time,
+            updatedAt=first_time,
+        )
+    )
+    repository.create_task(
+        EvaluationTask(
+            taskId="task_b",
+            title="都市片段",
+            inputSummary="已提交 1 章正文和 1 份大纲",
+            inputComposition=InputComposition.CHAPTERS_OUTLINE,
+            hasChapters=True,
+            hasOutline=True,
+            evaluationMode=EvaluationMode.FULL,
+            status=TaskStatus.FAILED,
+            resultStatus=ResultStatus.NOT_AVAILABLE,
+            errorCode=ErrorCode.INTERNAL_ERROR,
+            errorMessage="服务暂时不可用",
+            createdAt=second_time,
+            startedAt=second_time,
+            completedAt=second_time,
+            updatedAt=second_time,
+        )
+    )
+    repository.create_task(
+        EvaluationTask(
+            taskId="task_c",
+            title="星际终章",
+            inputSummary="已提交 1 章正文和 1 份大纲",
+            inputComposition=InputComposition.CHAPTERS_OUTLINE,
+            hasChapters=True,
+            hasOutline=True,
+            evaluationMode=EvaluationMode.FULL,
+            status=TaskStatus.COMPLETED,
+            resultStatus=ResultStatus.AVAILABLE,
+            createdAt=third_time,
+            startedAt=third_time,
+            completedAt=third_time,
+            updatedAt=third_time,
+        )
+    )
+    service = build_service(task_repository=repository)
+
+    filtered = service.get_history(q="星际", status=TaskStatus.COMPLETED, limit=1)
+
+    assert [item.taskId for item in filtered.items] == ["task_c"]
+    assert filtered.meta is not None
+    assert filtered.meta.nextCursor is not None
+
+    next_page = service.get_history(
+        q="星际",
+        status=TaskStatus.COMPLETED,
+        limit=1,
+        cursor=filtered.meta.nextCursor,
+    )
+
+    assert [item.taskId for item in next_page.items] == ["task_a"]
+    assert next_page.meta is not None
+    assert next_page.meta.nextCursor is None
+
+
 def test_get_missing_task_raises_lookup_error() -> None:
     service = build_service()
 

@@ -62,5 +62,5 @@ class StaticPromptRuntime:
 
 @dataclass(frozen=True, slots=True)
 class StaticProviderMetadata:
-    provider_id: str = "provider-local"
-    model_id: str = "model-local"
+    provider_id: str = "provider-deepseek"
+    model_id: str = "deepseek-chat"

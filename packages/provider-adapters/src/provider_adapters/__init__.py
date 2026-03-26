@@ -12,9 +12,11 @@ from .contracts import (
     default_retryable_for_failure_type,
     map_failure_type_to_error_code,
 )
+from .deepseek import DeepSeekProviderAdapter
 from .local import LocalAdapterMode, LocalDeterministicProviderAdapter
 
 __all__ = [
+    "DeepSeekProviderAdapter",
     "LocalAdapterMode",
     "LocalDeterministicProviderAdapter",
     "ProviderAdapter",
