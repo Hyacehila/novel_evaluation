@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from packages.application.ports.runtime_metadata import (
     PromptRuntimePort,
     ProviderMetadataPort,
@@ -34,6 +36,9 @@ from packages.schemas.output.result import (
     PlatformRecommendation,
 )
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
+
+
+logger = logging.getLogger(__name__)
 
 
 class EvaluationService:
@@ -198,6 +203,69 @@ class EvaluationService:
             message="结果尚未生成或当前不可展示",
         )
 
+    def execute_task(self, task_id: str) -> None:
+        try:
+            self.start_task(task_id)
+            self.complete_task_with_result(
+                task_id,
+                signing_probability=80,
+                commercial_value=78,
+                writing_quality=76,
+                innovation_score=74,
+            )
+        except Exception:
+            task = self._task_repository.get_task(task_id)
+            logger.exception(
+                "任务执行失败，task_id=%s status=%s",
+                task_id,
+                task.status.value if task is not None else "missing",
+            )
+            if task is None:
+                return
+            if task.status is TaskStatus.QUEUED:
+                try:
+                    self.start_task(task_id)
+                except ValueError:
+                    task = self._task_repository.get_task(task_id)
+                    if task is None:
+                        return
+            task = self._task_repository.get_task(task_id)
+            if task is None or task.status is not TaskStatus.PROCESSING:
+                return
+            self.fail_task(
+                task_id,
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_message="任务执行失败，结果当前不可用，请重新提交新任务。",
+            )
+
+    def recover_incomplete_tasks(self) -> None:
+        stale_task_ids = [
+            *self._task_repository.list_task_ids_by_status(TaskStatus.QUEUED),
+            *self._task_repository.list_task_ids_by_status(TaskStatus.PROCESSING),
+        ]
+        for task_id in stale_task_ids:
+            task = self.get_task(task_id)
+            logger.warning(
+                "恢复未完成任务为失败状态，task_id=%s status=%s",
+                task_id,
+                task.status.value,
+            )
+            if task.status is TaskStatus.QUEUED:
+                self._task_repository.update_task(
+                    task.model_copy(
+                        update={
+                            "status": TaskStatus.PROCESSING,
+                            "startedAt": task.updatedAt,
+                            "updatedAt": task.updatedAt,
+                        }
+                    )
+                )
+            self.fail_task(
+                task_id,
+                error_code=ErrorCode.INTERNAL_ERROR,
+                error_message="任务因进程重启中断，结果当前不可用，请重新提交新任务。",
+            )
+
     def get_dashboard(self) -> DashboardSummary:
         tasks = self._task_repository.list_tasks()
         summaries = [self._to_summary(task) for task in tasks]
@@ -224,7 +292,7 @@ class EvaluationService:
     def get_history(self) -> HistoryList:
         limit = 20
         tasks = self._task_repository.list_tasks()
-        recent_tasks = tasks[-limit:]
+        recent_tasks = tasks[:limit]
         return HistoryList(
             items=[self._to_summary(task) for task in recent_tasks],
             meta={"nextCursor": None, "limit": limit},

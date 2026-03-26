@@ -2,8 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from packages.schemas.common.enums import TaskStatus
 from packages.schemas.output.result import EvaluationResultResource
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary
+
+
+
+def _sort_tasks(tasks: list[EvaluationTask]) -> list[EvaluationTask]:
+    return sorted(tasks, key=lambda task: (task.createdAt, task.taskId), reverse=True)
 
 
 class TaskRepository:
@@ -23,6 +29,9 @@ class TaskRepository:
         raise NotImplementedError
 
     def list_tasks(self) -> list[EvaluationTask]:
+        raise NotImplementedError
+
+    def list_task_ids_by_status(self, status: TaskStatus) -> list[str]:
         raise NotImplementedError
 
 
@@ -56,7 +65,10 @@ class InMemoryTaskRepository(TaskRepository):
         return self._results.get(task_id)
 
     def list_tasks(self) -> list[EvaluationTask]:
-        return list(self._tasks.values())
+        return _sort_tasks(list(self._tasks.values()))
+
+    def list_task_ids_by_status(self, status: TaskStatus) -> list[str]:
+        return [task.taskId for task in self.list_tasks() if task.status is status]
 
     def list_task_summaries(self) -> list[EvaluationTaskSummary]:
         return [
@@ -69,5 +81,5 @@ class InMemoryTaskRepository(TaskRepository):
                 resultStatus=task.resultStatus,
                 createdAt=task.createdAt,
             )
-            for task in self._tasks.values()
+            for task in self.list_tasks()
         ]
