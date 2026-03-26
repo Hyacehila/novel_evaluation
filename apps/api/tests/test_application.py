@@ -345,3 +345,27 @@ def test_cannot_start_terminal_task_again() -> None:
 
     with pytest.raises(ValueError):
         service.start_task(task.taskId)
+
+
+
+def test_recover_incomplete_tasks_marks_queued_and_processing_failed() -> None:
+    service = build_service(id_generator=StaticIdGenerator("task_recovery_a"))
+    queued_task = service.create_task(build_request())
+
+    processing_service = build_service(
+        task_repository=service._task_repository,
+        id_generator=StaticIdGenerator("task_recovery_b"),
+    )
+    processing_task = processing_service.create_task(build_request())
+    processing_service.start_task(processing_task.taskId)
+
+    service.recover_incomplete_tasks()
+
+    recovered_queued = service.get_task(queued_task.taskId)
+    recovered_processing = service.get_task(processing_task.taskId)
+    assert recovered_queued.status is TaskStatus.FAILED
+    assert recovered_queued.resultStatus is ResultStatus.NOT_AVAILABLE
+    assert recovered_processing.status is TaskStatus.FAILED
+    assert recovered_processing.resultStatus is ResultStatus.NOT_AVAILABLE
+    assert service.get_result(queued_task.taskId).result is None
+    assert service.get_result(processing_task.taskId).result is None

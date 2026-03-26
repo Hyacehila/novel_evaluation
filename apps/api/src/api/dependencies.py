@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sys
 from functools import lru_cache
 from importlib.util import module_from_spec, spec_from_file_location
@@ -7,9 +8,10 @@ from pathlib import Path
 from types import ModuleType
 
 from packages.application.ports.runtime_metadata import StaticPromptRuntime, StaticResolvedPrompt
-from packages.application.ports.task_repository import InMemoryTaskRepository
 from packages.application.services.evaluation_service import EvaluationService
 from packages.schemas.common.enums import EvaluationMode, InputComposition
+
+from .sqlite_repository import SQLiteTaskRepository, resolve_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PROMPTS_ROOT = REPO_ROOT / "prompts"
@@ -27,6 +29,7 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
         )
     }
 )
+
 
 
 def _load_package(*, module_name: str, package_dir: Path) -> ModuleType:
@@ -100,10 +103,22 @@ class ApiPromptRuntime:
 
 
 @lru_cache(maxsize=1)
+def get_task_repository() -> SQLiteTaskRepository:
+    db_path = resolve_db_path(os.getenv("NOVEL_EVAL_DB_PATH"))
+    return SQLiteTaskRepository(db_path=db_path)
+
+
+@lru_cache(maxsize=1)
 def get_evaluation_service() -> EvaluationService:
     provider_adapters_module = _get_provider_adapters_module()
     return EvaluationService(
-        task_repository=InMemoryTaskRepository(),
+        task_repository=get_task_repository(),
         prompt_runtime=ApiPromptRuntime(),
         provider_adapter=provider_adapters_module.LocalDeterministicProviderAdapter(),
     )
+
+
+
+def recover_processing_tasks() -> None:
+    service = get_evaluation_service()
+    service.recover_incomplete_tasks()

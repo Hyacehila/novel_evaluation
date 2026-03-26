@@ -3,11 +3,12 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 from api.app import create_app
-from api.dependencies import get_evaluation_service
+from api.dependencies import get_evaluation_service, get_task_repository
 
 
 def create_client() -> TestClient:
     get_evaluation_service.cache_clear()
+    get_task_repository.cache_clear()
     return TestClient(create_app())
 
 
@@ -91,7 +92,7 @@ def test_get_task_returns_404_for_missing_task() -> None:
     assert payload["error"]["code"] == "TASK_NOT_FOUND"
 
 
-def test_get_result_returns_not_available_for_new_task() -> None:
+def test_get_result_returns_available_after_in_process_execution() -> None:
     client = create_client()
     created = client.post(
         "/api/tasks",
@@ -108,8 +109,8 @@ def test_get_result_returns_not_available_for_new_task() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["success"] is True
-    assert payload["data"]["resultStatus"] == "not_available"
-    assert payload["data"]["result"] is None
+    assert payload["data"]["resultStatus"] == "available"
+    assert payload["data"]["result"] is not None
 
 
 def test_post_tasks_keeps_degraded_input_semantics() -> None:
@@ -156,10 +157,11 @@ def test_get_dashboard_and_history_return_success() -> None:
     assert dashboard.status_code == 200
     assert dashboard.json()["success"] is True
     assert len(dashboard.json()["data"]["recentTasks"]) == 1
-    assert dashboard.json()["data"]["recentTasks"][0]["status"] == "queued"
-    assert dashboard.json()["data"]["recentTasks"][0]["resultStatus"] == "not_available"
+    assert dashboard.json()["data"]["recentTasks"][0]["status"] == "completed"
+    assert dashboard.json()["data"]["recentTasks"][0]["resultStatus"] == "available"
+    assert len(dashboard.json()["data"]["recentResults"]) == 1
     assert history.status_code == 200
     assert history.json()["success"] is True
     assert len(history.json()["data"]["items"]) == 1
-    assert history.json()["data"]["items"][0]["resultStatus"] == "not_available"
+    assert history.json()["data"]["items"][0]["resultStatus"] == "available"
     assert history.json()["meta"]["limit"] == 20
