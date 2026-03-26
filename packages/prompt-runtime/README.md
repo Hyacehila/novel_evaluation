@@ -12,7 +12,13 @@
 
 ## 选择优先级
 
-`stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+`registry.status -> stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+
+另外：
+
+- `registry.status` 仅允许 `candidate` 或 `active`
+- `version.status` 仅允许 `candidate` 或 `active`
+- 正文读取路径固定绑定 `promptId + promptVersion`
 
 ## 不负责
 

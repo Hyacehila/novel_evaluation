@@ -12,9 +12,9 @@
 
 ## 正式目录
 
-- `prompts/scoring/screening/{promptId}.md`
-- `prompts/scoring/rubric/{promptId}.md`
-- `prompts/scoring/aggregation/{promptId}.md`
+- `prompts/scoring/screening/{promptId}/{promptVersion}.md`
+- `prompts/scoring/rubric/{promptId}/{promptVersion}.md`
+- `prompts/scoring/aggregation/{promptId}/{promptVersion}.md`
 - `prompts/registry/{promptId}.yaml`
 - `prompts/versions/{promptId}/{promptVersion}.yaml`
 
@@ -64,7 +64,13 @@
 
 Prompt runtime 的正式选择优先级固定为：
 
-`stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+`registry.status -> stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+
+其中：
+
+- `registry.status` 仅允许 `candidate` 或 `active` 进入正式选择
+- `version.status` 仅允许 `candidate` 或 `active` 进入正式加载
+- 正文读取必须与选中的 `promptVersion` 一一绑定，不允许回退到无版本正文
 
 ## 治理规则
 

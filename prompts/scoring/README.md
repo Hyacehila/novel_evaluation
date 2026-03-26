@@ -10,8 +10,9 @@
 
 正文文件规则：
 
-- 文件名：`{promptId}.md`
+- 文件路径：`{stageDir}/{promptId}/{promptVersion}.md`
 - 文件格式：`Markdown`
+- 正文必须与选中的 `promptVersion` 一一绑定
 
 ## 非正式目录
 

@@ -22,6 +22,9 @@ coverage/
 *.tmp
 *.temp
 
+# DevFleet 本地工作树
+.devfleet-worktrees/
+
 # 本地环境变量
 .env
 .env.*
