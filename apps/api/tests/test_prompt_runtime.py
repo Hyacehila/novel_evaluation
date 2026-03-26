@@ -805,3 +805,35 @@ def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(p
             provider_id="provider-local",
             model_id="model-local",
         )
+
+
+REPO_PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "prompts"
+REPO_PROMPT_CASES = (
+    pytest.param("input_screening", "screening", "screening-default", id="repo-screening"),
+    pytest.param("rubric_evaluation", "rubric", "rubric-default", id="repo-rubric"),
+    pytest.param("aggregation", "aggregation", "aggregation-default", id="repo-aggregation"),
+)
+
+
+@pytest.mark.parametrize(("stage", "stage_directory", "prompt_id"), REPO_PROMPT_CASES)
+def test_file_prompt_runtime_resolves_repository_prompt_assets(
+    stage: str,
+    stage_directory: str,
+    prompt_id: str,
+) -> None:
+    resolved = FilePromptRuntime(prompts_root=REPO_PROMPTS_ROOT).resolve(
+        stage=stage,
+        input_composition="chapters_outline",
+        evaluation_mode="full",
+        provider_id="provider-local",
+        model_id="model-local",
+    )
+
+    body_path = REPO_PROMPTS_ROOT / "scoring" / stage_directory / prompt_id / "v1.md"
+
+    assert resolved.promptId == prompt_id
+    assert resolved.promptVersion == "v1"
+    assert resolved.schemaVersion == "1.0.0"
+    assert resolved.rubricVersion == "rubric-v1"
+    assert resolved.body == body_path.read_text(encoding="utf-8")
+    assert resolved.body.strip()
