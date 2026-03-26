@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 from typing import Any
 
 from .errors import (
@@ -17,6 +18,8 @@ _FORMAL_STAGE_DIRECTORIES = {
 }
 _LOADABLE_REGISTRY_STATUSES = frozenset({"candidate", "active"})
 _LOADABLE_VERSION_STATUSES = frozenset({"candidate", "active"})
+_STATUS_PRIORITY = ("active", "candidate")
+_SAFE_ASSET_NAME_PATTERN = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9_-])?$")
 _WILDCARD_SCOPE = "*"
 _REQUIRED_REGISTRY_FIELDS = (
     "promptId",
@@ -128,6 +131,7 @@ class FilePromptRuntime:
             request_value=model_id,
             label="modelScope",
         )
+        narrowed_candidates = _prefer_status(narrowed_candidates)
         enabled_candidates = [record for record in narrowed_candidates if record.enabled]
         if not enabled_candidates:
             prompt_ids = ", ".join(record.promptId for record in narrowed_candidates)
@@ -164,12 +168,13 @@ class FilePromptRuntime:
             raise PromptAssetNotFoundError(
                 f"Prompt {registry_record.promptId} 没有可加载的 version 记录，需存在 active 或 candidate。"
             )
-        if len(loadable_versions) > 1:
-            prompt_versions = ", ".join(record.promptVersion for record in loadable_versions)
+        preferred_versions = _prefer_status(loadable_versions)
+        if len(preferred_versions) > 1:
+            prompt_versions = ", ".join(record.promptVersion for record in preferred_versions)
             raise PromptAssetAmbiguityError(
-                f"Prompt {registry_record.promptId} 存在多个可加载版本：{prompt_versions}"
+                f"Prompt {registry_record.promptId} 存在多个同优先级可加载版本：{prompt_versions}"
             )
-        version_record = loadable_versions[0]
+        version_record = preferred_versions[0]
         if version_record.promptId != registry_record.promptId:
             raise PromptAssetInvalidError(
                 f"version 元数据 promptId 与 registry 不一致：{version_record.promptId} != {registry_record.promptId}"
@@ -229,6 +234,15 @@ def _scope_matches(scope_value: str, request_value: str) -> bool:
 
 
 
+def _prefer_status(records: list[PromptRegistryRecord] | list[PromptVersionRecord]) -> list[PromptRegistryRecord] | list[PromptVersionRecord]:
+    for status in _STATUS_PRIORITY:
+        prioritized = [record for record in records if record.status == status]
+        if prioritized:
+            return prioritized
+    return records
+
+
+
 def _ensure_required_fields(*, payload: dict[str, Any], required_fields: tuple[str, ...], path: Path) -> None:
     missing_fields = [field_name for field_name in required_fields if field_name not in payload]
     if missing_fields:
@@ -240,6 +254,10 @@ def _ensure_required_fields(*, payload: dict[str, Any], required_fields: tuple[s
 def _ensure_safe_asset_name(*, label: str, value: str) -> None:
     if not value or any(token in value for token in ("/", "\\", "..")):
         raise PromptAssetInvalidError(f"{label} 包含非法路径片段：{value}")
+    if value in {".", ".."} or value.endswith((".", " ")):
+        raise PromptAssetInvalidError(f"{label} 包含非法资产名：{value}")
+    if not _SAFE_ASSET_NAME_PATTERN.fullmatch(value):
+        raise PromptAssetInvalidError(f"{label} 包含非法资产名：{value}")
 
 
 

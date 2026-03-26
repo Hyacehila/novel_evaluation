@@ -12,12 +12,12 @@
 
 ## 选择优先级
 
-`registry.status -> stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+`stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> registry.status -> enabled`
 
 另外：
 
-- `registry.status` 仅允许 `candidate` 或 `active`
-- `version.status` 仅允许 `candidate` 或 `active`
+- `registry.status` 仅允许 `candidate` 或 `active`，并在同一 scope 层级候选中优先 `active`
+- `version.status` 仅允许 `candidate` 或 `active`，并优先 `active`
 - 正文读取路径固定绑定 `promptId + promptVersion`
 
 ## 不负责

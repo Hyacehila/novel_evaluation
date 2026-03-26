@@ -13,6 +13,7 @@ if prompt_runtime_src not in sys.path:
 from prompt_runtime import (  # noqa: E402
     FilePromptRuntime,
     PromptAssetAmbiguityError,
+    PromptAssetInvalidError,
     PromptAssetNotFoundError,
 )
 
@@ -288,6 +289,110 @@ def test_file_prompt_runtime_excludes_registry_records_with_unloadable_status(pr
 
     assert resolved.promptId == "rubric-active-fallback"
     assert resolved.body == "active fallback"
+
+
+
+def test_file_prompt_runtime_prefers_active_registry_status_after_scope_tie(prompts_root: Path) -> None:
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-candidate-exact",
+        stage="rubric_evaluation",
+        status="candidate",
+        input_scope="chapters_outline",
+        evaluation_scope="full",
+        provider_scope="provider-local",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-candidate-exact", prompt_version="2026-03-26", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-candidate-exact",
+        prompt_version="2026-03-26",
+        body="candidate exact",
+    )
+
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-active-exact",
+        stage="rubric_evaluation",
+        status="active",
+        input_scope="chapters_outline",
+        evaluation_scope="full",
+        provider_scope="provider-local",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-active-exact", prompt_version="2026-03-27", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-active-exact",
+        prompt_version="2026-03-27",
+        body="active exact",
+    )
+
+    resolved = build_runtime(prompts_root).resolve(
+        stage="rubric_evaluation",
+        input_composition="chapters_outline",
+        evaluation_mode="full",
+        provider_id="provider-local",
+        model_id="model-local",
+    )
+
+    assert resolved.promptId == "rubric-active-exact"
+    assert resolved.body == "active exact"
+
+
+
+def test_file_prompt_runtime_falls_back_to_candidate_when_active_does_not_match_scope(prompts_root: Path) -> None:
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-active-other-provider",
+        stage="rubric_evaluation",
+        status="active",
+        input_scope="chapters_outline",
+        evaluation_scope="full",
+        provider_scope="provider-other",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-active-other-provider", prompt_version="2026-03-26", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-active-other-provider",
+        prompt_version="2026-03-26",
+        body="active other provider",
+    )
+
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-candidate-fallback",
+        stage="rubric_evaluation",
+        status="candidate",
+        input_scope="chapters_outline",
+        evaluation_scope="full",
+        provider_scope="*",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-candidate-fallback", prompt_version="2026-03-27", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-candidate-fallback",
+        prompt_version="2026-03-27",
+        body="candidate fallback",
+    )
+
+    resolved = build_runtime(prompts_root).resolve(
+        stage="rubric_evaluation",
+        input_composition="chapters_outline",
+        evaluation_mode="full",
+        provider_id="provider-local",
+        model_id="model-local",
+    )
+
+    assert resolved.promptId == "rubric-candidate-fallback"
+    assert resolved.body == "candidate fallback"
 
 
 
@@ -627,7 +732,7 @@ def test_file_prompt_runtime_fails_when_multiple_best_candidates_remain(prompts_
 
 
 
-def test_file_prompt_runtime_fails_when_multiple_live_versions_exist(prompts_root: Path) -> None:
+def test_file_prompt_runtime_prefers_active_version_over_candidate_version(prompts_root: Path) -> None:
     write_registry(prompts_root, prompt_id="screening-default", stage="input_screening")
     write_version(prompts_root, prompt_id="screening-default", prompt_version="2026-03-26", status="active")
     write_version(prompts_root, prompt_id="screening-default", prompt_version="2026-03-27", status="candidate")
@@ -646,7 +751,53 @@ def test_file_prompt_runtime_fails_when_multiple_live_versions_exist(prompts_roo
         body="body candidate",
     )
 
-    with pytest.raises(PromptAssetAmbiguityError, match="2026-03-26"):
+    resolved = build_runtime(prompts_root).resolve(
+        stage="input_screening",
+        input_composition="chapters_outline",
+        evaluation_mode="full",
+        provider_id="provider-local",
+        model_id="model-local",
+    )
+
+    assert resolved.promptVersion == "2026-03-26"
+    assert resolved.body == "body active"
+
+
+
+def test_file_prompt_runtime_rejects_prompt_id_that_breaks_asset_boundaries(prompts_root: Path) -> None:
+    write_registry(prompts_root, prompt_id=".", stage="input_screening")
+    write_version(prompts_root, prompt_id=".", prompt_version="2026-03-26", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="screening",
+        prompt_id=".",
+        prompt_version="2026-03-26",
+        body="boundary break",
+    )
+
+    with pytest.raises(PromptAssetInvalidError, match="promptId"):
+        build_runtime(prompts_root).resolve(
+            stage="input_screening",
+            input_composition="chapters_outline",
+            evaluation_mode="full",
+            provider_id="provider-local",
+            model_id="model-local",
+        )
+
+
+
+def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(prompts_root: Path) -> None:
+    write_registry(prompts_root, prompt_id="alias.", stage="input_screening")
+    write_version(prompts_root, prompt_id="alias.", prompt_version="2026-03-26", status="active")
+    write_body(
+        prompts_root,
+        stage_directory="screening",
+        prompt_id="alias.",
+        prompt_version="2026-03-26",
+        body="alias body",
+    )
+
+    with pytest.raises(PromptAssetInvalidError, match="promptId"):
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",

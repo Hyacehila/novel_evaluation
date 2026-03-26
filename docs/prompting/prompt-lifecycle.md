@@ -64,12 +64,12 @@
 
 Prompt runtime 的正式选择优先级固定为：
 
-`registry.status -> stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> enabled`
+`stage -> inputCompositionScope -> evaluationModeScope -> providerScope -> modelScope -> registry.status -> enabled`
 
 其中：
 
-- `registry.status` 仅允许 `candidate` 或 `active` 进入正式选择
-- `version.status` 仅允许 `candidate` 或 `active` 进入正式加载
+- `registry.status` 仅允许 `candidate` 或 `active` 进入正式选择，并在同一 scope 层级候选中优先 `active`
+- `version.status` 仅允许 `candidate` 或 `active` 进入正式加载，并优先 `active`
 - 正文读取必须与选中的 `promptVersion` 一一绑定，不允许回退到无版本正文
 
 ## 治理规则
