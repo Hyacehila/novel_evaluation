@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+from packages.application.ports.runtime_metadata import (
+    PromptRuntimePort,
+    ProviderMetadataPort,
+    RuntimeMetadata,
+    StaticPromptRuntime,
+    StaticProviderMetadata,
+)
 from packages.application.ports.task_repository import TaskRepository
 from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
@@ -9,6 +16,7 @@ from packages.schemas.common.enums import (
     InputComposition,
     ResultStatus,
     SkeletonDimensionId,
+    StageName,
     StageStatus,
     Sufficiency,
     TaskStatus,
@@ -27,22 +35,20 @@ from packages.schemas.output.result import (
 )
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
 
-_SCHEMA_VERSION = "1.0.0"
-_PROMPT_VERSION = "prompt-v1"
-_RUBRIC_VERSION = "rubric-v1"
-_PROVIDER_ID = "provider-local"
-_MODEL_ID = "model-local"
-
 
 class EvaluationService:
     def __init__(
         self,
         *,
         task_repository: TaskRepository,
+        prompt_runtime: PromptRuntimePort | None = None,
+        provider_adapter: ProviderMetadataPort | None = None,
         id_generator: IdGenerator | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._task_repository = task_repository
+        self._prompt_runtime = prompt_runtime or StaticPromptRuntime()
+        self._provider_adapter = provider_adapter or StaticProviderMetadata()
         self._id_generator = id_generator or UuidTaskIdGenerator()
         self._clock = clock or UtcClock()
 
@@ -243,19 +249,25 @@ class EvaluationService:
         return "仅提交大纲"
 
     def _build_input_screening(self, task_id: str, request: JointSubmissionRequest) -> InputScreeningResult:
+        evaluation_mode = self._derive_evaluation_mode(request.inputComposition)
+        runtime_metadata = self._resolve_runtime_metadata(
+            stage=StageName.INPUT_SCREENING,
+            input_composition=request.inputComposition,
+            evaluation_mode=evaluation_mode,
+        )
         return InputScreeningResult(
             taskId=task_id,
-            schemaVersion=_SCHEMA_VERSION,
-            promptVersion=_PROMPT_VERSION,
-            rubricVersion=_RUBRIC_VERSION,
-            providerId=_PROVIDER_ID,
-            modelId=_MODEL_ID,
+            schemaVersion=runtime_metadata.schema_version,
+            promptVersion=runtime_metadata.prompt_version,
+            rubricVersion=runtime_metadata.rubric_version,
+            providerId=runtime_metadata.provider_id,
+            modelId=runtime_metadata.model_id,
             inputComposition=request.inputComposition,
             hasChapters=request.hasChapters,
             hasOutline=request.hasOutline,
             chaptersSufficiency=self._derive_sufficiency(request.hasChapters),
             outlineSufficiency=self._derive_sufficiency(request.hasOutline),
-            evaluationMode=self._derive_evaluation_mode(request.inputComposition),
+            evaluationMode=evaluation_mode,
             rateable=True,
             status=StageStatus.OK,
             rejectionReasons=[],
@@ -274,13 +286,14 @@ class EvaluationService:
         writing_quality: int,
         innovation_score: int,
     ) -> FinalEvaluationProjection:
+        runtime_metadata = self._resolve_projection_metadata(task)
         return FinalEvaluationProjection(
             taskId=task.taskId,
-            schemaVersion=task.schemaVersion or _SCHEMA_VERSION,
-            promptVersion=task.promptVersion or _PROMPT_VERSION,
-            rubricVersion=task.rubricVersion or _RUBRIC_VERSION,
-            providerId=task.providerId or _PROVIDER_ID,
-            modelId=task.modelId or _MODEL_ID,
+            schemaVersion=runtime_metadata.schema_version,
+            promptVersion=runtime_metadata.prompt_version,
+            rubricVersion=runtime_metadata.rubric_version,
+            providerId=runtime_metadata.provider_id,
+            modelId=runtime_metadata.model_id,
             signingProbability=signing_probability,
             commercialValue=commercial_value,
             writingQuality=writing_quality,
@@ -325,6 +338,58 @@ class EvaluationService:
             marketFit=projection.marketFit,
             editorVerdict=projection.editorVerdict,
             detailedAnalysis=projection.detailedAnalysis,
+        )
+
+    def _resolve_runtime_metadata(
+        self,
+        *,
+        stage: StageName,
+        input_composition: InputComposition,
+        evaluation_mode: EvaluationMode,
+        provider_id: str | None = None,
+        model_id: str | None = None,
+    ) -> RuntimeMetadata:
+        resolved_provider_id = provider_id or self._provider_adapter.provider_id
+        resolved_model_id = model_id or self._provider_adapter.model_id
+        resolved_prompt = self._prompt_runtime.resolve(
+            stage=stage.value,
+            input_composition=input_composition.value,
+            evaluation_mode=evaluation_mode.value,
+            provider_id=resolved_provider_id,
+            model_id=resolved_model_id,
+        )
+        return RuntimeMetadata(
+            schema_version=resolved_prompt.schemaVersion,
+            prompt_version=resolved_prompt.promptVersion,
+            rubric_version=resolved_prompt.rubricVersion,
+            provider_id=resolved_provider_id,
+            model_id=resolved_model_id,
+        )
+
+    def _resolve_projection_metadata(self, task: EvaluationTask) -> RuntimeMetadata:
+        if all(
+            value is not None
+            for value in (
+                task.schemaVersion,
+                task.promptVersion,
+                task.rubricVersion,
+                task.providerId,
+                task.modelId,
+            )
+        ):
+            return RuntimeMetadata(
+                schema_version=task.schemaVersion,
+                prompt_version=task.promptVersion,
+                rubric_version=task.rubricVersion,
+                provider_id=task.providerId,
+                model_id=task.modelId,
+            )
+        return self._resolve_runtime_metadata(
+            stage=StageName.INPUT_SCREENING,
+            input_composition=task.inputComposition,
+            evaluation_mode=task.evaluationMode,
+            provider_id=task.providerId,
+            model_id=task.modelId,
         )
 
     def _derive_sufficiency(self, present: bool) -> Sufficiency:
