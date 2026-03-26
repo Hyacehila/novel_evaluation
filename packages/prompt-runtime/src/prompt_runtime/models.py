@@ -1,26 +1,40 @@
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import StrictBool
+
 from packages.schemas.common.base import SchemaModel
+
+PromptLifecycleStatus = Literal[
+    "draft",
+    "review",
+    "candidate",
+    "active",
+    "deprecated",
+    "retired",
+]
+PromptStage = Literal["input_screening", "rubric_evaluation", "aggregation"]
 
 
 class PromptRegistryRecord(SchemaModel):
     promptId: str
-    stage: str
-    status: str
+    stage: PromptStage
+    status: PromptLifecycleStatus
     schemaVersion: str
     rubricVersion: str
     inputCompositionScope: str
     evaluationModeScope: str
     providerScope: str
     modelScope: str
-    enabled: bool
+    enabled: StrictBool
     notes: str | None = None
 
 
 class PromptVersionRecord(SchemaModel):
     promptId: str
     promptVersion: str
-    status: str
+    status: PromptLifecycleStatus
     schemaVersion: str
     rubricVersion: str
     owner: str

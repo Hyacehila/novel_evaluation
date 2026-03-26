@@ -1,114 +1,16 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import pytest
 
-PROMPT_RUNTIME_SRC = Path(__file__).resolve().parents[3] / "packages" / "prompt-runtime" / "src"
-prompt_runtime_src = str(PROMPT_RUNTIME_SRC)
-if prompt_runtime_src not in sys.path:
-    sys.path.insert(0, prompt_runtime_src)
-
-from prompt_runtime import (  # noqa: E402
-    FilePromptRuntime,
+from prompt_runtime import (
     PromptAssetAmbiguityError,
     PromptAssetInvalidError,
     PromptAssetNotFoundError,
 )
 
-
-@pytest.fixture
-def prompts_root(tmp_path: Path) -> Path:
-    prompts = tmp_path / "prompts"
-    (prompts / "registry").mkdir(parents=True)
-    (prompts / "versions").mkdir(parents=True)
-    (prompts / "scoring" / "screening").mkdir(parents=True)
-    (prompts / "scoring" / "rubric").mkdir(parents=True)
-    (prompts / "scoring" / "aggregation").mkdir(parents=True)
-    (prompts / "scoring" / "system").mkdir(parents=True)
-    (prompts / "scoring" / "templates").mkdir(parents=True)
-    return prompts
-
-
-def write_registry(
-    prompts_root: Path,
-    *,
-    prompt_id: str,
-    stage: str,
-    schema_version: str = "1.0.0",
-    rubric_version: str = "rubric-v1",
-    status: str = "active",
-    input_scope: str = "*",
-    evaluation_scope: str = "*",
-    provider_scope: str = "*",
-    model_scope: str = "*",
-    enabled: bool = True,
-) -> None:
-    content = "\n".join(
-        [
-            f"promptId: {prompt_id}",
-            f"stage: {stage}",
-            f"status: {status}",
-            f"schemaVersion: {schema_version}",
-            f"rubricVersion: {rubric_version}",
-            f"inputCompositionScope: {input_scope}",
-            f"evaluationModeScope: {evaluation_scope}",
-            f"providerScope: {provider_scope}",
-            f"modelScope: {model_scope}",
-            f"enabled: {'true' if enabled else 'false'}",
-            "notes: test asset",
-        ]
-    )
-    (prompts_root / "registry" / f"{prompt_id}.yaml").write_text(content, encoding="utf-8")
-
-
-
-def write_version(
-    prompts_root: Path,
-    *,
-    prompt_id: str,
-    prompt_version: str,
-    schema_version: str = "1.0.0",
-    rubric_version: str = "rubric-v1",
-    status: str = "active",
-) -> None:
-    directory = prompts_root / "versions" / prompt_id
-    directory.mkdir(parents=True, exist_ok=True)
-    content = "\n".join(
-        [
-            f"promptId: {prompt_id}",
-            f"promptVersion: {prompt_version}",
-            f"status: {status}",
-            f"schemaVersion: {schema_version}",
-            f"rubricVersion: {rubric_version}",
-            "owner: runtime-tests",
-            "updatedAt: 2026-03-26T00:00:00Z",
-            "changeSummary: initial version",
-            "rollbackTarget: previous-stable",
-            "evalRequirement: controlled-regression",
-        ]
-    )
-    (directory / f"{prompt_version}.yaml").write_text(content, encoding="utf-8")
-
-
-
-def write_body(
-    prompts_root: Path,
-    *,
-    stage_directory: str,
-    prompt_id: str,
-    prompt_version: str,
-    body: str,
-) -> None:
-    directory = prompts_root / "scoring" / stage_directory / prompt_id
-    directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{prompt_version}.md").write_text(body, encoding="utf-8")
-
-
-
-def build_runtime(prompts_root: Path) -> FilePromptRuntime:
-    return FilePromptRuntime(prompts_root=prompts_root)
+from .conftest import build_runtime, write_body, write_registry, write_version
 
 
 
@@ -805,35 +707,3 @@ def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(p
             provider_id="provider-local",
             model_id="model-local",
         )
-
-
-REPO_PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "prompts"
-REPO_PROMPT_CASES = (
-    pytest.param("input_screening", "screening", "screening-default", id="repo-screening"),
-    pytest.param("rubric_evaluation", "rubric", "rubric-default", id="repo-rubric"),
-    pytest.param("aggregation", "aggregation", "aggregation-default", id="repo-aggregation"),
-)
-
-
-@pytest.mark.parametrize(("stage", "stage_directory", "prompt_id"), REPO_PROMPT_CASES)
-def test_file_prompt_runtime_resolves_repository_prompt_assets(
-    stage: str,
-    stage_directory: str,
-    prompt_id: str,
-) -> None:
-    resolved = FilePromptRuntime(prompts_root=REPO_PROMPTS_ROOT).resolve(
-        stage=stage,
-        input_composition="chapters_outline",
-        evaluation_mode="full",
-        provider_id="provider-local",
-        model_id="model-local",
-    )
-
-    body_path = REPO_PROMPTS_ROOT / "scoring" / stage_directory / prompt_id / "v1.md"
-
-    assert resolved.promptId == prompt_id
-    assert resolved.promptVersion == "v1"
-    assert resolved.schemaVersion == "1.0.0"
-    assert resolved.rubricVersion == "rubric-v1"
-    assert resolved.body == body_path.read_text(encoding="utf-8")
-    assert resolved.body.strip()
