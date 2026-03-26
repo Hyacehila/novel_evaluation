@@ -1,0 +1,10 @@
+{
+  "caseId": "smoke_blocked",
+  "title": "跨输入冲突样本",
+  "inputComposition": "chapters_outline",
+  "chaptersRef": "datasets/fixtures/smoke-blocked-chapters.md",
+  "outlineRef": "datasets/fixtures/smoke-blocked-outline.md",
+  "expectedOutcomeType": "blocked",
+  "includedInBaseline": true,
+  "notes": "正文与大纲题材冲突，应进入业务阻断"
+}

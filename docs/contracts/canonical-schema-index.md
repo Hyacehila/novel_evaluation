@@ -60,10 +60,10 @@
 
 | 对象 | 状态 | 正式真源文件 |
 | --- | --- | --- |
-| `EvalCase` | `doc_frozen` | `packages/schemas/evals/case.py` |
-| `EvalRecord` | `doc_frozen` | `packages/schemas/evals/record.py` |
-| `EvalBaseline` | `doc_frozen` | `packages/schemas/evals/baseline.py` |
-| `EvalReport` | `doc_frozen` | `packages/schemas/evals/report.py` |
+| `EvalCase` | `implemented` | `packages/schemas/evals/case.py` |
+| `EvalRecord` | `implemented` | `packages/schemas/evals/record.py` |
+| `EvalBaseline` | `implemented` | `packages/schemas/evals/baseline.py` |
+| `EvalReport` | `implemented` | `packages/schemas/evals/report.py` |
 
 说明：
 

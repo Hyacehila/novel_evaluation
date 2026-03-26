@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from provider_adapters import ProviderExecutionRequest, ProviderExecutionResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,9 +17,11 @@ class RuntimeMetadata:
 
 
 class ResolvedPromptPort(Protocol):
+    promptId: str
     promptVersion: str
     schemaVersion: str
     rubricVersion: str
+    body: str
 
 
 class PromptRuntimePort(Protocol):
@@ -37,11 +42,18 @@ class ProviderMetadataPort(Protocol):
     model_id: str
 
 
+class ProviderExecutionPort(ProviderMetadataPort, Protocol):
+    def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class StaticResolvedPrompt:
+    promptId: str = "prompt-default"
     promptVersion: str = "prompt-v1"
     schemaVersion: str = "1.0.0"
     rubricVersion: str = "rubric-v1"
+    body: str = "You are the default prompt placeholder."
 
 
 @dataclass(frozen=True, slots=True)

@@ -10,43 +10,59 @@ from worker.commands import run_batch_command, run_eval_command
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="worker",
-        description="Standalone worker CLI skeleton with terminal-only batch and eval placeholders.",
+        description="Run regression suites and local batch jobs on the shared evaluation pipeline.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     batch_parser = subparsers.add_parser(
         "batch",
-        help="Batch placeholder entry",
-        description="Run the minimal batch placeholder path. No real batch work or formal eval artifacts are produced.",
+        help="Run a local batch source",
+        description="Execute a local batch JSON source with the shared scoring pipeline and write a summary report.",
     )
     batch_parser.add_argument(
         "--source",
         default="evals/",
-        help="Placeholder path for a future batch input source.",
+        help="Path to a local batch JSON source.",
     )
     batch_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Acknowledge placeholder-only execution. Required in the current skeleton.",
+        help="Preview the resolved source and runtime without executing.",
     )
     batch_parser.set_defaults(handler=run_batch_command)
 
     eval_parser = subparsers.add_parser(
         "eval",
-        help="Eval placeholder entry",
-        description="Run the minimal eval placeholder path. No real regression, report, or baseline output is produced.",
+        help="Run an eval suite",
+        description="Execute an eval suite against the shared scoring pipeline and write report/baseline artifacts.",
     )
     eval_parser.add_argument(
         "--suite",
         default="smoke",
-        help="Placeholder name for a future eval suite.",
+        help="Eval suite name or explicit JSON path.",
+    )
+    eval_parser.add_argument(
+        "--baseline-id",
+        default=None,
+        help="Optional baseline id for baseline creation or comparison.",
+    )
+    eval_parser.add_argument(
+        "--report-id",
+        default=None,
+        help="Optional report id override.",
     )
     eval_parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Acknowledge placeholder-only execution. Required in the current skeleton.",
+        help="Preview the resolved suite and runtime without executing.",
     )
     eval_parser.set_defaults(handler=run_eval_command)
+
+    batch_parser.add_argument(
+        "--report-id",
+        default=None,
+        help="Optional batch summary report id.",
+    )
     return parser
 
 

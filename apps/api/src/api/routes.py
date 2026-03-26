@@ -31,7 +31,7 @@ async def create_task(
 ) -> SuccessEnvelope[EvaluationTask]:
     submission = await _parse_submission_request(request)
     task = service.create_task(submission)
-    background_tasks.add_task(service.execute_task, task.taskId)
+    background_tasks.add_task(service.execute_task, task.taskId, submission)
     return SuccessEnvelope(data=task)
 
 

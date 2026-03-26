@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import TypeVar
 
-from packages.schemas.evals import EvalBaseline, EvalReport
+from packages.schemas.evals import EvalBaseline, EvalRecord, EvalReport
 
 
 class EvalPathError(ValueError):
@@ -24,6 +24,15 @@ def write_report(*, root: Path | str, report: EvalReport) -> Path:
     resolved_root = _resolve_evals_root(root)
     target_path = resolved_root / "reports" / f"{report.reportId}.json"
     return _write_model(target_path=target_path, model=report, overwrite=True)
+
+
+def write_records(*, root: Path | str, report_id: str, records: tuple[EvalRecord, ...]) -> Path:
+    resolved_root = _resolve_evals_root(root)
+    target_path = resolved_root / "reports" / f"{report_id}.records.json"
+    payload = [record.model_dump(mode="json") for record in records]
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target_path
 
 
 def load_baseline(path: Path | str) -> EvalBaseline:
@@ -57,5 +66,6 @@ __all__ = [
     "load_baseline",
     "load_report",
     "write_baseline",
+    "write_records",
     "write_report",
 ]

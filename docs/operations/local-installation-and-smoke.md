@@ -2,7 +2,7 @@
 
 ## 文档目的
 
-本文档冻结 `Phase 1` 完整交付态的安装、启动和 smoke 命令。后续实现必须对齐这些命令和步骤。
+本文档冻结当前仓库已落地实现的安装、启动和 smoke 命令。
 
 ## 安装命令
 
@@ -16,22 +16,33 @@
 
 `uv run --project apps/api uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000`
 
+说明：
+
+- 若需自定义端口，改为读取 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
+- 默认 SQLite 将写入仓库根 `var/novel-evaluation.sqlite3`
+
 ### web
 
 `pnpm --dir apps/web dev -- --port 3000`
 
+说明：
+
+- web 通过同源 `/api` 代理访问后端
+- 默认会把 `/api/*` 代理到 `http://127.0.0.1:8000/api/*`
+
 ### worker batch
 
-`uv run --project apps/worker python -m worker.main batch`
+`uv run --project apps/worker worker batch --source .\path\to\batch.json [--report-id batch_smoke] [--dry-run]`
 
 ### worker eval
 
-`uv run --project apps/worker python -m worker.main eval`
+`uv run --project apps/worker worker eval --suite smoke [--baseline-id baseline_smoke] [--report-id report_smoke] [--dry-run]`
 
 说明：
 
-- 当前仓库未全部落地前，以上命令属于正式交付目标命令
-- 环境变量生效后，应用实现应优先读取配置而不是硬编码端口
+- `worker eval` 会写出 `evals/reports/{reportId}.json`、`evals/reports/{reportId}.records.json`
+- 传入 `--baseline-id` 时会额外写出 `evals/baselines/{baselineId}.json`
+- `worker batch` 只写本地批处理摘要，不接管用户任务 SQLite
 
 ## 启动顺序
 
@@ -42,37 +53,42 @@
 
 ## Smoke 场景
 
-完整交付前至少跑通以下场景：
-
 ### 1. 直接输入成功流
 
-- 提交 `title + chapters + outline`
-- 任务完成
-- 结果可读取
+- 在 web 新建页提交 `title + chapters + outline`
+- 任务页从 `queued/processing` 轮询到 `completed + available`
+- 结果页展示四项评分、平台建议、编辑结论和详细分析
 
 ### 2. 文件上传流
 
-- 通过 `chaptersFile` 或 `outlineFile` 提交
-- 后端完成解析
-- 结果或阻断结论可读取
+- 在 web 新建页上传 `TXT/MD/DOCX`
+- 后端成功解析 `chaptersFile` 或 `outlineFile`
+- 任务页能展示 `chapters_only / outline_only / chapters_outline` 的真实语义
 
 ### 3. 阻断流
 
+- 使用 `evals/datasets/scoring/smoke-blocked.json` 或构造跨输入冲突样本
 - 任务进入 `completed + blocked`
-- 结果接口不返回伪结果
+- 结果页不展示伪结果，只展示阻断态
 
 ### 4. 失败流
 
+- 通过 provider/schema 注入失败样本或人为破坏 provider 返回
 - 任务进入 `failed + not_available`
-- 可读取 `errorCode` 与最小诊断信息
+- 任务页可读取 `errorCode` 与 `errorMessage`
 
 ### 5. 重启后历史可读流
 
-- 任务完成并写入持久化
-- 重启 API 后仍可读取 task/result/history
+- 完成至少一个任务并确认写入 SQLite
+- 重启 API
+- `GET /api/tasks/{taskId}`、`GET /api/tasks/{taskId}/result`、`GET /api/history` 仍可读取
 
 ## 交付前最小命令检查
 
 - `git diff --check`
-- `uv run --project apps/api python -m compileall .\\apps\\api\\src .\\apps\\api\\tests .\\packages`
-- `uv run --project apps/api pytest .\\apps\\api\\tests`
+- `uv run --project apps/api python -m compileall .\apps\api\src .\apps\api\tests .\packages .\evals`
+- `uv run --project apps/api pytest .\apps\api\tests .\evals\tests`
+- `uv run --project apps/worker pytest .\apps\worker\tests`
+- `pnpm --dir apps/web lint`
+- `pnpm --dir apps/web test`
+- `pnpm --dir apps/web build`

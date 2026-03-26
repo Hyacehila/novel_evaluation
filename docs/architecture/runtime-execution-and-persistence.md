@@ -18,14 +18,15 @@
 
 - `EvaluationTask`
 - `EvaluationResultResource`
-- `EvalRecord`
-- `EvalBaseline`
-- `EvalReport`
+- `EvalRecord`（以 `evals/reports/{reportId}.records.json` 形式写出）
+- `EvalBaseline`（以 `evals/baselines/{baselineId}.json` 形式写出）
+- `EvalReport`（以 `evals/reports/{reportId}.json` 形式写出）
 
 说明：
 
 - `EvaluationResult` 正文作为 `EvaluationResultResource.result` 的一部分持久化
 - Prompt/Schema/Provider 版本元信息必须随任务和回归记录保留
+- `EvalRecord / EvalBaseline / EvalReport` 不进入用户任务 SQLite
 
 ## 用户任务执行模型
 

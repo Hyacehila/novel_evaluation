@@ -1,32 +1,35 @@
 # `apps/web`
 
-该目录用于承载用户交互层。
+该目录承载用户交互层，当前已落地为 `Next.js App Router + TypeScript + pnpm` 工程。
 
-## 职责
+## 当前已实现
 
-- 接收用户输入的小说文本或文件
-- 展示评分结果、分析结果与可视化内容
-- 触发评分请求或任务查询
-- 消费后端已经校验过的结构化结果
+- 工作台首页 `/`
+- 新建任务页 `/tasks/new`
+- 任务详情页 `/tasks/{taskId}`
+- 结果详情页 `/tasks/{taskId}/result`
+- 历史记录页 `/history`
+- `TanStack Query` 查询层与轮询策略
+- `React Hook Form + Zod` 提交表单
+- 同源 `/api` 代理到后端 API
+
+## 负责
+
+- 采集标题、正文、大纲或上传文件
+- 调用固定 API 路由创建任务
+- 轮询任务状态
+- 只在 `available` 时展示正式结果
+- 支持 `q/status/cursor/limit` 的历史回访
 
 ## 不负责
 
-- 不持有正式 Prompt
-- 不定义裁判逻辑
-- 不直接适配模型供应商
-- 不绕过后端自行拼接正式评分请求
+- 持有正式 Prompt
+- 直连 Provider
+- 解析上传文件正文
+- 在 `blocked / not_available / fetch_failed` 时展示伪结果
 
-## 开工前建议阅读
+## 当前使用方式
 
-- `docs/architecture/frontend-overview.md`
-- `docs/planning/frontend-page-specs.md`
-- `docs/architecture/frontend-technical-route.md`
-- `docs/architecture/frontend-app-shell-and-module-boundaries.md`
-- `docs/contracts/frontend-api-consumption-and-query-strategy.md`
-- `docs/contracts/frontend-minimal-api-assumptions.md`
-
-## 后续建议
-
-- 先围绕输入页、任务状态页、结果页与历史记录页搭建页面壳
-- 所有结果展示字段以 `packages/schemas/` 中的正式契约为准
-- 在后端未完整设计前，优先按 `Mock-First + Adapter-First` 方式推进
+- 安装：`pnpm --dir apps/web install`
+- 开发：`pnpm --dir apps/web dev -- --port 3000`
+- 校验：`pnpm --dir apps/web lint && pnpm --dir apps/web test && pnpm --dir apps/web build`

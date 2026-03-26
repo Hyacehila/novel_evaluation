@@ -1,0 +1,15 @@
+{
+  "suiteId": "smoke",
+  "promptId": "screening-default",
+  "promptVersion": "v1",
+  "cases": [
+    {
+      "datasetRef": "datasets/scoring/smoke-available.json",
+      "goal": "双输入可完成正式结果"
+    },
+    {
+      "datasetRef": "datasets/scoring/smoke-blocked.json",
+      "goal": "跨输入冲突进入 completed + blocked"
+    }
+  ]
+}

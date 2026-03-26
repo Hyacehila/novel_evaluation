@@ -1,0 +1,10 @@
+{
+  "caseId": "smoke_available",
+  "title": "修仙开篇样本",
+  "inputComposition": "chapters_outline",
+  "chaptersRef": "datasets/fixtures/smoke-available-chapters.md",
+  "outlineRef": "datasets/fixtures/smoke-available-outline.md",
+  "expectedOutcomeType": "available",
+  "includedInBaseline": true,
+  "notes": "用于 worker smoke 的成功样本"
+}

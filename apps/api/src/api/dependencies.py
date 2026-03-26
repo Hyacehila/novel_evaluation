@@ -14,7 +14,6 @@ from packages.schemas.common.enums import EvaluationMode, InputComposition
 from .sqlite_repository import SQLiteTaskRepository, resolve_db_path
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
-PROMPTS_ROOT = REPO_ROOT / "prompts"
 PROMPT_RUNTIME_PACKAGE_DIR = REPO_ROOT / "packages" / "prompt-runtime" / "src" / "prompt_runtime"
 PROVIDER_ADAPTERS_PACKAGE_DIR = REPO_ROOT / "packages" / "provider-adapters" / "src" / "provider_adapters"
 PROMPT_RUNTIME_MODULE_NAME = "api._prompt_runtime_runtime"
@@ -26,7 +25,19 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
             EvaluationMode.FULL.value,
             "provider-deepseek",
             "deepseek-chat",
-        )
+        ),
+        (
+            InputComposition.CHAPTERS_ONLY.value,
+            EvaluationMode.DEGRADED.value,
+            "provider-deepseek",
+            "deepseek-chat",
+        ),
+        (
+            InputComposition.OUTLINE_ONLY.value,
+            EvaluationMode.DEGRADED.value,
+            "provider-deepseek",
+            "deepseek-chat",
+        ),
     }
 )
 
@@ -66,12 +77,14 @@ def _get_provider_adapters_module() -> ModuleType:
 class ApiPromptRuntime:
     def __init__(self) -> None:
         prompt_runtime_module = _get_prompt_runtime_module()
-        self._file_runtime = prompt_runtime_module.FilePromptRuntime(prompts_root=PROMPTS_ROOT)
+        self._file_runtime = prompt_runtime_module.FilePromptRuntime(prompts_root=resolve_prompts_root())
         self._fallback_runtime = StaticPromptRuntime(
             resolved_prompt=StaticResolvedPrompt(
+                promptId="prompt-fallback",
                 promptVersion="v1",
                 schemaVersion="1.0.0",
                 rubricVersion="rubric-v1",
+                body="You are the fallback prompt placeholder.",
             )
         )
 
@@ -84,8 +97,7 @@ class ApiPromptRuntime:
         provider_id: str,
         model_id: str,
     ):
-        scope = (input_composition, evaluation_mode, provider_id, model_id)
-        if scope in PRIMARY_PROMPT_RUNTIME_SCOPES:
+        try:
             return self._file_runtime.resolve(
                 stage=stage,
                 input_composition=input_composition,
@@ -93,13 +105,16 @@ class ApiPromptRuntime:
                 provider_id=provider_id,
                 model_id=model_id,
             )
-        return self._fallback_runtime.resolve(
-            stage=stage,
-            input_composition=input_composition,
-            evaluation_mode=evaluation_mode,
-            provider_id=provider_id,
-            model_id=model_id,
-        )
+        except Exception:
+            if provider_id == "provider-deepseek" and model_id == "deepseek-chat":
+                raise
+            return self._fallback_runtime.resolve(
+                stage=stage,
+                input_composition=input_composition,
+                evaluation_mode=evaluation_mode,
+                provider_id=provider_id,
+                model_id=model_id,
+            )
 
 
 @lru_cache(maxsize=1)
@@ -108,13 +123,29 @@ def get_task_repository() -> SQLiteTaskRepository:
     return SQLiteTaskRepository(db_path=db_path)
 
 
+def resolve_prompts_root(raw_path: str | None = None) -> Path:
+    if raw_path is None or not raw_path.strip():
+        return REPO_ROOT / "prompts"
+    return Path(raw_path).expanduser().resolve()
+
+
+def get_provider_adapter():
+    provider_adapters_module = _get_provider_adapters_module()
+    if os.getenv("NOVEL_EVAL_DEEPSEEK_API_KEY"):
+        return provider_adapters_module.DeepSeekProviderAdapter()
+    return provider_adapters_module.LocalDeterministicProviderAdapter(
+        provider_id="provider-deepseek",
+        model_id="deepseek-chat",
+        structured_stage_outputs=True,
+    )
+
+
 @lru_cache(maxsize=1)
 def get_evaluation_service() -> EvaluationService:
-    provider_adapters_module = _get_provider_adapters_module()
     return EvaluationService(
         task_repository=get_task_repository(),
         prompt_runtime=ApiPromptRuntime(),
-        provider_adapter=provider_adapters_module.DeepSeekProviderAdapter(),
+        provider_adapter=get_provider_adapter(),
     )
 
 

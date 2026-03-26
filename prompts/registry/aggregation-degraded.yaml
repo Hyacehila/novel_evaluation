@@ -1,0 +1,11 @@
+promptId: aggregation-degraded
+stage: aggregation
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+inputCompositionScope: *
+evaluationModeScope: degraded
+providerScope: provider-deepseek
+modelScope: deepseek-chat
+enabled: true
+notes: degraded 模式 aggregation 正式资产，用于单侧输入或降级主链。

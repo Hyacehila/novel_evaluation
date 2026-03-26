@@ -7,14 +7,17 @@ from datetime import datetime
 
 from packages.application.ports.runtime_metadata import (
     PromptRuntimePort,
+    ProviderExecutionPort,
     ProviderMetadataPort,
     RuntimeMetadata,
     StaticPromptRuntime,
     StaticProviderMetadata,
 )
+from packages.application.scoring_pipeline import PipelineBlockedError, PipelineFailureError, ScoringPipeline
 from packages.application.ports.task_repository import TaskRepository
 from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
+from packages.application.support.process_logging import log_event
 from packages.schemas.common.base import MetaData
 from packages.schemas.common.enums import (
     AxisId,
@@ -60,6 +63,14 @@ class EvaluationService:
         self._provider_adapter = provider_adapter or StaticProviderMetadata()
         self._id_generator = id_generator or UuidTaskIdGenerator()
         self._clock = clock or UtcClock()
+        self._scoring_pipeline = (
+            ScoringPipeline(
+                prompt_runtime=self._prompt_runtime,
+                provider_adapter=self._provider_adapter,
+            )
+            if hasattr(self._provider_adapter, "execute")
+            else None
+        )
 
     def create_task(self, request: JointSubmissionRequest) -> EvaluationTask:
         task_id = self._id_generator.new_task_id()
@@ -83,6 +94,19 @@ class EvaluationService:
             createdAt=now,
             updatedAt=now,
         )
+        log_event(
+            logger,
+            logging.INFO,
+            "task_created",
+            taskId=task.taskId,
+            stage="task_create",
+            promptVersion=task.promptVersion,
+            schemaVersion=task.schemaVersion,
+            rubricVersion=task.rubricVersion,
+            providerId=task.providerId,
+            modelId=task.modelId,
+            resultStatus=task.resultStatus,
+        )
         return self._task_repository.create_task(task)
 
     def get_task(self, task_id: str) -> EvaluationTask:
@@ -102,6 +126,19 @@ class EvaluationService:
                 "startedAt": now,
                 "updatedAt": now,
             }
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "task_started",
+            taskId=updated.taskId,
+            stage="task_start",
+            promptVersion=updated.promptVersion,
+            schemaVersion=updated.schemaVersion,
+            rubricVersion=updated.rubricVersion,
+            providerId=updated.providerId,
+            modelId=updated.modelId,
+            resultStatus=updated.resultStatus,
         )
         return self._task_repository.update_task(updated)
 
@@ -144,6 +181,53 @@ class EvaluationService:
         )
         return self._task_repository.update_task(updated)
 
+    def complete_task_with_projection(
+        self,
+        task_id: str,
+        *,
+        projection: FinalEvaluationProjection,
+    ) -> EvaluationTask:
+        task = self.get_task(task_id)
+        if task.status is not TaskStatus.PROCESSING:
+            raise ValueError("只有 processing 状态可以完成。")
+        now = self._clock.now()
+        result = self._build_result_from_projection(projection, result_time=now)
+        resource = EvaluationResultResource(
+            taskId=task.taskId,
+            resultStatus=ResultStatus.AVAILABLE,
+            resultTime=now,
+            result=result,
+            message=None,
+        )
+        self._task_repository.save_result(task.taskId, resource)
+        updated = task.model_copy(
+            update={
+                "status": TaskStatus.COMPLETED,
+                "resultStatus": ResultStatus.AVAILABLE,
+                "schemaVersion": projection.schemaVersion,
+                "promptVersion": projection.promptVersion,
+                "rubricVersion": projection.rubricVersion,
+                "providerId": projection.providerId,
+                "modelId": projection.modelId,
+                "completedAt": now,
+                "updatedAt": now,
+            }
+        )
+        log_event(
+            logger,
+            logging.INFO,
+            "task_completed",
+            taskId=updated.taskId,
+            stage=StageName.FINAL_PROJECTION,
+            promptVersion=projection.promptVersion,
+            schemaVersion=projection.schemaVersion,
+            rubricVersion=projection.rubricVersion,
+            providerId=projection.providerId,
+            modelId=projection.modelId,
+            resultStatus=updated.resultStatus,
+        )
+        return self._task_repository.update_task(updated)
+
     def block_task(self, task_id: str, *, error_code: ErrorCode, error_message: str) -> EvaluationTask:
         task = self.get_task(task_id)
         if task.status is not TaskStatus.PROCESSING:
@@ -166,6 +250,20 @@ class EvaluationService:
                 "completedAt": now,
                 "updatedAt": now,
             }
+        )
+        log_event(
+            logger,
+            logging.WARNING,
+            "task_blocked",
+            taskId=updated.taskId,
+            stage="task_terminal",
+            promptVersion=updated.promptVersion,
+            schemaVersion=updated.schemaVersion,
+            rubricVersion=updated.rubricVersion,
+            providerId=updated.providerId,
+            modelId=updated.modelId,
+            resultStatus=updated.resultStatus,
+            errorCode=error_code,
         )
         return self._task_repository.update_task(updated)
 
@@ -192,6 +290,20 @@ class EvaluationService:
                 "updatedAt": now,
             }
         )
+        log_event(
+            logger,
+            logging.ERROR,
+            "task_failed",
+            taskId=updated.taskId,
+            stage="task_terminal",
+            promptVersion=updated.promptVersion,
+            schemaVersion=updated.schemaVersion,
+            rubricVersion=updated.rubricVersion,
+            providerId=updated.providerId,
+            modelId=updated.modelId,
+            resultStatus=updated.resultStatus,
+            errorCode=error_code,
+        )
         return self._task_repository.update_task(updated)
 
     def get_result(self, task_id: str) -> EvaluationResultResource:
@@ -207,15 +319,40 @@ class EvaluationService:
             message="结果尚未生成或当前不可展示",
         )
 
-    def execute_task(self, task_id: str) -> None:
+    def execute_task(self, task_id: str, submission: JointSubmissionRequest | None = None) -> None:
         try:
             self.start_task(task_id)
-            self.complete_task_with_result(
+            if submission is None:
+                raise ValueError("执行正式评分主线时必须提供 submission。")
+            if self._scoring_pipeline is None:
+                raise ValueError("当前 provider adapter 未接入正式执行接口。")
+            task = self.get_task(task_id)
+            pipeline_result = self._scoring_pipeline.run(task=task, submission=submission)
+            self.complete_task_with_projection(task_id, projection=pipeline_result.projection)
+        except PipelineBlockedError as exc:
+            self.block_task(
                 task_id,
-                signing_probability=80,
-                commercial_value=78,
-                writing_quality=76,
-                innovation_score=74,
+                error_code=exc.error_code,
+                error_message=exc.message,
+            )
+        except PipelineFailureError as exc:
+            task = self._task_repository.get_task(task_id)
+            if task is None:
+                return
+            if task.status is TaskStatus.QUEUED:
+                try:
+                    self.start_task(task_id)
+                except ValueError:
+                    task = self._task_repository.get_task(task_id)
+                    if task is None:
+                        return
+            task = self._task_repository.get_task(task_id)
+            if task is None or task.status is not TaskStatus.PROCESSING:
+                return
+            self.fail_task(
+                task_id,
+                error_code=exc.error_code,
+                error_message=exc.message,
             )
         except Exception:
             task = self._task_repository.get_task(task_id)

@@ -9,7 +9,8 @@ from packages.schemas.output.result import EvaluationResultResource
 from packages.schemas.output.task import EvaluationTask
 
 
-API_ROOT = Path(__file__).resolve().parents[2]
+REPO_ROOT = Path(__file__).resolve().parents[4]
+API_ROOT = REPO_ROOT
 DEFAULT_DB_PATH = API_ROOT / "var" / "novel-evaluation.sqlite3"
 
 

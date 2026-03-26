@@ -6,6 +6,7 @@ Thumbs.db
 
 # JavaScript / TypeScript 生态
 node_modules/
+.next/
 dist/
 build/
 coverage/
