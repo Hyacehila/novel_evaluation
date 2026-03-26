@@ -29,6 +29,11 @@ def test_post_tasks_creates_task() -> None:
     assert payload["success"] is True
     assert payload["data"]["status"] == "queued"
     assert payload["data"]["resultStatus"] == "not_available"
+    assert payload["data"]["schemaVersion"] == "1.0.0"
+    assert payload["data"]["promptVersion"] == "v1"
+    assert payload["data"]["rubricVersion"] == "rubric-v1"
+    assert payload["data"]["providerId"] == "provider-local"
+    assert payload["data"]["modelId"] == "model-local"
 
 
 def test_post_tasks_rejects_invalid_payload() -> None:
@@ -68,6 +73,11 @@ def test_get_task_returns_existing_task() -> None:
     payload = response.json()
     assert payload["success"] is True
     assert payload["data"]["taskId"] == created["taskId"]
+    assert payload["data"]["schemaVersion"] == "1.0.0"
+    assert payload["data"]["promptVersion"] == "v1"
+    assert payload["data"]["rubricVersion"] == "rubric-v1"
+    assert payload["data"]["providerId"] == "provider-local"
+    assert payload["data"]["modelId"] == "model-local"
 
 
 def test_get_task_returns_404_for_missing_task() -> None:
@@ -102,6 +112,32 @@ def test_get_result_returns_not_available_for_new_task() -> None:
     assert payload["data"]["result"] is None
 
 
+def test_post_tasks_keeps_degraded_input_semantics() -> None:
+    client = create_client()
+
+    response = client.post(
+        "/api/tasks",
+        json={
+            "title": "只有大纲",
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["status"] == "queued"
+    assert payload["data"]["resultStatus"] == "not_available"
+    assert payload["data"]["evaluationMode"] == "degraded"
+    assert payload["data"]["inputComposition"] == "outline_only"
+    assert payload["data"]["schemaVersion"] == "1.0.0"
+    assert payload["data"]["promptVersion"] == "v1"
+    assert payload["data"]["rubricVersion"] == "rubric-v1"
+    assert payload["data"]["providerId"] == "provider-local"
+    assert payload["data"]["modelId"] == "model-local"
+
+
 def test_get_dashboard_and_history_return_success() -> None:
     client = create_client()
     client.post(
@@ -121,6 +157,7 @@ def test_get_dashboard_and_history_return_success() -> None:
     assert dashboard.json()["success"] is True
     assert len(dashboard.json()["data"]["recentTasks"]) == 1
     assert dashboard.json()["data"]["recentTasks"][0]["status"] == "queued"
+    assert dashboard.json()["data"]["recentTasks"][0]["resultStatus"] == "not_available"
     assert history.status_code == 200
     assert history.json()["success"] is True
     assert len(history.json()["data"]["items"]) == 1
