@@ -1,80 +1,95 @@
-# 小说智能打分系统仓库
+# 小说智能打分系统
 
-本仓库当前锚定的唯一交付目标仍是 `Phase 1`：开源、本地部署、单用户、可运行的小说智能打分系统。正式交付边界继续冻结为 `SQLite` 单文件持久化、`apps/api` 进程内异步执行用户任务、`worker` 只承接回归与批处理、上传格式固定为 `TXT/MD/DOCX`、前端固定为 `Next.js App Router + TypeScript + pnpm`。
+面向中文网文场景的本地单用户评测工具，用结构化流程输出签约概率、平台建议、编辑结论和详细分析。
 
-## Phase 1 冻结结论
+![结果页截图](output/playwright/readme-result-page.png)
 
-- 后端基线：`Python 3.13 + uv + FastAPI + Pydantic`
-- 前端基线：`Next.js (App Router) + React + TypeScript + pnpm`
-- Provider：`DeepSeek API`，未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时回退本地 deterministic adapter
-- 严格真实 Provider 模式：设置 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1` 后，若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，API 启动直接失败
-- 评分编排：`PocketFlow` 只进入应用层编排模块
-- 本地状态存储：`SQLite`
-- 默认数据库路径：`./var/novel-evaluation.sqlite3`
-- 默认日志目录：`./var/logs`
-- 默认 Prompt 根目录：`./prompts`
-- 用户任务执行模型：`apps/api` 进程内异步执行
-- `worker` 职责：只运行批处理与回归
-- 历史查询：正式支持 `q/status/cursor/limit`
-- 当前继续排除：鉴权、多租户、`SSE`、`WebSocket`、多 Provider 生产级切换
+## 当前范围
 
-## 当前现实
+- 官方支持口径：`Windows + PowerShell` 本地部署
+- 运行形态：`apps/api` 进程内执行用户任务，`apps/web` 提供界面，`apps/worker` 只负责 `eval / batch`
+- 默认存储：`SQLite`，数据写入 `./var/novel-evaluation.sqlite3`
+- 默认 Provider：未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时自动回退本地 deterministic adapter，方便零成本体验
+- 当前上传格式：`TXT / MD / DOCX`
 
-- `uv run --project apps/api python -m compileall .\apps\api\src .\apps\api\tests .\packages .\evals` 已通过
-- `uv run --project apps/api pytest .\apps\api\tests .\evals\tests` 已通过
-- `uv run --project apps/worker pytest .\apps\worker\tests` 已通过
-- `pnpm --dir apps/web lint`、`pnpm --dir apps/web test`、`pnpm --dir apps/web build` 已通过
-- 正式五段主线、Prompt runtime、provider fallback、SQLite 持久化、history 查询、worker eval/batch、web 五页闭环都已接上
+## 非目标
 
-当前建议判断：
+- 不是生产部署方案
+- 不包含鉴权、多租户、WebSocket、SSE 或多 Provider 生产级切换
+- 当前不把 Docker 作为官方主路径
 
-- `Doc-Ready = Yes`
-- `Implementation-Ready = Yes`
-- `Runtime-Ready = Yes`
-- `End-to-End Alpha = Yes`
-- `Delivery-Ready = Partial`
+## 5 分钟快速开始
 
-说明：
-
-- 仓库内命令、配置和页面闭环已经对齐
-- 新机器从零安装到 smoke 的演练步骤已文档化
-- 是否把阶段正式上调为 `Delivery-Ready = Yes`，仍建议在一台全新环境按 `docs/operations/local-installation-and-smoke.md` 完整走一次后再落锤
-
-## 顶层目录
-
-- `apps/`：可运行应用入口，包含 `api`、`web`、`worker`
-- `packages/`：可复用核心模块，包含 application、provider-adapters、prompt-runtime、schemas 等
-- `prompts/`：正式 Prompt 资产与版本元数据
-- `evals/`：评测样本、用例、runner、baseline、report
-- `docs/`：范围、架构、契约、运维、决策与实施计划
-- `output/`：批处理输出和临时产物
-- `scripts/`：仓库维护和自动化脚本
-
-## 常用命令
-
-- API 安装：`uv sync --project apps/api`
-- worker 安装：`uv sync --project apps/worker`
-- web 安装：`pnpm --dir apps/web install`
-- API 启动：`uv run --project apps/api uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000`
-- web 启动：`pnpm --dir apps/web dev -- --port 3000`
-- Playwright E2E：在已设置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 的 PowerShell 会话中执行 `pnpm --dir apps/web test:e2e`
-- worker eval：`uv run --project apps/worker worker eval --suite smoke`
-- worker batch：`uv run --project apps/worker worker batch --source .\evals\datasets\scoring\smoke-available.json`
-
-PowerShell 示例：
+首次运行只需要 `Python 3.13`、[`uv`](https://docs.astral.sh/uv/)、`Node.js 20+` 和 `pnpm`。
 
 ```powershell
-$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
-pnpm --dir apps/web test:e2e
+.\scripts\setup.ps1
+.\scripts\run-api.ps1
+.\scripts\run-web.ps1
 ```
 
-## 关键文档
+然后在浏览器打开：
 
-1. `docs/operations/local-installation-and-smoke.md`
-2. `docs/operations/runtime-configuration-and-diagnostics.md`
-3. `docs/operations/quality-gates-and-regression.md`
-4. `docs/operations/rollback-and-fallback.md`
-5. `docs/contracts/canonical-schema-index.md`
-6. `docs/architecture/runtime-execution-and-persistence.md`
-7. `docs/architecture/scoring-pipeline.md`
-8. `docs/planning/layered-rubric-implementation-plan.md`
+- `http://127.0.0.1:3000/`
+- `http://127.0.0.1:3000/tasks/new`
+
+第一次体验不需要 API Key。直接提交一份正文和大纲即可完成本地 smoke，结果会由 deterministic fallback 生成，用来验证安装、页面流程和本地持久化是否正常。
+
+如果你想改端口、数据库路径或日志目录，先复制一份配置模板：
+
+```powershell
+Copy-Item .env.example .env
+```
+
+详细步骤见 [快速开始](docs/getting-started/quick-start.md)。
+
+## 启用真实 DeepSeek（可选）
+
+如果你准备接入真实模型调用：
+
+1. 复制 `.env.example` 为 `.env`
+2. 填入 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+3. 重新启动 `.\scripts\run-api.ps1`
+
+当你希望缺少 Key 时直接启动失败，而不是回退本地 adapter，可以额外设置：
+
+```dotenv
+NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1
+```
+
+详细说明见 [真实 Provider 配置](docs/getting-started/real-provider.md)。
+
+## 文档导航
+
+使用者入口：
+
+- [快速开始](docs/getting-started/quick-start.md)
+- [真实 Provider 配置](docs/getting-started/real-provider.md)
+- [常见问题](docs/getting-started/faq.md)
+
+贡献与维护：
+
+- [贡献指南](CONTRIBUTING.md)
+- [本地 smoke 与维护者检查](docs/operations/local-installation-and-smoke.md)
+- [运行配置与诊断](docs/operations/runtime-configuration-and-diagnostics.md)
+- [质量门禁与回归](docs/operations/quality-gates-and-regression.md)
+
+深度技术文档：
+
+- [文档索引](docs/README.md)
+- [系统概览](docs/architecture/system-overview.md)
+- [运行与持久化模型](docs/architecture/runtime-execution-and-persistence.md)
+- [Schema 真源索引](docs/contracts/canonical-schema-index.md)
+
+## FAQ / Troubleshooting
+
+- 想先验证项目能不能跑起来：直接用 fallback，不需要配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+- 页面访问不到 API：确认 `.\scripts\run-api.ps1` 正在运行，并检查 `.env` 里的 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
+- 想清空本地数据：关闭 API 后删除 `./var/novel-evaluation.sqlite3`
+- 想跑真实 Playwright E2E：先配置真实 `DeepSeek` Key，再执行 `pnpm --dir apps/web test:e2e`
+
+更多问题见 [常见问题](docs/getting-started/faq.md)。
+
+## License / Contributing
+
+本仓库当前按 [Apache License 2.0](LICENSE) 开源，欢迎在提交 PR 前先阅读 [贡献指南](CONTRIBUTING.md)。

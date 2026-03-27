@@ -4,17 +4,18 @@
 
 该目录用于承载仓库辅助脚本，是有限时、可重复执行的维护入口。
 
-## 当前仓库现实
+## 官方入口脚本
 
-当前实际只有 README：
+- `setup.ps1`：安装 `api`、`worker` 和 `web` 依赖，并在缺少 `.env` 时自动复制模板
+- `run-api.ps1`：读取仓库根 `.env` 后启动本地 API 开发服务
+- `run-web.ps1`：读取仓库根 `.env` 后启动本地 web 开发服务
+- `common.ps1`：供上述脚本复用的内部辅助函数
 
-- `repo/README.md`
-- `evals/README.md`
-- `maintenance/README.md`
+## 子目录
 
-当前还没有正式脚本文件落地。
-
-因此这里定义的是脚本分类和边界，而不是现成脚本清单。
+- `repo/`：仓库结构和一致性检查脚本
+- `evals/`：评测执行、baseline 与 report 辅助脚本
+- `maintenance/`：日常维护和清理脚本
 
 ## 允许放置的内容
 
@@ -42,9 +43,9 @@
 当前最小验收方式：
 
 - `git diff --check`
-- `rg "仓库维护脚本|评测执行脚本|结构检查脚本|uv run|终止条件" scripts/README.md scripts/repo/README.md scripts/evals/README.md scripts/maintenance/README.md`
+- `Get-Command .\scripts\setup.ps1,.\scripts\run-api.ps1,.\scripts\run-web.ps1`
 
 ## DevFleet 使用约束
 
 - scripts 相关 mission 必须明确是 `repo`、`evals` 还是 `maintenance`
-- 在脚本尚未落地前，不得把 README 文本误写成“当前已有可运行脚本集”
+- 对用户可见的启动脚本应优先放在 `scripts/` 根目录，避免埋在深层子目录

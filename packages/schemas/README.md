@@ -12,28 +12,16 @@
 - `stages/`
 - `evals/`
 
-说明：
-
-- `evals/` 的对象与文件颗粒度已经冻结，但 `.py` 尚未全部落地
-
 ## 主要职责
 
 - 固化字段命名、类型、枚举与必需性
 - 为 API、application、worker、evals 提供统一结构
 - 为版本治理与兼容性判断提供依据
 
-## 当前落地状态
+## 当前口径
 
-已落地：
-
-- `common/`
-- `input/`
-- `output/`
-- `stages/`
-
-仍待代码落地：
-
-- `evals/`
+- `common/`、`input/`、`output/`、`stages/`、`evals/` 都已在当前仓库中占据正式子域
+- API、worker、评测和历史回访应共用这一套结构真源
 
 ## DevFleet 使用约束
 

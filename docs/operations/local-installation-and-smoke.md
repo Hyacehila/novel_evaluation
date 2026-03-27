@@ -1,36 +1,39 @@
-# 本地安装与 Smoke
+# 本地 Smoke 与维护者检查
 
 ## 文档目的
 
-本文档冻结当前仓库已落地实现的安装、启动和 smoke 命令。
+本文档面向维护者与贡献者，冻结原始安装命令、维护者 smoke 场景和交付前检查。
 
-## 安装命令
+第一次运行项目的用户请先阅读：
+
+- `docs/getting-started/quick-start.md`
+- `docs/getting-started/real-provider.md`
+
+## 原始安装命令
 
 - API：`uv sync --project apps/api`
 - worker：`uv sync --project apps/worker`
 - web：`pnpm --dir apps/web install`
 
-## 启动命令
-
-PowerShell 真实 DeepSeek 示例：
-
-```powershell
-$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
-```
+## 原始启动命令
 
 ### API
 
-`uv run --project apps/api uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000`
+```powershell
+uv run --project apps/api uvicorn api.app:app --reload --host 127.0.0.1 --port 8000
+```
 
 说明：
 
-- 若需自定义端口，改为读取 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
-- 默认 SQLite 将写入仓库根 `var/novel-evaluation.sqlite3`
-- 若需禁止 fallback，可额外设置 `$env:NOVEL_EVAL_REQUIRE_REAL_PROVIDER = "1"`
+- 若需自定义端口，优先通过 `.env` 或环境变量设置 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
+- 默认 SQLite 写入仓库根 `var/novel-evaluation.sqlite3`
+- 若需禁止 fallback，可设置 `$env:NOVEL_EVAL_REQUIRE_REAL_PROVIDER = "1"`
 
 ### web
 
-`pnpm --dir apps/web dev -- --port 3000`
+```powershell
+pnpm --dir apps/web dev -- --hostname 127.0.0.1 --port 3000
+```
 
 说明：
 
@@ -39,36 +42,33 @@ $env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
 
 ### worker batch
 
-`uv run --project apps/worker worker batch --source .\path\to\batch.json [--report-id batch_smoke] [--dry-run]`
+```powershell
+uv run --project apps/worker worker batch --source .\path\to\batch.json [--report-id batch_smoke] [--dry-run]
+```
 
 ### worker eval
 
-`uv run --project apps/worker worker eval --suite smoke [--baseline-id baseline_smoke] [--report-id report_smoke] [--dry-run]`
+```powershell
+uv run --project apps/worker worker eval --suite smoke [--baseline-id baseline_smoke] [--report-id report_smoke] [--dry-run]
+```
 
 说明：
 
-- `worker eval` 会写出 `evals/reports/{reportId}.json`、`evals/reports/{reportId}.records.json`
+- `worker eval` 会写出 `evals/reports/{reportId}.json` 和 `evals/reports/{reportId}.records.json`
 - 传入 `--baseline-id` 时会额外写出 `evals/baselines/{baselineId}.json`
 - `worker batch` 只写本地批处理摘要，不接管用户任务 SQLite
-
-## 启动顺序
-
-1. 配置环境变量
-2. 启动 API
-3. 启动 web
-4. 需要回归或批处理时再启动 worker
 
 ## Smoke 场景
 
 ### 1. 直接输入成功流
 
 - 在 web 新建页提交 `title + chapters + outline`
-- 任务页从 `queued/processing` 轮询到 `completed + available`
+- 任务页从 `queued / processing` 轮询到 `completed + available`
 - 结果页展示四项评分、平台建议、编辑结论和详细分析
 
 ### 2. 文件上传流
 
-- 在 web 新建页上传 `TXT/MD/DOCX`
+- 在 web 新建页上传 `TXT / MD / DOCX`
 - 后端成功解析 `chaptersFile` 或 `outlineFile`
 - 任务页能展示 `chapters_only / outline_only / chapters_outline` 的真实语义
 
@@ -103,7 +103,7 @@ $env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
 
 ## Playwright 全量真实 E2E
 
-- `pnpm --dir apps/web test:e2e` 现在固定跑真实 `DeepSeek API`
+- `pnpm --dir apps/web test:e2e` 固定跑真实 `DeepSeek API`
 - 脚本会自动给 API 子进程注入 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1`
 - 若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，E2E 会在启动阶段直接失败，而不是回退到 deterministic adapter
 - 若 E2E 失败，优先检查 `apps/web/.playwright/logs/api.log`

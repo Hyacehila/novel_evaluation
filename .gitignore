@@ -22,7 +22,12 @@ coverage/
 *.log
 *.tmp
 *.temp
+var/
 apps/**/var/
+apps/web/.playwright/
+apps/web/test-results/
+apps/web/tsconfig.tsbuildinfo
+apps/web/eslint-report.json
 
 # DevFleet 本地工作树
 .devfleet-worktrees/
@@ -30,6 +35,8 @@ apps/**/var/
 # 本地环境变量
 .env
 .env.*
+!.env.example
+.claude/settings.local.json
 
 # 输出目录中的临时产物
 output/temporary/*

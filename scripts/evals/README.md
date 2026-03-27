@@ -4,11 +4,6 @@
 
 该目录用于评测执行、baseline 生成与报告辅助脚本。
 
-## 当前仓库现实
-
-- 当前目录只有 README
-- 还没有正式 evals 脚本
-
 ## 适合放置的脚本
 
 - 局部 eval 执行入口
@@ -32,4 +27,4 @@
 ## DevFleet 使用约束
 
 - evals 脚本 mission 必须明确输入样本、输出目录和比较对象
-- 在脚本尚未落地前，不得把 README 文本误写成“当前已有可执行 evals harness”
+- 不得把一次性的探索命令误写成正式 evals harness
