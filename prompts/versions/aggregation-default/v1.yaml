@@ -5,6 +5,6 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 owner: prompt-governance
 updatedAt: 2026-03-26T00:00:00Z
-changeSummary: 建立 aggregation 正式 prompt 资产骨架并绑定首个版本。
+changeSummary: 将 aggregation prompt 重写为编辑签约视角的聚合规范，强化 8 轴到骨架层到顶层四分的映射、签约判断约束与完整反馈生成。
 rollbackTarget: none
 evalRequirement: uv run --project apps/api pytest apps/api/tests -k repository_prompt_assets

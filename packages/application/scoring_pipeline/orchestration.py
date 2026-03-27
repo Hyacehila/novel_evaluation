@@ -123,7 +123,7 @@ class ScoringPipeline:
             )
             raise PipelineBlockedError(
                 error_code=error_code,
-                message="正文与大纲之间存在高严重度冲突，当前结果被阻断。",
+                message=_build_consistency_block_message(consistency),
             )
 
         aggregation_binding = self._resolve_binding(
@@ -203,3 +203,14 @@ def _build_screening_block_message(screening) -> str:
     if screening.rejectionReasons:
         return screening.rejectionReasons[0]
     return "输入未满足正式评分的最小可评条件。"
+
+
+def _build_consistency_block_message(consistency) -> str:
+    if consistency.crossInputMismatchDetected:
+        return "正文与大纲之间存在高严重度冲突，当前结果被阻断。"
+    if consistency.missingRequiredAxes:
+        joined_axes = ", ".join(axis.value for axis in consistency.missingRequiredAxes)
+        return f"缺少必需评价轴，当前结果被阻断：{joined_axes}。"
+    if consistency.unsupportedClaimsDetected:
+        return "存在无依据结论，当前结果被阻断。"
+    return "一致性整理未通过，当前结果被阻断。"

@@ -9,9 +9,9 @@ import { cn } from "@/shared/lib/cn";
 
 
 const navItems = [
-  { href: routes.dashboard, label: "工作台", description: "任务与结果摘要" },
-  { href: routes.newTask, label: "新建任务", description: "直接输入或上传文件" },
-  { href: routes.history, label: "历史记录", description: "按 q/status/cursor 回访" },
+  { href: routes.dashboard, label: "工作台", description: "查看评测任务与结果摘要" },
+  { href: routes.newTask, label: "新建评测任务", description: "提交正文或大纲发起评测" },
+  { href: routes.history, label: "历史记录", description: "按标题、状态与分页回访任务" },
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -22,10 +22,10 @@ export function AppShell({ children }: { children: ReactNode }) {
       <aside className="border-b border-[var(--line)] bg-[rgba(255,248,240,0.75)] p-5 backdrop-blur-sm md:border-b-0 md:border-r md:p-7">
         <div className="sticky top-0">
           <div className="rounded-[28px] border border-[var(--line)] bg-[rgba(255,251,245,0.88)] p-6 shadow-[var(--shadow)]">
-            <p className="text-xs uppercase tracking-[0.3em] text-[var(--accent-strong)]">Phase 1</p>
-            <h1 className="section-title mt-4 text-3xl font-semibold">小说评测工作台</h1>
+            <p className="text-xs tracking-[0.16em] text-[var(--accent-strong)]">阶段一交付</p>
+            <h1 className="section-title mt-4 text-3xl font-semibold">小说智能打分系统</h1>
             <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-              保持公开 API 冻结，在本地单机环境完成创建任务、轮询、结果阅读与历史回访。
+              围绕小说正文与大纲输入，查看评测任务进度、结构化评价结果与历史记录回访。
             </p>
           </div>
           <nav className="mt-6 space-y-3">
@@ -45,8 +45,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                   <div className="flex items-center justify-between gap-3">
                     <span className="font-semibold">{item.label}</span>
                     {active ? (
-                      <span className="rounded-full bg-[var(--accent)] px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
-                        Active
+                      <span className="rounded-full bg-[var(--accent)] px-2 py-1 text-[10px] font-semibold tracking-[0.12em] text-white">
+                        当前
                       </span>
                     ) : null}
                   </div>

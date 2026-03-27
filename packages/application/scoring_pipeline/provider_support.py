@@ -45,6 +45,8 @@ class ProviderExecutionRequestPayload:
     messages: list[ProviderMessagePayload]
     inputComposition: InputComposition
     evaluationMode: EvaluationMode
+    timeoutMs: int | None = None
+    maxTokens: int | None = None
     responseFormat: str | dict[str, str] | None = None
 
 
@@ -57,6 +59,8 @@ def execute_provider_stage(
     input_composition: InputComposition,
     evaluation_mode: EvaluationMode,
     user_payload: Mapping[str, Any],
+    timeout_ms: int | None = None,
+    max_tokens: int | None = None,
     response_format: str | dict[str, str] | None = None,
 ) -> Any:
     request_id = binding.request_id
@@ -77,6 +81,8 @@ def execute_provider_stage(
         ],
         inputComposition=input_composition,
         evaluationMode=evaluation_mode,
+        timeoutMs=timeout_ms,
+        maxTokens=max_tokens,
         responseFormat=response_format,
     )
     log_event(

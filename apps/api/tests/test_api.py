@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from io import BytesIO
 
+import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,7 @@ from api.dependencies import (
     PRIMARY_PROMPT_RUNTIME_SCOPES,
     ApiPromptRuntime,
     get_evaluation_service,
+    get_provider_adapter,
     get_task_repository,
 )
 from packages.schemas.common.enums import EvaluationMode, InputComposition, ResultStatus, TaskStatus
@@ -307,6 +309,42 @@ def test_get_result_returns_available_after_in_process_execution() -> None:
     assert payload["success"] is True
     assert payload["data"]["resultStatus"] == "available"
     assert payload["data"]["result"] is not None
+
+
+def test_get_provider_adapter_returns_real_deepseek_when_required(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", "1")
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    adapter = get_provider_adapter()
+
+    assert adapter.__class__.__name__ == "DeepSeekProviderAdapter"
+    assert adapter.provider_id == "provider-deepseek"
+    assert adapter.model_id == "deepseek-chat"
+
+
+def test_get_provider_adapter_keeps_fallback_when_real_provider_not_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", raising=False)
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+
+    adapter = get_provider_adapter()
+
+    assert adapter.__class__.__name__ == "LocalDeterministicProviderAdapter"
+    assert adapter.provider_id == "provider-deepseek"
+    assert adapter.model_id == "deepseek-chat"
+
+
+def test_api_startup_fails_when_real_provider_required_without_api_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", "1")
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    get_evaluation_service.cache_clear()
+
+    with pytest.raises(RuntimeError, match="NOVEL_EVAL_DEEPSEEK_API_KEY"):
+        with TestClient(create_app()):
+            pass
 
 
 def test_post_tasks_keeps_degraded_input_semantics() -> None:

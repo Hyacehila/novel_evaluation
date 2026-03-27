@@ -20,6 +20,7 @@
 - 轮询任务状态
 - 只在 `available` 时展示正式结果
 - 支持 `q/status/cursor/limit` 的历史回访
+- `test:e2e` 固定要求真实 `DeepSeek API`，缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时直接失败
 
 ## 不负责
 
@@ -33,3 +34,4 @@
 - 安装：`pnpm --dir apps/web install`
 - 开发：`pnpm --dir apps/web dev -- --port 3000`
 - 校验：`pnpm --dir apps/web lint && pnpm --dir apps/web test && pnpm --dir apps/web build`
+- E2E：在 PowerShell 中先执行 `$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"`，再运行 `pnpm --dir apps/web test:e2e`

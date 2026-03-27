@@ -26,6 +26,7 @@ type BaseProps = {
 type LinkProps = BaseProps & {
   asLink: true;
   href: string;
+  prefetch?: ComponentProps<typeof Link>["prefetch"];
   children: ComponentProps<typeof Link>["children"];
 };
 
@@ -39,7 +40,7 @@ export function Button(props: LinkProps | NativeButtonProps) {
 
   if (props.asLink) {
     return (
-      <Link href={props.href} className={className}>
+      <Link href={props.href} prefetch={props.prefetch} className={className}>
         {props.children}
       </Link>
     );

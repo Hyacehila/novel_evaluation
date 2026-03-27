@@ -92,6 +92,7 @@ class ProviderExecutionRequest(SchemaModel):
     inputComposition: InputComposition | None = None
     evaluationMode: EvaluationMode | None = None
     timeoutMs: int | None = Field(default=None, ge=1)
+    maxTokens: int | None = Field(default=None, ge=1)
     responseFormat: str | dict[str, Any] | None = None
 
     @field_validator(

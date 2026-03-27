@@ -1,21 +1,23 @@
 from __future__ import annotations
 
 from packages.schemas.common.enums import TopLevelScoreField
-from packages.schemas.output.result import DetailedAnalysis, FinalEvaluationProjection, PlatformRecommendation
+from packages.schemas.output.result import FinalEvaluationProjection, PlatformRecommendation
 from packages.schemas.stages.aggregation import AggregatedRubricResult
 
 
 def build_final_projection(*, aggregation: AggregatedRubricResult) -> FinalEvaluationProjection:
-    platform_name = aggregation.platformCandidates[0] if aggregation.platformCandidates else "通用网文平台"
-    platform_score = aggregation.topLevelScoresDraft.get(TopLevelScoreField.COMMERCIAL_VALUE, 60)
+    platform_score = aggregation.topLevelScoresDraft[TopLevelScoreField.COMMERCIAL_VALUE]
     detailed = aggregation.detailedAnalysisDraft
-    if not isinstance(detailed, DetailedAnalysis):
-        detailed = DetailedAnalysis(
-            plot="情节结构已形成基础闭环。",
-            character="角色驱动存在进一步强化空间。",
-            pacing="节奏整体稳定。",
-            worldBuilding="设定基础明确。",
-        )
+    platforms = []
+    if aggregation.platformCandidates:
+        primary_platform = aggregation.platformCandidates[0]
+        platforms = [
+            PlatformRecommendation(
+                name=primary_platform,
+                percentage=platform_score,
+                reason=aggregation.marketFitDraft,
+            )
+        ]
     return FinalEvaluationProjection(
         taskId=aggregation.taskId,
         schemaVersion=aggregation.schemaVersion,
@@ -29,13 +31,7 @@ def build_final_projection(*, aggregation: AggregatedRubricResult) -> FinalEvalu
         innovationScore=aggregation.topLevelScoresDraft[TopLevelScoreField.INNOVATION_SCORE],
         strengths=aggregation.strengthCandidates,
         weaknesses=aggregation.weaknessCandidates,
-        platforms=[
-            PlatformRecommendation(
-                name=platform_name,
-                percentage=platform_score,
-                reason="平台候选由 aggregation 草案映射得出。",
-            )
-        ],
+        platforms=platforms,
         marketFit=aggregation.marketFitDraft,
         editorVerdict=aggregation.editorVerdictDraft,
         detailedAnalysis=detailed,

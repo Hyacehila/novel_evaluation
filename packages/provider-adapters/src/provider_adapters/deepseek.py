@@ -29,6 +29,22 @@ _OPENAI_CONNECTION_ERROR_NAMES = frozenset({"APIConnectionError"})
 _RETRYABLE_PROVIDER_STATUS_CODES = frozenset({408, 429})
 
 
+class DeepSeekResponseHandlingError(Exception):
+    def __init__(
+        self,
+        *,
+        failure_type: ProviderFailureType,
+        message: str,
+        retryable: bool | None,
+        can_retry: bool,
+    ) -> None:
+        super().__init__(message)
+        self.failure_type = failure_type
+        self.message = message
+        self.retryable = retryable
+        self.can_retry = can_retry
+
+
 class DeepSeekChatCompletionsProtocol(Protocol):
     def create(self, **kwargs: Any) -> Any:
         ...
@@ -79,6 +95,7 @@ class DeepSeekProviderAdapter:
             )
 
         response: Any | None = None
+        response_type = self._resolve_response_type(request.responseFormat)
         try:
             client = self.client or self._build_client()
             payload = self._build_payload(request)
@@ -99,52 +116,73 @@ class DeepSeekProviderAdapter:
                 retryable=False,
             )
 
-        try:
-            response = self._create_completion(client=client, payload=payload, request=request)
-        except (ImportError, ModuleNotFoundError):
-            return self._build_failure(
-                request=request,
-                duration_ms=self._duration_ms(started_at),
-                failure_type=ProviderFailureType.DEPENDENCY_UNAVAILABLE,
-                message="DeepSeek SDK 不可用。",
-                retryable=False,
-            )
-        except Exception as exc:
-            failure_type = self._map_known_exception_to_failure_type(exc)
-            if failure_type is None:
-                raise
-            return self._build_failure(
-                request=request,
-                duration_ms=self._duration_ms(started_at),
-                failure_type=failure_type,
-                message=self._build_exception_message(exc, failure_type),
-                provider_request_id=self._extract_provider_request_id(getattr(exc, "response", response)),
-                retryable=self._resolve_retryable(exc, failure_type),
-            )
+        max_attempts = 2 if response_type == "json_object" else 1
+        for attempt in range(max_attempts):
+            try:
+                response = self._create_completion(client=client, payload=payload, request=request)
+            except (ImportError, ModuleNotFoundError):
+                return self._build_failure(
+                    request=request,
+                    duration_ms=self._duration_ms(started_at),
+                    failure_type=ProviderFailureType.DEPENDENCY_UNAVAILABLE,
+                    message="DeepSeek SDK 不可用。",
+                    retryable=False,
+                )
+            except Exception as exc:
+                failure_type = self._map_known_exception_to_failure_type(exc)
+                if failure_type is None:
+                    raise
+                return self._build_failure(
+                    request=request,
+                    duration_ms=self._duration_ms(started_at),
+                    failure_type=failure_type,
+                    message=self._build_exception_message(exc, failure_type),
+                    provider_request_id=self._extract_provider_request_id(getattr(exc, "response", response)),
+                    retryable=self._resolve_retryable(exc, failure_type),
+                )
 
-        try:
-            provider_request_id = self._extract_provider_request_id(response)
-            raw_text = self._extract_raw_text(response)
-            response_type = self._resolve_response_type(request.responseFormat)
-            raw_json = self._extract_raw_json(response, raw_text, response_type=response_type)
-            self._validate_response_contract(request=request, raw_json=raw_json)
-            return ProviderExecutionSuccess(
-                providerId=self.provider_id,
-                modelId=self.model_id,
-                requestId=request.requestId,
-                providerRequestId=provider_request_id,
-                durationMs=self._duration_ms(started_at),
-                rawText=raw_text,
-                rawJson=raw_json,
-            )
-        except ValueError:
-            return self._build_failure(
-                request=request,
-                duration_ms=self._duration_ms(started_at),
-                failure_type=ProviderFailureType.CONTRACT_INVALID,
-                message="DeepSeek 响应不满足 provider contract。",
-                provider_request_id=self._extract_provider_request_id(response),
-            )
+            try:
+                provider_request_id = self._extract_provider_request_id(response)
+                raw_text = self._extract_raw_text(response, response_type=response_type)
+                raw_json = self._extract_raw_json(response, raw_text, response_type=response_type)
+                self._validate_response_contract(request=request, raw_json=raw_json)
+                return ProviderExecutionSuccess(
+                    providerId=self.provider_id,
+                    modelId=self.model_id,
+                    requestId=request.requestId,
+                    providerRequestId=provider_request_id,
+                    durationMs=self._duration_ms(started_at),
+                    rawText=raw_text,
+                    rawJson=raw_json,
+                )
+            except DeepSeekResponseHandlingError as exc:
+                if exc.can_retry and attempt + 1 < max_attempts:
+                    continue
+                return self._build_failure(
+                    request=request,
+                    duration_ms=self._duration_ms(started_at),
+                    failure_type=exc.failure_type,
+                    message=exc.message,
+                    provider_request_id=self._extract_provider_request_id(response),
+                    retryable=exc.retryable,
+                )
+            except ValueError:
+                return self._build_failure(
+                    request=request,
+                    duration_ms=self._duration_ms(started_at),
+                    failure_type=ProviderFailureType.CONTRACT_INVALID,
+                    message="DeepSeek 响应不满足 provider contract。",
+                    provider_request_id=self._extract_provider_request_id(response),
+                )
+
+        return self._build_failure(
+            request=request,
+            duration_ms=self._duration_ms(started_at),
+            failure_type=ProviderFailureType.PROVIDER_FAILURE,
+            message="DeepSeek 响应未能在允许的尝试次数内完成。",
+            provider_request_id=self._extract_provider_request_id(response),
+            retryable=True,
+        )
 
     def _build_client(self) -> DeepSeekClientProtocol:
         if self._client_factory is not None:
@@ -170,6 +208,8 @@ class DeepSeekProviderAdapter:
             "model": self.model_id,
             "messages": [{"role": message.role, "content": message.content} for message in request.messages],
         }
+        if request.maxTokens is not None:
+            payload["max_tokens"] = request.maxTokens
         if request.responseFormat is not None:
             payload["response_format"] = self._normalize_response_format(request.responseFormat)
         return payload
@@ -247,7 +287,7 @@ class DeepSeekProviderAdapter:
             return header_id
         return None
 
-    def _extract_raw_text(self, response: Any) -> str:
+    def _extract_raw_text(self, response: Any, *, response_type: str | None) -> str:
         choices = getattr(response, "choices", None)
         if not choices:
             raise ValueError("响应缺少 choices。")
@@ -255,6 +295,13 @@ class DeepSeekProviderAdapter:
         if message is None:
             raise ValueError("响应缺少 message。")
         content = getattr(message, "content", None)
+        if response_type == "json_object" and (not isinstance(content, str) or not content.strip()):
+            raise DeepSeekResponseHandlingError(
+                failure_type=ProviderFailureType.PROVIDER_FAILURE,
+                message="DeepSeek JSON 输出返回空 content。",
+                retryable=True,
+                can_retry=True,
+            )
         if not isinstance(content, str) or not content.strip():
             raise ValueError("响应 message.content 为空。")
         return content
@@ -274,6 +321,16 @@ class DeepSeekProviderAdapter:
         try:
             return json.loads(raw_text)
         except json.JSONDecodeError as exc:
+            if response_type == "json_object":
+                message = "DeepSeek JSON 输出不是合法 JSON。"
+                if self._response_maybe_truncated(response):
+                    message = "DeepSeek JSON 输出因长度截断，max_tokens 可能不足。"
+                raise DeepSeekResponseHandlingError(
+                    failure_type=ProviderFailureType.PROVIDER_FAILURE,
+                    message=message,
+                    retryable=True,
+                    can_retry=True,
+                ) from exc
             raise ValueError("响应正文不是合法 JSON。") from exc
 
     def _resolve_response_type(self, response_format: str | dict[str, Any] | None) -> str | None:
@@ -286,7 +343,19 @@ class DeepSeekProviderAdapter:
     def _validate_response_contract(self, *, request: ProviderExecutionRequest, raw_json: Any) -> None:
         response_type = self._resolve_response_type(request.responseFormat)
         if response_type == "json_object" and not isinstance(raw_json, Mapping):
-            raise ValueError("json_object 响应必须返回对象。")
+            raise DeepSeekResponseHandlingError(
+                failure_type=ProviderFailureType.CONTRACT_INVALID,
+                message="DeepSeek JSON 输出必须返回对象。",
+                retryable=False,
+                can_retry=False,
+            )
+
+    def _response_maybe_truncated(self, response: Any) -> bool:
+        choices = getattr(response, "choices", None)
+        if not choices:
+            return False
+        finish_reason = getattr(choices[0], "finish_reason", None)
+        return finish_reason == "length"
 
     def _validate_base_url(self) -> None:
         parsed = urlparse(self.base_url)

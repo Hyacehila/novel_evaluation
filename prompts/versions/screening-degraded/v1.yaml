@@ -5,6 +5,6 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 owner: prompt-governance
 updatedAt: 2026-03-26T00:00:00Z
-changeSummary: 建立 degraded screening 正式 prompt 资产并绑定首个版本。
+changeSummary: 将 degraded screening prompt 重写为谨慎可评的降级预检查规范，强化单侧输入保守判断、阻断条件与风险表达。
 rollbackTarget: none
 evalRequirement: uv run --project apps/api pytest apps/api/tests evals/tests

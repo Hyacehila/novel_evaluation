@@ -148,6 +148,13 @@ class FilePromptRuntime:
             request_value=model_id,
             label="modelScope",
         )
+        narrowed_candidates = _prefer_more_specific_registry_records(
+            narrowed_candidates,
+            input_composition=input_composition,
+            evaluation_mode=evaluation_mode,
+            provider_id=provider_id,
+            model_id=model_id,
+        )
         narrowed_candidates = _prefer_status(narrowed_candidates)
         enabled_candidates = [record for record in narrowed_candidates if record.enabled]
         if not enabled_candidates:
@@ -270,14 +277,38 @@ class FilePromptRuntime:
         ]
         if not matching_candidates:
             raise PromptAssetNotFoundError(f"没有匹配 {label}={request_value} 的 Prompt 资产。")
-        exact_candidates = [
-            record for record in matching_candidates if getattr(record, scope_field) == request_value
-        ]
-        return exact_candidates if exact_candidates else matching_candidates
+        return matching_candidates
 
 
 def _scope_matches(scope_value: str, request_value: str) -> bool:
     return scope_value == request_value or scope_value == _WILDCARD_SCOPE
+
+
+def _prefer_more_specific_registry_records(
+    records: list[PromptRegistryRecord],
+    *,
+    input_composition: str,
+    evaluation_mode: str,
+    provider_id: str,
+    model_id: str,
+) -> list[PromptRegistryRecord]:
+    if len(records) <= 1:
+        return records
+    scope_values = (
+        ("inputCompositionScope", input_composition),
+        ("evaluationModeScope", evaluation_mode),
+        ("providerScope", provider_id),
+        ("modelScope", model_id),
+    )
+    ranked_records: list[tuple[tuple[int, int, int, int], PromptRegistryRecord]] = []
+    for record in records:
+        specificity_score = tuple(
+            1 if getattr(record, field_name) == request_value else 0
+            for field_name, request_value in scope_values
+        )
+        ranked_records.append((specificity_score, record))
+    highest_specificity = max(score for score, _ in ranked_records)
+    return [record for score, record in ranked_records if score == highest_specificity]
 
 
 def _prefer_status(

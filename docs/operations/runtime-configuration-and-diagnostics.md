@@ -9,6 +9,7 @@
 | 变量 | 作用 | 默认值 | 当前实现说明 |
 | --- | --- | --- | --- |
 | `NOVEL_EVAL_DEEPSEEK_API_KEY` | DeepSeek API Key | 空 | 为空时回退本地 deterministic adapter，但 `providerId/modelId` 仍保持 `provider-deepseek/deepseek-chat` |
+| `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` | 强制真实 Provider 模式 | 空 | 为 `1` 时禁止 fallback；若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，API 启动直接失败 |
 | `NOVEL_EVAL_DB_PATH` | SQLite 文件路径 | `./var/novel-evaluation.sqlite3` | 空值时落到仓库根 `var/novel-evaluation.sqlite3` |
 | `NOVEL_EVAL_PROMPTS_DIR` | Prompt 资产根目录 | `./prompts` | 空值时落到仓库根 `prompts/` |
 | `NOVEL_EVAL_LOG_LEVEL` | 日志级别 | `INFO` | 为空时按 `INFO`；非法值会在启动期报错 |
@@ -24,6 +25,7 @@
 - 未列入此表的配置不属于交付必需项
 - README、启动命令和应用实现必须使用同一组变量名
 - `apps/web` 不直接暴露新的后端地址变量，而是通过同源 `/api` 代理复用 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
+- `apps/web test:e2e` 的 API 子进程会自动注入 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1`，因此 E2E 固定要求真实 DeepSeek
 
 ## 最小诊断字段
 

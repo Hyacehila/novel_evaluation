@@ -40,7 +40,7 @@ export function EmptyState({
 }) {
   return (
     <Card className="p-8 text-center">
-      <p className="text-sm uppercase tracking-[0.24em] text-[var(--muted)]">Empty</p>
+      <p className="text-sm tracking-[0.12em] text-[var(--muted)]">暂无内容</p>
       <h2 className="section-title mt-4 text-2xl font-semibold">{title}</h2>
       <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-[var(--muted)]">{description}</p>
       {action ? <div className="mt-6 flex justify-center">{action}</div> : null}
@@ -59,7 +59,7 @@ export function ErrorState({
 }) {
   return (
     <Card className="border-[rgba(168,51,47,0.2)] bg-[rgba(255,244,242,0.86)] p-8">
-      <p className="text-sm uppercase tracking-[0.24em] text-[var(--bad)]">Problem</p>
+      <p className="text-sm tracking-[0.12em] text-[var(--bad)]">出现问题</p>
       <h2 className="section-title mt-4 text-2xl font-semibold">{title}</h2>
       <p className="mt-3 max-w-2xl text-sm leading-7 text-[var(--muted)]">{description}</p>
       {action ? <div className="mt-6 flex flex-wrap gap-3">{action}</div> : null}

@@ -28,7 +28,7 @@ export function getInputCompositionLabel(value: InputComposition) {
 }
 
 export function getEvaluationModeLabel(value: EvaluationMode) {
-  return value === "full" ? "正式评测" : "降级评测";
+  return value === "full" ? "完整评测" : "降级评测";
 }
 
 export function getTaskStatusLabel(value: TaskStatus) {
@@ -36,22 +36,22 @@ export function getTaskStatusLabel(value: TaskStatus) {
     case "queued":
       return "排队中";
     case "processing":
-      return "执行中";
+      return "评测中";
     case "completed":
       return "已完成";
     case "failed":
-      return "失败";
+      return "任务失败";
   }
 }
 
 export function getResultStatusLabel(value: ResultStatus) {
   switch (value) {
     case "available":
-      return "结果可读";
+      return "结果可用";
     case "not_available":
-      return "结果未就绪";
+      return "结果不可用";
     case "blocked":
-      return "结果阻断";
+      return "结果被阻断";
   }
 }
 

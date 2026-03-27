@@ -396,6 +396,57 @@ def test_file_prompt_runtime_falls_back_to_candidate_when_active_does_not_match_
 
 
 
+def test_file_prompt_runtime_prefers_best_overall_scope_match_instead_of_greedy_exact_match(
+    prompts_root: Path,
+) -> None:
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-full-exact-input",
+        stage="rubric_evaluation",
+        input_scope="chapters_outline",
+        evaluation_scope="full",
+        provider_scope="provider-local",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-full-exact-input", prompt_version="2026-03-26")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-full-exact-input",
+        prompt_version="2026-03-26",
+        body="full exact input",
+    )
+
+    write_registry(
+        prompts_root,
+        prompt_id="rubric-degraded-wildcard-input",
+        stage="rubric_evaluation",
+        input_scope="*",
+        evaluation_scope="degraded",
+        provider_scope="provider-local",
+        model_scope="model-local",
+    )
+    write_version(prompts_root, prompt_id="rubric-degraded-wildcard-input", prompt_version="2026-03-27")
+    write_body(
+        prompts_root,
+        stage_directory="rubric",
+        prompt_id="rubric-degraded-wildcard-input",
+        prompt_version="2026-03-27",
+        body="degraded wildcard input",
+    )
+
+    resolved = build_runtime(prompts_root).resolve(
+        stage="rubric_evaluation",
+        input_composition="chapters_outline",
+        evaluation_mode="degraded",
+        provider_id="provider-local",
+        model_id="model-local",
+    )
+
+    assert resolved.promptId == "rubric-degraded-wildcard-input"
+    assert resolved.body == "degraded wildcard input"
+
+
 def test_file_prompt_runtime_prefers_input_scope_before_later_scopes(prompts_root: Path) -> None:
     write_registry(
         prompts_root,
@@ -810,8 +861,11 @@ def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(p
 REPO_PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "prompts"
 REPO_PROMPT_CASES = (
     pytest.param("input_screening", "screening", "screening-default", id="repo-screening"),
+    pytest.param("input_screening", "screening", "screening-degraded", id="repo-screening-degraded"),
     pytest.param("rubric_evaluation", "rubric", "rubric-default", id="repo-rubric"),
+    pytest.param("rubric_evaluation", "rubric", "rubric-degraded", id="repo-rubric-degraded"),
     pytest.param("aggregation", "aggregation", "aggregation-default", id="repo-aggregation"),
+    pytest.param("aggregation", "aggregation", "aggregation-degraded", id="repo-aggregation-degraded"),
 )
 
 
@@ -821,10 +875,11 @@ def test_file_prompt_runtime_resolves_repository_prompt_assets(
     stage_directory: str,
     prompt_id: str,
 ) -> None:
+    evaluation_mode = "degraded" if prompt_id.endswith("-degraded") else "full"
     resolved = FilePromptRuntime(prompts_root=REPO_PROMPTS_ROOT).resolve(
         stage=stage,
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        evaluation_mode=evaluation_mode,
         provider_id="provider-deepseek",
         model_id="deepseek-chat",
     )

@@ -390,31 +390,57 @@ def test_dashboard_and_history_summary_accept_valid_payload() -> None:
     assert history.meta.limit == 20
 
 
+def build_aggregated_rubric_result() -> AggregatedRubricResult:
+    return AggregatedRubricResult(
+        taskId="task_1",
+        schemaVersion="1.0.0",
+        promptVersion="prompt-v1",
+        rubricVersion="rubric-v1",
+        providerId="provider-local",
+        modelId="model-local",
+        axisScores={axis_id: 80 for axis_id in AxisId},
+        skeletonScores={dimension_id: 78 for dimension_id in SkeletonDimensionId},
+        topLevelScoresDraft={score_field: 76 for score_field in TopLevelScoreField},
+        strengthCandidates=["题材明确"],
+        weaknessCandidates=["冲突偏弱"],
+        platformCandidates=["女频平台 A"],
+        marketFitDraft="具备一定市场接受度",
+        editorVerdictDraft="可继续观察",
+        detailedAnalysisDraft=DetailedAnalysis(
+            plot="情节推进稳定",
+            character="角色动机明确",
+            pacing="节奏略慢",
+            worldBuilding="设定表达完整",
+        ),
+        supportingAxisMap={score_field: [AxisId.PLATFORM_FIT] for score_field in TopLevelScoreField},
+        supportingSkeletonMap={
+            score_field: [SkeletonDimensionId.MARKET_ATTRACTION] for score_field in TopLevelScoreField
+        },
+        riskTags=[FatalRisk.STALE_FORMULA],
+        overallConfidence=0.8,
+    )
+
+
+def test_aggregated_rubric_result_accepts_complete_valid_payload() -> None:
+    result = build_aggregated_rubric_result()
+
+    assert result.platformCandidates == ["女频平台 A"]
+    assert result.topLevelScoresDraft[TopLevelScoreField.SIGNING_PROBABILITY] == 76
+
+
 def test_aggregated_rubric_result_requires_full_fixed_maps() -> None:
+    payload = build_aggregated_rubric_result().model_dump(mode="json")
+    payload.update(
+        {
+            "axisScores": {AxisId.HOOK_RETENTION.value: 80},
+            "skeletonScores": {SkeletonDimensionId.MARKET_ATTRACTION.value: 80},
+            "topLevelScoresDraft": {TopLevelScoreField.SIGNING_PROBABILITY.value: 80},
+            "supportingAxisMap": {TopLevelScoreField.SIGNING_PROBABILITY.value: [AxisId.PLATFORM_FIT.value]},
+            "supportingSkeletonMap": {
+                TopLevelScoreField.SIGNING_PROBABILITY.value: [SkeletonDimensionId.MARKET_ATTRACTION.value]
+            },
+        }
+    )
+
     with pytest.raises(ValidationError):
-        AggregatedRubricResult(
-            taskId="task_1",
-            schemaVersion="1.0.0",
-            promptVersion="prompt-v1",
-            rubricVersion="rubric-v1",
-            providerId="provider-local",
-            modelId="model-local",
-            axisScores={AxisId.HOOK_RETENTION: 80},
-            skeletonScores={SkeletonDimensionId.MARKET_ATTRACTION: 80},
-            topLevelScoresDraft={TopLevelScoreField.SIGNING_PROBABILITY: 80},
-            strengthCandidates=["题材明确"],
-            weaknessCandidates=["冲突偏弱"],
-            platformCandidates=["女频平台 A"],
-            marketFitDraft="具备一定市场接受度",
-            editorVerdictDraft="可继续观察",
-            detailedAnalysisDraft=DetailedAnalysis(
-                plot="情节推进稳定",
-                character="角色动机明确",
-                pacing="节奏略慢",
-                worldBuilding="设定表达完整",
-            ),
-            supportingAxisMap={TopLevelScoreField.SIGNING_PROBABILITY: [AxisId.PLATFORM_FIT]},
-            supportingSkeletonMap={TopLevelScoreField.SIGNING_PROBABILITY: [SkeletonDimensionId.MARKET_ATTRACTION]},
-            riskTags=[FatalRisk.STALE_FORMULA],
-            overallConfidence=0.8,
-        )
+        AggregatedRubricResult.model_validate(payload)

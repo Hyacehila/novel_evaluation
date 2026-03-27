@@ -24,6 +24,12 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
+    files: ["scripts/**/*.cjs"],
+    rules: {
+      "@typescript-eslint/no-require-imports": "off",
+    },
+  },
+  {
     files: ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
     plugins: {
       "@next/next": nextPlugin,

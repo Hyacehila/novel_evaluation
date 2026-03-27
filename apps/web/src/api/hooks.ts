@@ -49,9 +49,9 @@ export function useTaskQuery(taskId: string) {
     refetchInterval(query) {
       const data = query.state.data;
       if (!data) {
-        return 5_000;
+        return 2_000;
       }
-      return isTaskActive(data.status) ? 5_000 : false;
+      return isTaskActive(data.status) ? 2_000 : false;
     },
   });
 }

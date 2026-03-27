@@ -16,9 +16,9 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
   return (
     <div className="page-frame space-y-8">
       <PageIntro
-        eyebrow="Result Detail"
-        title="结果页只在 `available` 状态下展示正式结果正文。"
-        description="阻断、未就绪和读取失败都会进入显式异常态，不会展示任何伪结果。"
+        eyebrow="结果详情页"
+        title="查看正式的结构化评价结果。"
+        description="当结果可用时，这里会展示签约概率、编辑结论、平台建议与详细分析；结果阻断或不可用时会明确提示原因。"
         actions={<Button asLink href={routes.task(taskId)} variant="secondary">返回任务页</Button>}
       />
 
@@ -31,7 +31,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
       {taskQuery.isError ? (
         <ErrorState
           title="任务读取失败"
-          description="结果页必须依赖任务状态来判断是否允许进入正式阅读路径。当前无法读取任务。"
+          description="结果详情页需要先确认任务状态。当前无法读取这个评测任务，请稍后重试。"
           action={<Button onClick={() => void taskQuery.refetch()}>重试任务读取</Button>}
         />
       ) : null}
@@ -40,10 +40,10 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
         <Card className="p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Waiting</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">结果尚未生成</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">任务尚未进入可读结果状态</h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-[var(--muted)]">
-                当前任务状态为 {getTaskStatusLabel(taskQuery.data.status)}。结果页不会展示 `not_available` 的中间态正文。
+                当前任务状态为 {getTaskStatusLabel(taskQuery.data.status)}。请回到任务页继续等待结果生成。
               </p>
             </div>
             <Badge tone="warn">{getTaskStatusLabel(taskQuery.data.status)}</Badge>
@@ -56,14 +56,14 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
 
       {taskQuery.data && taskQuery.data.status !== "queued" && taskQuery.data.status !== "processing" && resultQuery.isLoading ? (
         <Card className="p-8">
-          <p className="text-sm text-[var(--muted)]">正在读取正式结果资源…</p>
+          <p className="text-sm text-[var(--muted)]">正在读取结构化评价结果…</p>
         </Card>
       ) : null}
 
       {taskQuery.data && resultQuery.isError ? (
         <ErrorState
           title="结果读取失败"
-          description="这属于前端本地 `fetch_failed` 场景。任务本身可能已经完成，但当前请求没有拿到结果资源。"
+          description="任务可能已经完成，但当前没有成功读取到结果资源。你可以稍后重试读取。"
           action={<Button onClick={() => void resultQuery.refetch()}>重试结果读取</Button>}
         />
       ) : null}
@@ -72,7 +72,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
         <ErrorState
           title={resultQuery.data.state === "blocked" ? "结果已被阻断" : "结果当前不可用"}
           description={taskQuery.data.errorMessage ?? resultQuery.data.message ?? `当前结果状态为 ${getResultStatusLabel(resultQuery.data.resultStatus)}`}
-          action={<Button asLink href={routes.task(taskId)} variant="secondary">查看任务语义</Button>}
+          action={<Button asLink href={routes.task(taskId)} variant="secondary">查看任务状态</Button>}
         />
       ) : null}
 
@@ -81,7 +81,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
           <Card className="p-6 md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Formal Result</p>
+                <p className="text-xs tracking-[0.12em] text-[var(--muted)]">结构化评价结果</p>
                 <h2 className="section-title mt-3 text-3xl font-semibold">{taskQuery.data.title}</h2>
                 <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
                   结果生成时间：{formatDateTime(resultQuery.data.result.resultTime)}
@@ -100,7 +100,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
 
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Editorial Summary</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">编辑摘要</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">编辑结论与市场判断</h2>
               <div className="mt-5 space-y-5 text-sm leading-7">
                 <AnalysisCard title="编辑结论" content={resultQuery.data.result.editorVerdict} />
@@ -109,7 +109,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
             </Card>
 
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Runtime Metadata</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">版本与模型</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">版本与模型</h2>
               <dl className="mt-5 space-y-4 text-sm">
                 <MetadataRow label="schemaVersion" value={resultQuery.data.result.schemaVersion} />
@@ -123,7 +123,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
 
           <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Platform Recommendation</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">平台推荐</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">平台建议</h2>
               <div className="mt-5 space-y-4">
                 {resultQuery.data.result.platforms.map((platform) => (
@@ -139,7 +139,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
             </Card>
 
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Strengths / Weaknesses</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">优势与弱点</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">优势与弱点</h2>
               <div className="mt-5 grid gap-4 md:grid-cols-2">
                 <ListCard title="优势" tone="good" items={resultQuery.data.result.strengths} />
@@ -149,7 +149,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
           </div>
 
           <Card className="p-6">
-            <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Detailed Analysis</p>
+            <p className="text-xs tracking-[0.12em] text-[var(--muted)]">详细分析</p>
             <h2 className="section-title mt-3 text-2xl font-semibold">详细分析</h2>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
               <AnalysisCard title="剧情" content={resultQuery.data.result.detailedAnalysis.plot} />

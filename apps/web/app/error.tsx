@@ -20,10 +20,10 @@ export default function GlobalError({
   return (
     <div className="page-frame">
       <Card className="grain-card p-10">
-        <p className="text-sm uppercase tracking-[0.22em] text-[var(--bad)]">Unexpected</p>
-        <h1 className="section-title mt-3 text-3xl font-semibold">页面载入失败</h1>
+        <p className="text-sm tracking-[0.12em] text-[var(--bad)]">页面异常</p>
+        <h1 className="section-title mt-3 text-3xl font-semibold">页面加载失败</h1>
         <p className="mt-4 max-w-2xl text-sm text-[var(--muted)]">
-          当前页面出现未处理异常。可以重试当前视图，或返回工作台首页继续操作。
+          当前页面出现未处理异常。可以重试当前视图，或返回工作台首页继续查看评测任务。
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <Button onClick={reset}>重试当前页面</Button>

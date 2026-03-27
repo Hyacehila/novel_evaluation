@@ -5,6 +5,6 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 owner: prompt-governance
 updatedAt: 2026-03-26T00:00:00Z
-changeSummary: 建立 rubric 正式 prompt 资产骨架并绑定首个版本。
+changeSummary: 将 rubric prompt 重写为编辑签约视角的 8 轴结构化评价规范，强化商业逻辑、证据约束、负面模式识别与文学性/商业性区分。
 rollbackTarget: none
 evalRequirement: uv run --project apps/api pytest apps/api/tests -k repository_prompt_assets

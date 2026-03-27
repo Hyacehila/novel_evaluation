@@ -81,9 +81,9 @@ export function TaskCreatePage() {
   return (
     <div className="page-frame space-y-8">
       <PageIntro
-        eyebrow="New Task"
-        title="只保留两条正式提交路径：直接输入 JSON，或上传 TXT/MD/DOCX。"
-        description="当前前端不解析文件内容，也不发明新的 DTO。页面只围绕现有 `POST /api/tasks` 契约组装 `direct_input` 或 `file_upload` 两种请求。"
+        eyebrow="新建评测任务页"
+        title="提交正文与大纲，发起小说结构化评测。"
+        description="你可以直接粘贴正文和大纲，或上传稿件文件。系统会根据输入材料生成评测任务，并进入 LLM rubric 结构化评价流程。"
         actions={<Button asLink href={routes.dashboard} variant="secondary">返回工作台</Button>}
       />
 
@@ -133,7 +133,7 @@ export function TaskCreatePage() {
                   <span className="text-sm font-semibold">正文输入</span>
                   <textarea
                     className="mt-2 min-h-56 w-full rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 outline-none transition focus:border-[var(--accent)]"
-                    placeholder="粘贴章节正文。首期不会自动拆章，会按单章文本提交。"
+                    placeholder="粘贴需要评测的章节正文，系统会按当前输入生成评测任务。"
                     {...form.register("chaptersText")}
                   />
                 </label>
@@ -141,7 +141,7 @@ export function TaskCreatePage() {
                   <span className="text-sm font-semibold">大纲输入</span>
                   <textarea
                     className="mt-2 min-h-48 w-full rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 outline-none transition focus:border-[var(--accent)]"
-                    placeholder="粘贴大纲内容。单侧输入会自动进入 degraded 模式。"
+                    placeholder="粘贴大纲内容，帮助系统结合正文完成更完整的结构化评价。"
                     {...form.register("outlineText")}
                   />
                   {form.formState.errors.chaptersText ? (
@@ -167,7 +167,7 @@ export function TaskCreatePage() {
 
                 <label className="block rounded-[22px] border border-dashed border-[var(--line-strong)] bg-white/70 p-5">
                   <span className="text-sm font-semibold">大纲文件</span>
-                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">可单独上传大纲文件，后端负责解析正文内容。</p>
+                  <p className="mt-2 text-sm leading-6 text-[var(--muted)]">可单独上传大纲文件，帮助系统判断剧情走向与后续展开。</p>
                   <input
                     className="mt-4 block w-full text-sm"
                     type="file"
@@ -182,7 +182,7 @@ export function TaskCreatePage() {
             )}
 
             <div className="rounded-[24px] border border-[var(--line)] bg-[rgba(255,255,255,0.7)] p-5">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Submission Preview</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">提交预览</p>
               <div className="mt-4 flex flex-wrap gap-2">
                 <Badge tone={draft.inputComposition ? "good" : "neutral"}>
                   {draft.inputComposition ? getInputCompositionLabel(draft.inputComposition) : "待输入"}
@@ -191,7 +191,7 @@ export function TaskCreatePage() {
                   {draft.evaluationMode ? getEvaluationModeLabel(draft.evaluationMode) : "未确定模式"}
                 </Badge>
                 <Badge tone={mode === "file_upload" ? "neutral" : "good"}>
-                  {mode === "file_upload" ? "multipart/form-data" : "application/json"}
+                  {mode === "file_upload" ? "文件上传提交" : "直接输入提交"}
                 </Badge>
               </div>
               <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
@@ -201,7 +201,7 @@ export function TaskCreatePage() {
 
             <div className="flex flex-wrap gap-3">
               <Button type="submit" disabled={mutation.isPending}>
-                {mutation.isPending ? "正在创建任务…" : "创建任务"}
+                {mutation.isPending ? "正在创建评测任务…" : "创建评测任务"}
               </Button>
               <Button
                 type="button"
@@ -226,20 +226,20 @@ export function TaskCreatePage() {
 
         <div className="space-y-6">
           <Card className="p-6">
-            <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Frozen API</p>
-            <h2 className="section-title mt-3 text-2xl font-semibold">前端不扩路由</h2>
+            <p className="text-xs tracking-[0.12em] text-[var(--muted)]">提交流程</p>
+            <h2 className="section-title mt-3 text-2xl font-semibold">任务创建后会进入评测流程</h2>
             <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-              当前页面只会命中 `POST /api/tasks`。创建成功后跳转到任务详情页，由任务页轮询 `GET /api/tasks/{'{taskId}'}`。
+              创建成功后会进入任务详情页，你可以在其中查看评测进度、结果状态以及后续可读的结构化评价结果。
             </p>
           </Card>
           <Card className="p-6">
-            <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Validation</p>
-            <h2 className="section-title mt-3 text-2xl font-semibold">边界收口</h2>
+            <p className="text-xs tracking-[0.12em] text-[var(--muted)]">提交要求</p>
+            <h2 className="section-title mt-3 text-2xl font-semibold">提交前请确认输入材料完整</h2>
             <ul className="mt-4 space-y-3 text-sm leading-7 text-[var(--muted)]">
               <li>标题必填。</li>
               <li>正文和大纲至少存在一侧。</li>
               <li>文件上传只接受 TXT / MD / DOCX。</li>
-              <li>单侧输入允许提交，但会明确提示 degraded 模式。</li>
+              <li>单侧输入允许提交，但系统会进入降级评测模式。</li>
             </ul>
           </Card>
         </div>

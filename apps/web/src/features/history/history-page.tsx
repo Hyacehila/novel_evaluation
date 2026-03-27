@@ -1,7 +1,7 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 import type { TaskStatus } from "@/api/contracts";
 import { useHistoryQuery } from "@/api/hooks";
@@ -23,20 +23,28 @@ import { EmptyState, ErrorState, PageIntro } from "@/shared/ui/states";
 const taskStatuses: TaskStatus[] = ["queued", "processing", "completed", "failed"];
 
 export function HistoryPage() {
-  const router = useRouter();
   const searchParams = useSearchParams();
+  const skipDebouncedUrlSyncRef = useRef(false);
   const [draftQuery, setDraftQuery] = useState(searchParams.get("q") ?? "");
   const debouncedQuery = useDebouncedValue(draftQuery, 400);
+  const currentQuery = searchParams.get("q") ?? "";
   const status = normalizeTaskStatus(searchParams.get("status"));
   const cursor = searchParams.get("cursor") ?? undefined;
   const limit = normalizeLimit(searchParams.get("limit"));
 
   useEffect(() => {
-    setDraftQuery(searchParams.get("q") ?? "");
-  }, [searchParams]);
+    setDraftQuery(currentQuery);
+  }, [currentQuery]);
 
   useEffect(() => {
-    if (debouncedQuery === (searchParams.get("q") ?? "")) {
+    if (skipDebouncedUrlSyncRef.current) {
+      if (debouncedQuery === currentQuery) {
+        skipDebouncedUrlSyncRef.current = false;
+      }
+      return;
+    }
+
+    if (debouncedQuery === currentQuery) {
       return;
     }
     const next = new URLSearchParams(searchParams.toString());
@@ -47,11 +55,11 @@ export function HistoryPage() {
     }
     next.delete("cursor");
     const queryString = next.toString();
-    router.replace(queryString ? `${routes.history}?${queryString}` : routes.history);
-  }, [debouncedQuery, router, searchParams]);
+    window.history.replaceState(null, "", queryString ? `${routes.history}?${queryString}` : routes.history);
+  }, [currentQuery, debouncedQuery, searchParams]);
 
   const historyQuery = useHistoryQuery({
-    q: debouncedQuery || undefined,
+    q: currentQuery || undefined,
     status,
     cursor,
     limit,
@@ -61,16 +69,16 @@ export function HistoryPage() {
     const next = new URLSearchParams(searchParams.toString());
     updater(next);
     const queryString = next.toString();
-    router.push(queryString ? `${routes.history}?${queryString}` : routes.history);
+    window.history.pushState(null, "", queryString ? `${routes.history}?${queryString}` : routes.history);
   }
 
   return (
     <div className="page-frame space-y-8">
       <PageIntro
-        eyebrow="History"
-        title="历史记录严格按任务组织，并完整透出 q / status / cursor / limit。"
-        description="首期历史页不轮询，所有检索条件都写进 URL。结果入口只对 `available` 任务开放。"
-        actions={<Button asLink href={routes.newTask}>新建任务</Button>}
+        eyebrow="历史记录页"
+        title="按任务回访历史评测记录与结果状态。"
+        description="你可以按标题、状态和分页条件筛选历史任务，并继续查看可用的结构化评价结果。"
+        actions={<Button asLink href={routes.newTask}>新建评测任务</Button>}
       />
 
       <Card className="p-6">
@@ -137,8 +145,9 @@ export function HistoryPage() {
               type="button"
               variant="secondary"
               onClick={() => {
+                skipDebouncedUrlSyncRef.current = true;
                 setDraftQuery("");
-                router.push(routes.history);
+                window.history.pushState(null, "", routes.history);
               }}
             >
               清空筛选
@@ -156,7 +165,7 @@ export function HistoryPage() {
       {historyQuery.isError ? (
         <ErrorState
           title="历史记录读取失败"
-          description="当前无法读取 history 列表。可以保留筛选条件后稍后重试。"
+          description="当前无法读取历史任务列表。可以保留筛选条件后稍后重试。"
           action={<Button onClick={() => void historyQuery.refetch()}>重试读取</Button>}
         />
       ) : null}
@@ -165,11 +174,11 @@ export function HistoryPage() {
         <Card className="p-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">History List</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">历史评测记录</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">任务回访</h2>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Badge tone="neutral">limit={historyQuery.data.meta.limit}</Badge>
+              <Badge tone="neutral">每页 {historyQuery.data.meta.limit} 条</Badge>
               <Badge tone={cursor ? "warn" : "good"}>{cursor ? "已进入游标页" : "第一页"}</Badge>
             </div>
           </div>
@@ -198,10 +207,10 @@ export function HistoryPage() {
                   </div>
                   <div className="mt-5 flex flex-wrap gap-3">
                     <Button asLink href={routes.task(item.taskId)} variant="secondary">
-                      打开任务
+                      查看任务
                     </Button>
                     {item.resultAvailable ? (
-                      <Button asLink href={routes.result(item.taskId)}>打开结果</Button>
+                      <Button asLink href={routes.result(item.taskId)} prefetch={false}>查看结果</Button>
                     ) : null}
                   </div>
                 </article>
@@ -209,7 +218,7 @@ export function HistoryPage() {
             ) : (
               <EmptyState
                 title="没有匹配的历史任务"
-                description="当前筛选条件下没有返回任何任务。可以放宽关键字、切换状态，或返回第一页重新查看。"
+                description="当前筛选条件下没有匹配的评测任务。可以放宽关键字、切换状态，或返回第一页重新查看。"
               />
             )}
           </div>
@@ -219,7 +228,7 @@ export function HistoryPage() {
               type="button"
               variant="secondary"
               onClick={() => {
-                router.push(routes.history);
+                window.history.pushState(null, "", routes.history);
               }}
             >
               返回第一页

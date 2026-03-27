@@ -58,6 +58,7 @@
 - 默认回退到本地 deterministic adapter
 - 回退后 `providerId/modelId` 仍保持 `provider-deepseek/deepseek-chat`
 - 若 provider 输出不满足 contract，统一映射为 `failed + not_available`
+- 当 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1` 时，禁用 fallback，并在启动阶段直接暴露缺少 API Key 的配置错误
 
 ## 四、Worker 回滚与绕行
 

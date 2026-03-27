@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import logging
 from functools import lru_cache
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
@@ -9,6 +10,7 @@ from types import ModuleType
 
 from packages.application.ports.runtime_metadata import StaticPromptRuntime, StaticResolvedPrompt
 from packages.application.services.evaluation_service import EvaluationService
+from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import EvaluationMode, InputComposition
 
 from .sqlite_repository import SQLiteTaskRepository, resolve_db_path
@@ -40,6 +42,10 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
         ),
     }
 )
+
+logger = logging.getLogger(__name__)
+_REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
+_DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
 
 
 
@@ -131,8 +137,29 @@ def resolve_prompts_root(raw_path: str | None = None) -> Path:
 
 def get_provider_adapter():
     provider_adapters_module = _get_provider_adapters_module()
-    if os.getenv("NOVEL_EVAL_DEEPSEEK_API_KEY"):
-        return provider_adapters_module.DeepSeekProviderAdapter()
+    api_key = os.getenv(_DEEPSEEK_API_KEY_ENV)
+    if api_key:
+        log_event(
+            logger,
+            logging.INFO,
+            "provider_adapter_configured",
+            providerMode="deepseek_real",
+            providerId="provider-deepseek",
+            modelId="deepseek-chat",
+        )
+        return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key)
+    if os.getenv(_REQUIRE_REAL_PROVIDER_ENV) == "1":
+        raise RuntimeError(
+            f"{_REQUIRE_REAL_PROVIDER_ENV}=1 时必须设置 {_DEEPSEEK_API_KEY_ENV}。"
+        )
+    log_event(
+        logger,
+        logging.WARNING,
+        "provider_adapter_fallback",
+        reason="missing_deepseek_api_key",
+        providerId="provider-deepseek",
+        modelId="deepseek-chat",
+    )
     return provider_adapters_module.LocalDeterministicProviderAdapter(
         provider_id="provider-deepseek",
         model_id="deepseek-chat",

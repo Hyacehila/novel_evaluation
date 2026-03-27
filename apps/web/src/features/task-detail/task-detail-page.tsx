@@ -23,16 +23,16 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
   return (
     <div className="page-frame space-y-8">
       <PageIntro
-        eyebrow="Task Detail"
-        title="任务页只承载状态、输入摘要与错误语义，不展示伪结果。"
-        description="`queued/processing` 时持续轮询；进入终态后停止。只有 `completed + available` 才会给出结果入口。"
+        eyebrow="任务详情 / 状态页"
+        title="查看评测任务状态、输入摘要与结果入口。"
+        description="任务完成前会持续刷新状态；当结果可用时，你可以继续进入结果详情页查看正式的结构化评价内容。"
         actions={
           <>
             <Button asLink href={routes.history} variant="secondary">
               查看历史
             </Button>
             <Button asLink href={routes.newTask}>
-              新建任务
+              新建评测任务
             </Button>
           </>
         }
@@ -47,7 +47,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
       {taskQuery.isError ? (
         <ErrorState
           title="任务不存在或读取失败"
-          description="当前无法从 API 读取这个 taskId 对应的任务。请检查任务 ID 是否正确，或稍后重试。"
+          description="当前无法读取这个评测任务。请检查任务 ID 是否正确，或稍后重试。"
           action={<Button onClick={() => void taskQuery.refetch()}>重新读取</Button>}
         />
       ) : null}
@@ -57,7 +57,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
           <Card className="p-6 md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-5">
               <div>
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Task ID</p>
+                <p className="text-xs tracking-[0.12em] text-[var(--muted)]">任务 ID</p>
                 <h2 className="section-title mt-3 break-all text-2xl font-semibold">{taskQuery.data.taskId}</h2>
                 <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{taskQuery.data.inputSummary}</p>
               </div>
@@ -68,12 +68,12 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
               {taskQuery.data.resultAvailable ? (
-                <Button asLink href={routes.result(taskQuery.data.taskId)}>
-                  查看正式结果
+                <Button asLink href={routes.result(taskQuery.data.taskId)} prefetch={false}>
+                  查看结果详情
                 </Button>
               ) : null}
               <Button asLink href={routes.newTask} variant="secondary">
-                再建一个任务
+                再建一个评测任务
               </Button>
             </div>
           </Card>
@@ -94,7 +94,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
               },
               {
                 label: "轮询策略",
-                value: isTaskActive(taskQuery.data.status) ? "5 秒自动轮询" : "已停止轮询",
+                value: isTaskActive(taskQuery.data.status) ? "2 秒自动刷新任务状态" : "任务已结束，停止刷新",
                 tone: "muted",
               },
             ]}
@@ -102,7 +102,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
 
           <div className="grid gap-6 xl:grid-cols-[1fr_0.9fr]">
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Lifecycle</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">任务进度</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">任务生命周期</h2>
               <dl className="mt-6 space-y-4 text-sm">
                 <MetadataRow label="开始时间" value={taskQuery.data.startedAt} />
@@ -112,7 +112,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
             </Card>
 
             <Card className="p-6">
-              <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Runtime Metadata</p>
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">版本信息</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">运行元信息</h2>
               <dl className="mt-6 space-y-4 text-sm">
                 <MetadataRow label="schemaVersion" value={taskQuery.data.schemaVersion} raw />
@@ -127,7 +127,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
           {taskQuery.data.status === "completed" && taskQuery.data.resultStatus === "blocked" ? (
             <ErrorState
               title="任务已结束，但结果被业务阻断"
-              description={taskQuery.data.errorMessage ?? "当前输入未满足正式结果展示条件。"}
+              description={taskQuery.data.errorMessage ?? "当前输入未满足正式结果展示条件，因此不会展示结构化评价正文。"}
               action={
                 <Button asLink href={routes.newTask} variant="secondary">
                   修改输入后重试
@@ -139,7 +139,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
           {taskQuery.data.status === "failed" ? (
             <ErrorState
               title="任务执行失败"
-              description={taskQuery.data.errorMessage ?? "执行链路发生技术故障，当前结果不可用。"}
+              description={taskQuery.data.errorMessage ?? "评测流程出现技术故障，当前结果不可用。"}
               action={<Button asLink href={routes.newTask}>重新提交新任务</Button>}
             />
           ) : null}

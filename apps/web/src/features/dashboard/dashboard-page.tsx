@@ -23,9 +23,9 @@ export function DashboardPage() {
   return (
     <div className="page-frame space-y-8">
       <PageIntro
-        eyebrow="Dashboard"
-        title="从任务排队到结果沉淀，全部收在一个入口里。"
-        description="首页只负责摘要：最近任务、处理中任务和最近结果全部直接消费现有 API v0，不展示伪结果，也不改写后端状态语义。"
+        eyebrow="工作台首页"
+        title="集中查看评测任务进度与结构化评价结果。"
+        description="这里汇总最近任务、评测进度与结果摘要，帮助你快速回访小说智能打分系统中的核心信息。"
         actions={
           <>
             <Button asLink href={routes.newTask}>
@@ -40,14 +40,14 @@ export function DashboardPage() {
 
       {dashboardQuery.isLoading ? (
         <Card className="p-8">
-          <p className="text-sm text-[var(--muted)]">正在读取 dashboard 摘要…</p>
+          <p className="text-sm text-[var(--muted)]">正在读取工作台摘要…</p>
         </Card>
       ) : null}
 
       {dashboardQuery.isError ? (
         <ErrorState
-          title="首页摘要读取失败"
-          description="当前无法获取 dashboard 数据。后端 API 仍可单独访问任务和结果页，可以稍后重试。"
+          title="工作台摘要读取失败"
+          description="当前无法获取最近任务与结果摘要。你可以稍后重试，或直接进入任务页和结果页继续查看。"
           action={<Button onClick={() => void dashboardQuery.refetch()}>重试读取</Button>}
         />
       ) : null}
@@ -61,16 +61,16 @@ export function DashboardPage() {
                 value: `${dashboardQuery.data.recentTasks.length} 条`,
               },
               {
-                label: "处理中任务",
+                label: "评测中任务",
                 value: `${dashboardQuery.data.activeTasks.length} 条`,
               },
               {
-                label: "最近结果",
+                label: "最近结果摘要",
                 value: `${dashboardQuery.data.recentResults.length} 条`,
               },
               {
                 label: "轮询策略",
-                value: dashboardQuery.data.activeTasks.length > 0 ? "15 秒自动刷新" : "无活跃任务时停止",
+                value: dashboardQuery.data.activeTasks.length > 0 ? "15 秒自动刷新" : "当前无进行中的评测任务",
                 tone: "muted",
               },
             ]}
@@ -80,7 +80,7 @@ export function DashboardPage() {
             <Card className="p-6">
               <div className="flex items-center justify-between gap-4">
                 <div>
-                  <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Recent Tasks</p>
+                  <p className="text-xs tracking-[0.12em] text-[var(--muted)]">最近评测任务</p>
                   <h2 className="section-title mt-3 text-2xl font-semibold">最近任务</h2>
                 </div>
                 <Button asLink href={routes.history} variant="ghost">
@@ -113,8 +113,8 @@ export function DashboardPage() {
                   ))
                 ) : (
                   <EmptyState
-                    title="还没有任务"
-                    description="创建首个任务后，首页会在这里显示最近提交和运行状态。"
+                    title="还没有评测任务"
+                    description="创建首个评测任务后，这里会显示最近提交的任务与当前进度。"
                     action={
                       <Button asLink href={routes.newTask}>
                         立即创建
@@ -127,8 +127,8 @@ export function DashboardPage() {
 
             <div className="space-y-6">
               <Card className="p-6">
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Active Queue</p>
-                <h2 className="section-title mt-3 text-2xl font-semibold">处理中任务</h2>
+                <p className="text-xs tracking-[0.12em] text-[var(--muted)]">进行中的评测任务</p>
+                <h2 className="section-title mt-3 text-2xl font-semibold">评测中任务</h2>
                 <div className="mt-5 space-y-4">
                   {dashboardQuery.data.activeTasks.length > 0 ? (
                     dashboardQuery.data.activeTasks.map((task) => (
@@ -148,14 +148,14 @@ export function DashboardPage() {
                     ))
                   ) : (
                     <p className="text-sm leading-7 text-[var(--muted)]">
-                      当前没有 `queued/processing` 任务，dashboard 已停止主动轮询。
+                      当前没有进行中的评测任务，工作台会在有新任务时继续更新。
                     </p>
                   )}
                 </div>
               </Card>
 
               <Card className="p-6">
-                <p className="text-xs uppercase tracking-[0.22em] text-[var(--muted)]">Recent Results</p>
+                <p className="text-xs tracking-[0.12em] text-[var(--muted)]">最近结果摘要</p>
                 <h2 className="section-title mt-3 text-2xl font-semibold">最近结果</h2>
                 <div className="mt-5 space-y-4">
                   {dashboardQuery.data.recentResults.length > 0 ? (
@@ -163,6 +163,7 @@ export function DashboardPage() {
                       <Link
                         key={result.taskId}
                         href={routes.result(result.taskId)}
+                        prefetch={false}
                         className="block rounded-[22px] border border-[var(--line)] bg-white/60 p-4 transition hover:-translate-y-0.5"
                       >
                         <div className="flex items-center justify-between gap-4">
@@ -177,7 +178,7 @@ export function DashboardPage() {
                     ))
                   ) : (
                     <p className="text-sm leading-7 text-[var(--muted)]">
-                      目前还没有正式可展示的结果。只有 `available` 结果才会进入这个区块。
+                      当前还没有可展示的结构化评价结果。结果生成后会出现在这个区块。
                     </p>
                   )}
                 </div>

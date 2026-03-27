@@ -12,6 +12,12 @@
 
 ## 启动命令
 
+PowerShell 真实 DeepSeek 示例：
+
+```powershell
+$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
+```
+
 ### API
 
 `uv run --project apps/api uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000`
@@ -20,6 +26,7 @@
 
 - 若需自定义端口，改为读取 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
 - 默认 SQLite 将写入仓库根 `var/novel-evaluation.sqlite3`
+- 若需禁止 fallback，可额外设置 `$env:NOVEL_EVAL_REQUIRE_REAL_PROVIDER = "1"`
 
 ### web
 
@@ -92,3 +99,11 @@
 - `pnpm --dir apps/web lint`
 - `pnpm --dir apps/web test`
 - `pnpm --dir apps/web build`
+- 在已设置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 的会话中执行 `pnpm --dir apps/web test:e2e`
+
+## Playwright 全量真实 E2E
+
+- `pnpm --dir apps/web test:e2e` 现在固定跑真实 `DeepSeek API`
+- 脚本会自动给 API 子进程注入 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1`
+- 若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，E2E 会在启动阶段直接失败，而不是回退到 deterministic adapter
+- 若 E2E 失败，优先检查 `apps/web/.playwright/logs/api.log`

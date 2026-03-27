@@ -39,6 +39,8 @@ def build_request(
     messages: list[ProviderMessage] | None = None,
     provider_id: str = "provider-local",
     model_id: str = "model-local",
+    timeout_ms: int | None = 3000,
+    max_tokens: int | None = None,
     response_format: str | dict[str, object] | None | object = _USE_DEFAULT_RESPONSE_FORMAT,
 ) -> ProviderExecutionRequest:
     resolved_response_format = {"type": "json_object"} if response_format is _USE_DEFAULT_RESPONSE_FORMAT else response_format
@@ -55,7 +57,8 @@ def build_request(
         messages=messages if messages is not None else [ProviderMessage(role="user", content="请输出结构化分析")],
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         evaluationMode=EvaluationMode.FULL,
-        timeoutMs=3000,
+        timeoutMs=timeout_ms,
+        maxTokens=max_tokens,
         responseFormat=resolved_response_format,
     )
 
@@ -67,6 +70,7 @@ class FakeDeepSeekResponse:
         content: str = '{"score": 95}',
         request_id: str = "deepseek-request-001",
         parsed: object | None = None,
+        finish_reason: str | None = None,
     ) -> None:
         self.id = request_id
         self.choices = [
@@ -85,12 +89,23 @@ class FakeDeepSeekResponse:
                 },
             )()
         ]
+        setattr(self.choices[0], "finish_reason", finish_reason)
 
 
 class FakeDeepSeekClient:
-    def __init__(self, *, response: object | None = None, error: Exception | None = None) -> None:
-        self._response = response
-        self._error = error
+    def __init__(
+        self,
+        *,
+        response: object | None = None,
+        error: Exception | None = None,
+        outcomes: list[object] | None = None,
+    ) -> None:
+        if outcomes is not None:
+            self._outcomes = list(outcomes)
+        elif error is not None:
+            self._outcomes = [error]
+        else:
+            self._outcomes = [response]
         self.calls: list[dict[str, object]] = []
         self.options: list[dict[str, object]] = []
         self.chat = type(
@@ -111,9 +126,10 @@ class FakeDeepSeekClient:
 
     def _create(self, **kwargs: object) -> object:
         self.calls.append(kwargs)
-        if self._error is not None:
-            raise self._error
-        return self._response
+        outcome = self._outcomes.pop(0) if self._outcomes else None
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
 
 
 def test_provider_request_matches_phase_one_contract() -> None:
@@ -352,7 +368,7 @@ def test_deepseek_adapter_maps_failure_modes() -> None:
             None,
         ),
         (
-            None,
+            FakeDeepSeekResponse(content="[1, 2, 3]", request_id="deepseek-request-001"),
             ProviderFailureType.CONTRACT_INVALID,
             ErrorCode.CONTRACT_INVALID,
             False,
@@ -360,13 +376,11 @@ def test_deepseek_adapter_maps_failure_modes() -> None:
         ),
     ]
 
-    for error, failure_type, error_code, retryable, provider_request_id in cases:
-        if failure_type is ProviderFailureType.CONTRACT_INVALID:
-            fake_client = FakeDeepSeekClient(
-                response=FakeDeepSeekResponse(content="", request_id="deepseek-request-001", parsed={"invalid": object()}),
-            )
-        else:
-            fake_client = FakeDeepSeekClient(error=error)
+    for outcome, failure_type, error_code, retryable, provider_request_id in cases:
+        fake_client = FakeDeepSeekClient(
+            response=outcome if not isinstance(outcome, Exception) else None,
+            error=outcome if isinstance(outcome, Exception) else None,
+        )
         adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
 
         result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
@@ -508,6 +522,105 @@ def test_deepseek_adapter_omits_response_format_when_not_provided() -> None:
             "model": "deepseek-chat",
         }
     ]
+
+
+def test_deepseek_adapter_passes_timeout_and_max_tokens() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            timeout_ms=90_000,
+            max_tokens=1_500,
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert fake_client.options == [{"timeout": 90.0}]
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "max_tokens": 1500,
+            "model": "deepseek-chat",
+            "response_format": {"type": "json_object"},
+        }
+    ]
+
+
+def test_deepseek_adapter_retries_empty_json_content_once_and_succeeds() -> None:
+    fake_client = FakeDeepSeekClient(
+        outcomes=[
+            FakeDeepSeekResponse(content="", request_id="deepseek-request-001"),
+            FakeDeepSeekResponse(content='{"summary": "ok"}', request_id="deepseek-request-002"),
+        ]
+    )
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert result.providerRequestId == "deepseek-request-002"
+    assert len(fake_client.calls) == 2
+    assert fake_client.options == [{"timeout": 3.0}, {"timeout": 3.0}]
+
+
+def test_deepseek_adapter_retries_invalid_json_once_then_returns_provider_failure() -> None:
+    fake_client = FakeDeepSeekClient(
+        outcomes=[
+            FakeDeepSeekResponse(content='{"summary":', request_id="deepseek-request-001", finish_reason="length"),
+            FakeDeepSeekResponse(content='{"summary":', request_id="deepseek-request-002", finish_reason="length"),
+        ]
+    )
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.PROVIDER_FAILURE
+    assert result.retryable is True
+    assert result.providerRequestId == "deepseek-request-002"
+    assert "max_tokens" in result.message
+    assert len(fake_client.calls) == 2
+
+
+def test_deepseek_adapter_retries_non_json_once_then_returns_provider_failure() -> None:
+    fake_client = FakeDeepSeekClient(
+        outcomes=[
+            FakeDeepSeekResponse(content="not-json", request_id="deepseek-request-001"),
+            FakeDeepSeekResponse(content="still-not-json", request_id="deepseek-request-002"),
+        ]
+    )
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionFailure)
+    assert result.failureType is ProviderFailureType.PROVIDER_FAILURE
+    assert result.retryable is True
+    assert result.providerRequestId == "deepseek-request-002"
+    assert "合法 JSON" in result.message
+    assert len(fake_client.calls) == 2
 
 
 def test_deepseek_adapter_accepts_text_response_format_with_plain_text() -> None:

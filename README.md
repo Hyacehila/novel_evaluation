@@ -7,6 +7,7 @@
 - 后端基线：`Python 3.13 + uv + FastAPI + Pydantic`
 - 前端基线：`Next.js (App Router) + React + TypeScript + pnpm`
 - Provider：`DeepSeek API`，未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时回退本地 deterministic adapter
+- 严格真实 Provider 模式：设置 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1` 后，若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，API 启动直接失败
 - 评分编排：`PocketFlow` 只进入应用层编排模块
 - 本地状态存储：`SQLite`
 - 默认数据库路径：`./var/novel-evaluation.sqlite3`
@@ -56,8 +57,16 @@
 - web 安装：`pnpm --dir apps/web install`
 - API 启动：`uv run --project apps/api uvicorn src.api.app:app --reload --host 127.0.0.1 --port 8000`
 - web 启动：`pnpm --dir apps/web dev -- --port 3000`
+- Playwright E2E：在已设置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 的 PowerShell 会话中执行 `pnpm --dir apps/web test:e2e`
 - worker eval：`uv run --project apps/worker worker eval --suite smoke`
 - worker batch：`uv run --project apps/worker worker batch --source .\evals\datasets\scoring\smoke-available.json`
+
+PowerShell 示例：
+
+```powershell
+$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"
+pnpm --dir apps/web test:e2e
+```
 
 ## 关键文档
 
