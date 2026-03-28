@@ -9,7 +9,7 @@
 - `Pydantic`
 - `SQLite`
 - `DeepSeek API`
-- `PocketFlow`
+- `packages/application` 内的服务化评分流水线
 
 ## 运行模型
 
@@ -64,9 +64,10 @@
 - 当前唯一正式 Provider
 - 通过 provider adapter 暴露，不直接泄漏 SDK
 
-### `PocketFlow`
+### `packages/application.scoring_pipeline`
 
-- 只负责执行链编排
+- 负责正式评分主线编排
+- 由 `EvaluationService` 驱动执行
 - 不定义业务字段、状态枚举或 Prompt 真源
 
 ## 当前不采用

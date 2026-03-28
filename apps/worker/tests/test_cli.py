@@ -8,7 +8,7 @@ import pytest
 import worker  # noqa: F401
 from api.dependencies import ApiPromptRuntime
 from provider_adapters import LocalDeterministicProviderAdapter
-from worker.bootstrap import WorkerRuntimeContext, WorkerRuntimeMetadata
+from worker.bootstrap import WorkerRuntimeContext, WorkerRuntimeMetadata, bootstrap_worker_runtime
 from worker.cli import main
 
 
@@ -235,3 +235,20 @@ def test_batch_executes_source_and_writes_summary(
     captured = capsys.readouterr()
     assert "status=completed" in captured.out
     assert "total_count=2" in captured.out
+
+
+def test_bootstrap_worker_runtime_requires_startup_provider_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+
+    with pytest.raises(RuntimeError, match="NOVEL_EVAL_DEEPSEEK_API_KEY"):
+        bootstrap_worker_runtime(command_name="eval")
+
+
+def test_bootstrap_worker_runtime_uses_startup_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    context = bootstrap_worker_runtime(command_name="eval")
+
+    assert context.runtime_metadata.provider_id == "provider-deepseek"
+    assert context.runtime_metadata.model_id == "deepseek-chat"
+    assert hasattr(context.provider_adapter, "execute")

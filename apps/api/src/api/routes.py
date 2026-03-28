@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from ipaddress import ip_address
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, status
@@ -11,11 +12,15 @@ from starlette.formparsers import MultiPartException
 from packages.application.services.evaluation_service import EvaluationService
 from packages.schemas.common.enums import TaskStatus
 from packages.schemas.input.joint_submission import JointSubmissionRequest
+from packages.schemas.input.provider_configuration import RuntimeProviderKeyRequest
 from packages.schemas.output.envelope import SuccessEnvelope
 from packages.schemas.output.error import ErrorCode
+from packages.schemas.output.provider_status import ProviderStatus
 from packages.schemas.output.task import EvaluationTask
 
-from .dependencies import get_evaluation_service
+from packages.application.ports.runtime_metadata import ProviderRuntimePort
+
+from .dependencies import get_evaluation_service, get_provider_runtime_state
 from .errors import ApiError
 from .upload_parsing import build_upload_request, read_upload_text, resolve_upload_max_bytes
 
@@ -23,12 +28,50 @@ from .upload_parsing import build_upload_request, read_upload_text, resolve_uplo
 router = APIRouter(prefix="/api")
 
 
+@router.get("/provider-status")
+def get_provider_status(
+    provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
+) -> SuccessEnvelope[ProviderStatus]:
+    return SuccessEnvelope(data=provider_runtime.get_status())
+
+
+@router.post("/provider-status/runtime-key")
+def configure_runtime_provider_key(
+    request: Request,
+    payload: RuntimeProviderKeyRequest,
+    provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
+) -> SuccessEnvelope[ProviderStatus]:
+    if not _is_local_client(request):
+        raise ApiError(
+            status_code=403,
+            code=ErrorCode.FORBIDDEN,
+            message="仅允许本机访问该配置接口。",
+        )
+    try:
+        provider_status = provider_runtime.configure_runtime_key(payload.apiKey)
+    except RuntimeError as exc:
+        raise ApiError(
+            status_code=409,
+            code=ErrorCode.PROVIDER_CONFIGURATION_LOCKED,
+            message="当前 provider 已配置，不支持在 UI 中重新录入。",
+        ) from exc
+    return SuccessEnvelope(data=provider_status)
+
+
 @router.post("/tasks", status_code=status.HTTP_201_CREATED)
 async def create_task(
     request: Request,
     background_tasks: BackgroundTasks,
     service: EvaluationService = Depends(get_evaluation_service),
+    provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
 ) -> SuccessEnvelope[EvaluationTask]:
+    provider_status = provider_runtime.get_status()
+    if not provider_status.canAnalyze:
+        raise ApiError(
+            status_code=409,
+            code=ErrorCode.PROVIDER_NOT_CONFIGURED,
+            message="当前 provider 未配置，无法创建新的分析任务。",
+        )
     submission = await _parse_submission_request(request)
     task = service.create_task(submission)
     background_tasks.add_task(service.execute_task, task.taskId, submission)
@@ -142,3 +185,29 @@ def _get_optional_text(value: Any) -> str:
     if isinstance(value, str):
         return value
     raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法")
+
+
+
+def _is_local_client(request: Request) -> bool:
+    if _has_forwarding_headers(request):
+        return False
+    client = request.client
+    if client is None or not client.host:
+        return False
+    if client.host in {"localhost", "testclient"}:
+        return True
+    try:
+        return ip_address(client.host).is_loopback
+    except ValueError:
+        return False
+
+
+
+def _has_forwarding_headers(request: Request) -> bool:
+    forwarding_headers = (
+        "forwarded",
+        "x-forwarded-for",
+        "x-forwarded-host",
+        "x-real-ip",
+    )
+    return any(request.headers.get(header) for header in forwarding_headers)

@@ -32,7 +32,7 @@
 
 - `apps/api` 使用 `FastAPI` 提供接口入口，并以 `Pydantic` 承担请求响应 DTO 与边界校验
 - `packages/application` 负责组织创建任务、读取任务、执行评分主线等用例
-- `PocketFlow` 用于组织输入预检查、分点评价、一致性整理与聚合输出等多阶段执行链
+- `packages/application.scoring_pipeline` 负责组织输入预检查、分点评价、一致性整理与聚合输出等多阶段执行链
 - `packages/provider-adapters` 负责把正式模型调用收敛到统一接口，`Phase 1` 默认正式接入 `DeepSeek API`
 - `packages/schemas/` 是正式结果结构真源，运行时校验不得重新定义结构语义
 
@@ -91,7 +91,7 @@
 ### 聚合输出
 
 - 读取预检查结果、分点评价结果和一致性整理结果
-- 通过 `PocketFlow` 组织聚合节点执行，但不让框架重定义业务字段
+- 通过 `ScoringPipeline` 组织聚合阶段执行，但不让编排层重定义业务字段
 - 先汇总到旧四维骨架层，再投影为顶层分数、强弱项、平台建议、市场判断和编辑结论
 - 保持顶层字段之间的逻辑关系稳定
 

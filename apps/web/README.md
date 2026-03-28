@@ -17,15 +17,17 @@
 
 - 采集标题、正文、大纲或上传文件
 - 调用固定 API 路由创建任务
+- 在 API 启动期缺少 key 时录入一次性 runtime key
 - 轮询任务状态
 - 只在 `available` 时展示正式结果
 - 支持 `q/status/cursor/limit` 的历史回访
-- `test:e2e` 固定要求真实 `DeepSeek API`，缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时直接失败
+- `test:e2e` 固定要求真实 `DeepSeek API`，覆盖 `startup_key` 与 `runtime_key` 两种 provider 配置路径
 
 ## 不负责
 
 - 持有正式 Prompt
 - 直连 Provider
+- 替换或清空启动期环境变量提供的 key
 - 解析上传文件正文
 - 在 `blocked / not_available / fetch_failed` 时展示伪结果
 
@@ -34,4 +36,4 @@
 - 安装：`pnpm --dir apps/web install`
 - 开发：`pnpm --dir apps/web dev -- --port 3000`
 - 校验：`pnpm --dir apps/web lint && pnpm --dir apps/web test && pnpm --dir apps/web build`
-- E2E：在 PowerShell 中先执行 `$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"`，再运行 `pnpm --dir apps/web test:e2e`
+- E2E：在 PowerShell 中先执行 `$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"`，再运行 `pnpm --dir apps/web test:e2e`；默认覆盖启动期 key 场景，如需验证页面补录可切到 `runtime_key` 模式

@@ -8,15 +8,15 @@
 - Web API 框架：`FastAPI`
 - 边界 DTO 与运行时校验：`Pydantic`
 - 状态持久化：`SQLite`
-- Provider 行为：有 `DeepSeek API Key` 时走真实 Provider，缺失时回退本地 deterministic adapter
-- 用户任务执行：由 API 进程内完成创建、推进、恢复和结果读取
+- Provider 行为：有 `DeepSeek API Key` 时走真实 Provider；缺失时 API 仍可只读启动，但不能创建新分析任务
+- 用户任务执行：由 API 进程内完成创建、推进、恢复和结果读取；若通过前端录入一次性 runtime key，则仅在当前 API 进程内生效
 
 ## 职责
 
 - 接收并校验外部请求
 - 调用应用层能力完成任务创建、任务读取与结果读取
 - 在进程内推进用户任务并在启动时恢复未完成任务
-- 对前端提供稳定接口与错误语义
+- 对前端提供稳定接口、provider 状态与错误语义
 - 返回统一 envelope 与正式结构化结果
 
 ## 设计原则

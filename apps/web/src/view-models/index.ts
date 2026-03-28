@@ -4,6 +4,7 @@ import type {
   EvaluationMode,
   InputComposition,
   PlatformRecommendationDto,
+  ProviderConfigurationSource,
   ResultStatus,
   TaskStatus,
 } from "@/api/contracts";
@@ -93,4 +94,16 @@ export interface HistoryListView {
     nextCursor: string | null;
     limit: number;
   };
+}
+
+export interface ProviderStatusView {
+  providerId: string;
+  modelId: string;
+  configured: boolean;
+  configurationSource: ProviderConfigurationSource;
+  canAnalyze: boolean;
+  canConfigureFromUi: boolean;
+  statusLabel: string;
+  sourceLabel: string;
+  blockingMessage: string | null;
 }

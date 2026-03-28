@@ -1,17 +1,24 @@
 from __future__ import annotations
 
+import logging
 import os
 import sys
-import logging
+import threading
 from functools import lru_cache
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from types import ModuleType
 
-from packages.application.ports.runtime_metadata import StaticPromptRuntime, StaticResolvedPrompt
+from packages.application.ports.runtime_metadata import (
+    ProviderExecutionPort,
+    ProviderRuntimeExecutionPort,
+    StaticPromptRuntime,
+    StaticResolvedPrompt,
+)
 from packages.application.services.evaluation_service import EvaluationService
 from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import EvaluationMode, InputComposition
+from packages.schemas.output.provider_status import ProviderConfigurationSource, ProviderStatus
 
 from .sqlite_repository import SQLiteTaskRepository, resolve_db_path
 
@@ -46,6 +53,8 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
 logger = logging.getLogger(__name__)
 _REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
 _DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
+_PROVIDER_ID = "provider-deepseek"
+_MODEL_ID = "deepseek-chat"
 
 
 
@@ -112,7 +121,7 @@ class ApiPromptRuntime:
                 model_id=model_id,
             )
         except Exception:
-            if provider_id == "provider-deepseek" and model_id == "deepseek-chat":
+            if provider_id == _PROVIDER_ID and model_id == _MODEL_ID:
                 raise
             return self._fallback_runtime.resolve(
                 stage=stage,
@@ -123,10 +132,102 @@ class ApiPromptRuntime:
             )
 
 
+class ApiProviderRuntimeState:
+    provider_id = _PROVIDER_ID
+    model_id = _MODEL_ID
+
+    def __init__(self) -> None:
+        self._runtime_api_key: str | None = None
+        self._lock = threading.RLock()
+        self._warn_if_require_real_provider_is_deprecated()
+
+    def get_status(self) -> ProviderStatus:
+        _, configuration_source = self._resolve_api_key()
+        configured = configuration_source is not ProviderConfigurationSource.MISSING
+        return ProviderStatus(
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configured=configured,
+            configurationSource=configuration_source,
+            canAnalyze=configured,
+            canConfigureFromUi=configuration_source is ProviderConfigurationSource.MISSING,
+        )
+
+    def configure_runtime_key(self, api_key: str) -> ProviderStatus:
+        normalized_key = api_key.strip()
+        if not normalized_key:
+            raise ValueError("apiKey 不能为空。")
+        with self._lock:
+            startup_key = self._read_startup_api_key()
+            if startup_key is not None or self._runtime_api_key is not None:
+                raise RuntimeError("provider 配置已锁定。")
+            self._runtime_api_key = normalized_key
+        log_event(
+            logger,
+            logging.INFO,
+            "provider_runtime_key_configured",
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configurationSource=ProviderConfigurationSource.RUNTIME_MEMORY.value,
+        )
+        return self.get_status()
+
+    def require_configured_adapter(self) -> ProviderExecutionPort:
+        api_key, configuration_source = self._resolve_api_key()
+        if api_key is None:
+            raise RuntimeError(f"{_DEEPSEEK_API_KEY_ENV} 未配置，当前不可执行分析。")
+        log_event(
+            logger,
+            logging.INFO,
+            "provider_adapter_configured",
+            providerMode="deepseek_real",
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configurationSource=configuration_source.value,
+        )
+        return build_configured_provider_adapter(api_key=api_key)
+
+    def execute(self, request) -> object:
+        return self.require_configured_adapter().execute(request)
+
+    def _resolve_api_key(self) -> tuple[str | None, ProviderConfigurationSource]:
+        startup_key = self._read_startup_api_key()
+        if startup_key is not None:
+            return startup_key, ProviderConfigurationSource.STARTUP_ENV
+        with self._lock:
+            if self._runtime_api_key is not None:
+                return self._runtime_api_key, ProviderConfigurationSource.RUNTIME_MEMORY
+        return None, ProviderConfigurationSource.MISSING
+
+    def _read_startup_api_key(self) -> str | None:
+        raw_value = os.getenv(_DEEPSEEK_API_KEY_ENV)
+        if raw_value is None:
+            return None
+        normalized = raw_value.strip()
+        return normalized or None
+
+    def _warn_if_require_real_provider_is_deprecated(self) -> None:
+        if os.getenv(_REQUIRE_REAL_PROVIDER_ENV) != "1":
+            return
+        log_event(
+            logger,
+            logging.WARNING,
+            "require_real_provider_deprecated",
+            environmentVariable=_REQUIRE_REAL_PROVIDER_ENV,
+            message="API 已忽略 NOVEL_EVAL_REQUIRE_REAL_PROVIDER；缺少 key 时允许只读启动。",
+        )
+
+
 @lru_cache(maxsize=1)
 def get_task_repository() -> SQLiteTaskRepository:
     db_path = resolve_db_path(os.getenv("NOVEL_EVAL_DB_PATH"))
     return SQLiteTaskRepository(db_path=db_path)
+
+
+@lru_cache(maxsize=1)
+def get_provider_runtime_state() -> ApiProviderRuntimeState:
+    return ApiProviderRuntimeState()
+
 
 
 def resolve_prompts_root(raw_path: str | None = None) -> Path:
@@ -135,36 +236,23 @@ def resolve_prompts_root(raw_path: str | None = None) -> Path:
     return Path(raw_path).expanduser().resolve()
 
 
-def get_provider_adapter():
+
+def build_configured_provider_adapter(*, api_key: str) -> ProviderExecutionPort:
     provider_adapters_module = _get_provider_adapters_module()
+    return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key)
+
+
+
+def get_startup_provider_adapter() -> ProviderExecutionPort:
     api_key = os.getenv(_DEEPSEEK_API_KEY_ENV)
-    if api_key:
-        log_event(
-            logger,
-            logging.INFO,
-            "provider_adapter_configured",
-            providerMode="deepseek_real",
-            providerId="provider-deepseek",
-            modelId="deepseek-chat",
-        )
-        return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key)
-    if os.getenv(_REQUIRE_REAL_PROVIDER_ENV) == "1":
-        raise RuntimeError(
-            f"{_REQUIRE_REAL_PROVIDER_ENV}=1 时必须设置 {_DEEPSEEK_API_KEY_ENV}。"
-        )
-    log_event(
-        logger,
-        logging.WARNING,
-        "provider_adapter_fallback",
-        reason="missing_deepseek_api_key",
-        providerId="provider-deepseek",
-        modelId="deepseek-chat",
-    )
-    return provider_adapters_module.LocalDeterministicProviderAdapter(
-        provider_id="provider-deepseek",
-        model_id="deepseek-chat",
-        structured_stage_outputs=True,
-    )
+    if api_key is None or not api_key.strip():
+        raise RuntimeError(f"worker 启动前必须设置 {_DEEPSEEK_API_KEY_ENV}。")
+    return build_configured_provider_adapter(api_key=api_key.strip())
+
+
+
+def get_provider_adapter() -> ProviderRuntimeExecutionPort:
+    return get_provider_runtime_state()
 
 
 @lru_cache(maxsize=1)

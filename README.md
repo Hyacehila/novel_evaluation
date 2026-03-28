@@ -9,7 +9,7 @@
 - 官方支持口径：`Windows + PowerShell` 本地部署
 - 运行形态：`apps/api` 进程内执行用户任务，`apps/web` 提供界面，`apps/worker` 只负责 `eval / batch`
 - 默认存储：`SQLite`，数据写入 `./var/novel-evaluation.sqlite3`
-- 默认 Provider：未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时自动回退本地 deterministic adapter，方便零成本体验
+- Provider 启动语义：API 缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时仍可只读启动，可查看已有数据，但不能创建新分析任务；worker 启动仍要求该 Key
 - 当前上传格式：`TXT / MD / DOCX`
 
 ## 非目标
@@ -33,7 +33,7 @@
 - `http://127.0.0.1:3000/`
 - `http://127.0.0.1:3000/tasks/new`
 
-第一次体验不需要 API Key。直接提交一份正文和大纲即可完成本地 smoke，结果会由 deterministic fallback 生成，用来验证安装、页面流程和本地持久化是否正常。
+第一次体验可以不配置 API Key 启动 API 和 Web，用来验证安装、页面流程、历史读取和本地持久化是否正常。但缺少 Key 时只能查看已有数据，不能创建新的分析任务。若需在前端直接补录一次性 runtime key，可在新建任务页录入；该 key 仅在当前 API 进程内有效，重启或热重载后失效。
 
 如果你想改端口、数据库路径或日志目录，先复制一份配置模板：
 
@@ -51,11 +51,7 @@ Copy-Item .env.example .env
 2. 填入 `NOVEL_EVAL_DEEPSEEK_API_KEY`
 3. 重新启动 `.\scripts\run-api.ps1`
 
-当你希望缺少 Key 时直接启动失败，而不是回退本地 adapter，可以额外设置：
-
-```dotenv
-NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1
-```
+如果 API 在启动时已经通过环境变量带上 `NOVEL_EVAL_DEEPSEEK_API_KEY`，UI 只展示当前已配置状态，不支持在页面里替换或清空该 Key。
 
 详细说明见 [真实 Provider 配置](docs/getting-started/real-provider.md)。
 
@@ -83,7 +79,9 @@ NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1
 
 ## FAQ / Troubleshooting
 
-- 想先验证项目能不能跑起来：直接用 fallback，不需要配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+- 想先验证项目能不能跑起来：可以不配 `NOVEL_EVAL_DEEPSEEK_API_KEY` 启动 API，但此时只能查看已有任务、结果与历史，不能创建新分析任务
+- 想从前端临时补录真实 Key：在新建任务页录入一次性 runtime key；它只保存在当前 API 进程内，重启或热重载后失效
+- 启动时已经配置了 `NOVEL_EVAL_DEEPSEEK_API_KEY`：UI 只展示状态，不支持替换或清空
 - 页面访问不到 API：确认 `.\scripts\run-api.ps1` 正在运行，并检查 `.env` 里的 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
 - 想清空本地数据：关闭 API 后删除 `./var/novel-evaluation.sqlite3`
 - 想跑真实 Playwright E2E：先配置真实 `DeepSeek` Key，再执行 `pnpm --dir apps/web test:e2e`

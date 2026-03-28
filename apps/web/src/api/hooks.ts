@@ -7,10 +7,12 @@ import {
 } from "@tanstack/react-query";
 
 import {
+  configureRuntimeProviderKey,
   createTaskJson,
   createTaskUpload,
   fetchDashboard,
   fetchHistory,
+  fetchProviderStatus,
   fetchTask,
   fetchTaskResult,
   type HistoryQueryParams,
@@ -21,6 +23,7 @@ import { isTaskActive } from "@/shared/lib/format";
 
 const queryKeys = {
   dashboard: ["dashboard-summary"] as const,
+  providerStatus: ["provider-status"] as const,
   task: (taskId: string) => ["task-detail", taskId] as const,
   result: (taskId: string) => ["task-result", taskId] as const,
   history: (params: HistoryQueryParams) =>
@@ -39,6 +42,13 @@ export function useDashboardQuery() {
       }
       return data.activeTasks.some((task) => isTaskActive(task.status)) ? 15_000 : false;
     },
+  });
+}
+
+export function useProviderStatusQuery() {
+  return useQuery({
+    queryKey: queryKeys.providerStatus,
+    queryFn: fetchProviderStatus,
   });
 }
 
@@ -85,6 +95,20 @@ export function useCreateTaskMutation() {
       void queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
       void queryClient.invalidateQueries({ queryKey: queryKeys.historyPrefix });
       void queryClient.setQueryData(queryKeys.task(task.taskId), task);
+    },
+  });
+}
+
+export function useConfigureRuntimeProviderKeyMutation() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: configureRuntimeProviderKey,
+    async onSuccess(providerStatus) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.providerStatus });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.dashboard });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.historyPrefix });
+      queryClient.setQueryData(queryKeys.providerStatus, providerStatus);
     },
   });
 }

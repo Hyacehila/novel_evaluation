@@ -9,7 +9,7 @@
 - `packages/schemas/`、`packages/application/`、`packages/provider-adapters/`、`packages/prompt-runtime/`、`apps/api/`、`apps/worker/`、`evals/`、`apps/web/` 都已进入真实实现态
 - 正式主链固定为五段：`input_screening -> rubric_evaluation -> consistency_check -> aggregation -> final_projection`
 - 用户任务真源固定为 SQLite；回归与批处理产物真源固定为 `evals/reports/*.json` 与 `evals/baselines/*.json`
-- 未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时，系统回退到本地 deterministic adapter，而不是停机
+- 未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时，API 允许只读启动，而不是停机；worker 仍要求启动期 key
 
 ## 总原则
 
@@ -45,7 +45,7 @@
 - 同步回退 `docs/contracts/canonical-schema-index.md`
 - 重新跑 API、worker、web 全部门禁
 
-## 三、Provider Fallback
+## 三、Provider 配置与只读降级
 
 适用场景：
 
@@ -55,10 +55,13 @@
 
 当前策略：
 
-- 默认回退到本地 deterministic adapter
-- 回退后 `providerId/modelId` 仍保持 `provider-deepseek/deepseek-chat`
+- API 缺少启动期 key 时允许只读启动，保留 dashboard/history/既有任务与结果读取能力
+- API 缺少 key 时，新分析任务创建统一被拒绝，需先配置启动期 key，或由前端录入一次性 runtime key
+- runtime key 仅保存在当前 API 进程内，重启或热重载后失效
+- 若 API 启动时已配置环境变量 key，UI 只展示状态，不支持替换或清空
+- worker 不支持 runtime key，启动前必须设置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+- `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` 已弃用，不再控制 API 启动成功
 - 若 provider 输出不满足 contract，统一映射为 `failed + not_available`
-- 当 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1` 时，禁用 fallback，并在启动阶段直接暴露缺少 API Key 的配置错误
 
 ## 四、Worker 回滚与绕行
 

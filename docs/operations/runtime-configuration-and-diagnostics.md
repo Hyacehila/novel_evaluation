@@ -8,8 +8,8 @@
 
 | 变量 | 作用 | 默认值 | 当前实现说明 |
 | --- | --- | --- | --- |
-| `NOVEL_EVAL_DEEPSEEK_API_KEY` | DeepSeek API Key | 空 | 为空时回退本地 deterministic adapter，但 `providerId/modelId` 仍保持 `provider-deepseek/deepseek-chat` |
-| `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` | 强制真实 Provider 模式 | 空 | 为 `1` 时禁止 fallback；若缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，API 启动直接失败 |
+| `NOVEL_EVAL_DEEPSEEK_API_KEY` | DeepSeek API Key | 空 | API 留空时允许只读启动，可查看已有任务/结果/history，但不能创建新分析任务；worker 留空时启动报错 |
+| `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` | 已弃用的旧变量 | 空 | API 已忽略该变量；即使设为 `1`，缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时也只会只读启动，不再控制 API 启动成功 |
 | `NOVEL_EVAL_DB_PATH` | SQLite 文件路径 | `./var/novel-evaluation.sqlite3` | 空值时落到仓库根 `var/novel-evaluation.sqlite3` |
 | `NOVEL_EVAL_PROMPTS_DIR` | Prompt 资产根目录 | `./prompts` | 空值时落到仓库根 `prompts/` |
 | `NOVEL_EVAL_LOG_LEVEL` | 日志级别 | `INFO` | 为空时按 `INFO`；非法值会在启动期报错 |
@@ -25,7 +25,9 @@
 - 未列入此表的配置不属于交付必需项
 - README、启动命令和应用实现必须使用同一组变量名
 - `apps/web` 不直接暴露新的后端地址变量，而是通过同源 `/api` 代理复用 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
-- `apps/web test:e2e` 的 API 子进程会自动注入 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER=1`，因此 E2E 固定要求真实 DeepSeek
+- 当 API 启动时缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY`，前端可向本地 API 录入一次性 runtime key；该 key 仅保存在当前 API 进程内，重启或热重载后失效
+- 若 API 已在启动期通过环境变量配置 key，前端只展示状态，不支持替换或清空
+- `apps/web test:e2e` 固定要求真实 DeepSeek；`startup_key` 模式要求 API 子进程启动时即带 key，`runtime_key` 模式则通过 UI 补录一次性 key
 
 ## 最小诊断字段
 

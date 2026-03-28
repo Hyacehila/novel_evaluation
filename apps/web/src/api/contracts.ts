@@ -2,6 +2,7 @@ export type TaskStatus = "queued" | "processing" | "completed" | "failed";
 export type ResultStatus = "available" | "not_available" | "blocked";
 export type InputComposition = "chapters_outline" | "chapters_only" | "outline_only";
 export type EvaluationMode = "full" | "degraded";
+export type ProviderConfigurationSource = "missing" | "startup_env" | "runtime_memory";
 export type ErrorCode = string;
 
 export interface MetaDataDto {
@@ -44,6 +45,19 @@ export interface CreateTaskJsonPayload {
   chapters?: ManuscriptChapterPayload[];
   outline?: ManuscriptOutlinePayload;
   sourceType: "direct_input";
+}
+
+export interface ConfigureRuntimeKeyPayload {
+  apiKey: string;
+}
+
+export interface ProviderStatusDto {
+  providerId: string;
+  modelId: string;
+  configured: boolean;
+  configurationSource: ProviderConfigurationSource;
+  canAnalyze: boolean;
+  canConfigureFromUi: boolean;
 }
 
 export interface EvaluationTaskDto {

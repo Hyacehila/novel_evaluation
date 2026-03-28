@@ -7,12 +7,13 @@ import pytest
 from docx import Document
 from fastapi.testclient import TestClient
 
+from api import dependencies as api_dependencies
 from api.app import create_app
 from api.dependencies import (
     PRIMARY_PROMPT_RUNTIME_SCOPES,
     ApiPromptRuntime,
     get_evaluation_service,
-    get_provider_adapter,
+    get_provider_runtime_state,
     get_task_repository,
 )
 from packages.schemas.common.enums import EvaluationMode, InputComposition, ResultStatus, TaskStatus
@@ -20,10 +21,26 @@ from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
 
 
-def create_client() -> TestClient:
+@pytest.fixture(autouse=True)
+def configure_fake_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: api_dependencies._get_provider_adapters_module().LocalDeterministicProviderAdapter(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            structured_stage_outputs=True,
+        ),
+    )
+
+
+
+def create_client(*, client: tuple[str, int] = ("testclient", 50000)) -> TestClient:
     get_evaluation_service.cache_clear()
     get_task_repository.cache_clear()
-    return TestClient(create_app())
+    get_provider_runtime_state.cache_clear()
+    return TestClient(create_app(), client=client)
 
 
 def make_docx_bytes(paragraphs: list[str]) -> bytes:
@@ -311,40 +328,182 @@ def test_get_result_returns_available_after_in_process_execution() -> None:
     assert payload["data"]["result"] is not None
 
 
-def test_get_provider_adapter_returns_real_deepseek_when_required(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", "1")
-    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+def test_get_provider_status_returns_startup_env_state() -> None:
+    client = create_client()
 
-    adapter = get_provider_adapter()
+    response = client.get("/api/provider-status")
 
-    assert adapter.__class__.__name__ == "DeepSeekProviderAdapter"
-    assert adapter.provider_id == "provider-deepseek"
-    assert adapter.model_id == "deepseek-chat"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"] == {
+        "providerId": "provider-deepseek",
+        "modelId": "deepseek-chat",
+        "configured": True,
+        "configurationSource": "startup_env",
+        "canAnalyze": True,
+        "canConfigureFromUi": False,
+    }
 
 
-def test_get_provider_adapter_keeps_fallback_when_real_provider_not_required(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", raising=False)
+def test_get_provider_status_returns_missing_state_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
 
-    adapter = get_provider_adapter()
+    response = client.get("/api/provider-status")
 
-    assert adapter.__class__.__name__ == "LocalDeterministicProviderAdapter"
-    assert adapter.provider_id == "provider-deepseek"
-    assert adapter.model_id == "deepseek-chat"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"] == {
+        "providerId": "provider-deepseek",
+        "modelId": "deepseek-chat",
+        "configured": False,
+        "configurationSource": "missing",
+        "canAnalyze": False,
+        "canConfigureFromUi": True,
+    }
 
 
-def test_api_startup_fails_when_real_provider_required_without_api_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_runtime_key_configuration_enables_analysis(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+
+    configure_response = client.post("/api/provider-status/runtime-key", json={"apiKey": "runtime-key"})
+
+    assert configure_response.status_code == 200
+    status_response = client.get("/api/provider-status")
+    assert status_response.status_code == 200
+    assert status_response.json()["data"] == {
+        "providerId": "provider-deepseek",
+        "modelId": "deepseek-chat",
+        "configured": True,
+        "configurationSource": "runtime_memory",
+        "canAnalyze": True,
+        "canConfigureFromUi": False,
+    }
+
+
+def test_runtime_key_configuration_rejects_blank_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+
+    response = client.post("/api/provider-status/runtime-key", json={"apiKey": "   "})
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_runtime_key_configuration_rejects_oversized_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+
+    response = client.post("/api/provider-status/runtime-key", json={"apiKey": "k" * 4097})
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_runtime_key_configuration_is_locked_when_startup_key_exists() -> None:
+    client = create_client()
+
+    response = client.post("/api/provider-status/runtime-key", json={"apiKey": "other-key"})
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "PROVIDER_CONFIGURATION_LOCKED"
+
+
+def test_runtime_key_configuration_rejects_non_local_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client(client=("203.0.113.10", 50000))
+
+    response = client.post("/api/provider-status/runtime-key", json={"apiKey": "runtime-key"})
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "FORBIDDEN"
+
+
+def test_runtime_key_configuration_rejects_forwarded_local_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client(client=("127.0.0.1", 50000))
+
+    response = client.post(
+        "/api/provider-status/runtime-key",
+        json={"apiKey": "runtime-key"},
+        headers={"x-forwarded-for": "203.0.113.10"},
+    )
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "FORBIDDEN"
+
+
+def test_api_starts_without_provider_key_and_keeps_read_only_queries(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", "1")
     monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
-    get_evaluation_service.cache_clear()
+    client = create_client()
 
-    with pytest.raises(RuntimeError, match="NOVEL_EVAL_DEEPSEEK_API_KEY"):
-        with TestClient(create_app()):
-            pass
+    dashboard = client.get("/api/dashboard")
+    history = client.get("/api/history")
+
+    assert dashboard.status_code == 200
+    assert dashboard.json()["success"] is True
+    assert history.status_code == 200
+    assert history.json()["success"] is True
+
+
+def test_post_tasks_rejects_when_provider_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+
+    response = client.post(
+        "/api/tasks",
+        json={
+            "title": "测试稿件",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    )
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "PROVIDER_NOT_CONFIGURED"
+    assert get_task_repository().list_tasks() == []
+
+
+def test_post_tasks_allows_creation_after_runtime_key_configuration(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+    configure_response = client.post("/api/provider-status/runtime-key", json={"apiKey": "runtime-key"})
+
+    assert configure_response.status_code == 200
+
+    response = client.post(
+        "/api/tasks",
+        json={
+            "title": "测试稿件",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["providerId"] == "provider-deepseek"
+    assert payload["data"]["modelId"] == "deepseek-chat"
 
 
 def test_post_tasks_keeps_degraded_input_semantics() -> None:

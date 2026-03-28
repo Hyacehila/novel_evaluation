@@ -3,7 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from api.dependencies import ApiPromptRuntime, get_provider_adapter, resolve_prompts_root
+from api.dependencies import ApiPromptRuntime, get_startup_provider_adapter, resolve_prompts_root
+from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.support.process_logging import configure_process_logging
 from packages.schemas.common.enums import EvaluationMode, InputComposition
 
@@ -24,7 +25,7 @@ class WorkerRuntimeContext:
     evals_root: Path
     prompts_root: Path
     prompt_runtime: ApiPromptRuntime
-    provider_adapter: object
+    provider_adapter: ProviderExecutionPort
     runtime_metadata: WorkerRuntimeMetadata
     api_handoff_enabled: bool = False
     real_execution_enabled: bool = True
@@ -36,7 +37,7 @@ def bootstrap_worker_runtime(*, command_name: str) -> WorkerRuntimeContext:
     prompts_root = resolve_prompts_root()
     evals_root = repo_root / "evals"
     prompt_runtime = ApiPromptRuntime()
-    provider_adapter = get_provider_adapter()
+    provider_adapter = get_startup_provider_adapter()
     resolved_prompt = prompt_runtime.resolve(
         stage="input_screening",
         input_composition=InputComposition.CHAPTERS_OUTLINE.value,

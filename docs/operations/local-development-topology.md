@@ -11,7 +11,7 @@ Browser
 -> apps/web
 -> apps/api
 -> SQLite
--> DeepSeek API
+-> DeepSeek API（有 key 时）
 
 apps/worker
 -> evals
@@ -22,7 +22,8 @@ apps/worker
 
 ### `apps/web`
 
-- 创建任务
+- 在 provider 可用时创建任务
+- 启动期缺少 key 时录入一次性 runtime key
 - 轮询状态
 - 查看结果和历史
 
@@ -30,8 +31,9 @@ apps/worker
 
 - 接收用户请求
 - 写入 `SQLite`
-- 进程内执行用户任务
-- 返回任务/结果/history
+- 在 provider 已配置时进程内执行用户任务
+- 缺少 key 时以只读模式提供 dashboard/history/既有任务与结果读取
+- 返回任务/结果/history/provider status
 
 ### `apps/worker`
 

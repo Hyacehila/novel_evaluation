@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 
 import { describeApiError } from "@/api/client";
-import { useCreateTaskMutation } from "@/api/hooks";
+import { useCreateTaskMutation, useProviderStatusQuery } from "@/api/hooks";
 import {
   buildCreateTaskRequest,
   deriveDraftSemantics,
@@ -27,6 +27,7 @@ const acceptedFileTypes = ".txt,.md,.docx,text/plain,text/markdown,application/v
 export function TaskCreatePage() {
   const router = useRouter();
   const mutation = useCreateTaskMutation();
+  const providerStatusQuery = useProviderStatusQuery();
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [chaptersFile, setChaptersFile] = useState<File | null>(null);
   const [outlineFile, setOutlineFile] = useState<File | null>(null);
@@ -51,10 +52,21 @@ export function TaskCreatePage() {
     chaptersFile,
     outlineFile,
   });
+  const providerStatus = providerStatusQuery.data;
+  const providerStatusUnavailable = providerStatusQuery.isError || providerStatus === undefined;
+  const providerBlocked = providerStatusUnavailable || !providerStatus.canAnalyze;
+  const providerBlockingMessage = providerStatusUnavailable
+    ? "当前无法确认 provider 状态，请稍后重试。"
+    : (providerStatus.blockingMessage ?? "当前无 API，无法进行分析。");
 
   async function onSubmit(values: TaskCreateFormValues) {
     setSubmitError(null);
     form.clearErrors();
+
+    if (providerBlocked) {
+      setSubmitError(providerBlockingMessage);
+      return;
+    }
 
     try {
       const request = buildCreateTaskRequest({
@@ -92,6 +104,15 @@ export function TaskCreatePage() {
           title="任务创建失败"
           description={submitError}
           action={<Button onClick={() => setSubmitError(null)} variant="secondary">清除提示</Button>}
+        />
+      ) : null}
+
+      {providerBlocked ? (
+        <ErrorState
+          title={providerStatusUnavailable ? "当前无法确认 provider 状态" : "当前无 API，无法进行分析"}
+          description={providerStatusUnavailable
+            ? providerBlockingMessage
+            : `${providerBlockingMessage} 你仍可查看已有任务与结果，并可在侧边栏录入当前进程有效的运行时 Key。`}
         />
       ) : null}
 
@@ -200,7 +221,7 @@ export function TaskCreatePage() {
             </div>
 
             <div className="flex flex-wrap gap-3">
-              <Button type="submit" disabled={mutation.isPending}>
+              <Button type="submit" disabled={mutation.isPending || providerBlocked || providerStatusQuery.isPending}>
                 {mutation.isPending ? "正在创建评测任务…" : "创建评测任务"}
               </Button>
               <Button

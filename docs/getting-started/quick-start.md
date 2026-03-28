@@ -48,7 +48,9 @@
 
 ## 4. 提交第一份评测
 
-打开 `http://127.0.0.1:3000/tasks/new`，填入一份标题、正文和大纲。第一次体验不需要 API Key。
+打开 `http://127.0.0.1:3000/tasks/new`。如果 API 启动时已经配置了 `NOVEL_EVAL_DEEPSEEK_API_KEY`，可直接填入标题、正文和大纲创建任务。
+
+如果没有配置 API Key，API 仍可启动，但此时只能查看已有数据，不能直接创建新分析任务。你可以在前端录入一次性 runtime key 后再提交；该 key 仅在当前 API 进程内有效，重启或热重载后失效。
 
 示例正文：
 
@@ -68,7 +70,7 @@
 - 任务状态会从 `queued / processing` 进入 `completed`
 - 结果可用时，结果页会展示签约概率、平台建议、编辑结论和详细分析
 
-默认情况下，这次结果来自 deterministic fallback，用于快速验证本地流程和持久化链路，不用于真实生产评审。
+若 API 已有可用 provider key，这次结果会走真实 Provider。若 API 启动时无 key，则页面会提示先录入一次性 runtime key；未录入前只能查看已有任务、结果与历史，不能新建分析任务。
 
 ## 自定义配置
 

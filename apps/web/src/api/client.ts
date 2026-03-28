@@ -1,22 +1,26 @@
 import type {
   ApiEnvelope,
   ApiErrorObjectDto,
+  ConfigureRuntimeKeyPayload,
   CreateTaskJsonPayload,
   DashboardSummaryDto,
   EvaluationResultResourceDto,
   EvaluationTaskDto,
   HistoryListDto,
+  ProviderStatusDto,
   TaskStatus,
 } from "@/api/contracts";
 import {
   mapDashboardSummary,
   mapHistoryList,
+  mapProviderStatus,
   mapResultDetail,
   mapTaskDetail,
 } from "@/api/mappers";
 import type {
   DashboardSummaryView,
   HistoryListView,
+  ProviderStatusView,
   ResultDetailView,
   TaskDetailView,
 } from "@/view-models";
@@ -98,6 +102,11 @@ export async function fetchDashboard(): Promise<DashboardSummaryView> {
   return mapDashboardSummary(data);
 }
 
+export async function fetchProviderStatus(): Promise<ProviderStatusView> {
+  const data = await requestData<ProviderStatusDto>("/api/provider-status");
+  return mapProviderStatus(data);
+}
+
 export async function fetchTask(taskId: string): Promise<TaskDetailView> {
   const data = await requestData<EvaluationTaskDto>(`/api/tasks/${taskId}`);
   return mapTaskDetail(data);
@@ -124,6 +133,17 @@ export async function createTaskJson(payload: CreateTaskJsonPayload): Promise<Ta
   return mapTaskDetail(data);
 }
 
+export async function configureRuntimeProviderKey(payload: ConfigureRuntimeKeyPayload): Promise<ProviderStatusView> {
+  const data = await requestData<ProviderStatusDto>("/api/provider-status/runtime-key", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  return mapProviderStatus(data);
+}
+
 export async function createTaskUpload(formData: FormData): Promise<TaskDetailView> {
   const data = await requestData<EvaluationTaskDto>("/api/tasks", {
     method: "POST",
@@ -134,6 +154,12 @@ export async function createTaskUpload(formData: FormData): Promise<TaskDetailVi
 
 export function describeApiError(error: unknown) {
   if (error instanceof ApiClientError) {
+    if (error.code === "PROVIDER_NOT_CONFIGURED") {
+      return "当前 provider 未配置，无法创建新的分析任务。";
+    }
+    if (error.code === "PROVIDER_CONFIGURATION_LOCKED") {
+      return "当前 provider 已配置，不支持在 UI 中重新录入。";
+    }
     return error.code ? `${error.code}: ${error.message}` : error.message;
   }
   if (error instanceof Error) {

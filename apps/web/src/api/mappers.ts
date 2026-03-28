@@ -4,6 +4,7 @@ import type {
   EvaluationTaskDto,
   EvaluationTaskSummaryDto,
   HistoryListDto,
+  ProviderStatusDto,
   RecentResultSummaryDto,
 } from "@/api/contracts";
 import type {
@@ -11,6 +12,7 @@ import type {
   DashboardSummaryView,
   DashboardTaskSummaryView,
   HistoryListView,
+  ProviderStatusView,
   ResultDetailView,
   TaskDetailView,
 } from "@/view-models";
@@ -91,5 +93,26 @@ export function mapHistoryList(dto: HistoryListDto): HistoryListView {
       nextCursor: dto.meta.nextCursor ?? null,
       limit: dto.meta.limit ?? 20,
     },
+  };
+}
+
+export function mapProviderStatus(dto: ProviderStatusDto): ProviderStatusView {
+  const sourceLabel =
+    dto.configurationSource === "startup_env"
+      ? "启动环境变量"
+      : dto.configurationSource === "runtime_memory"
+        ? "运行时内存"
+        : "未配置";
+
+  return {
+    providerId: dto.providerId,
+    modelId: dto.modelId,
+    configured: dto.configured,
+    configurationSource: dto.configurationSource,
+    canAnalyze: dto.canAnalyze,
+    canConfigureFromUi: dto.canConfigureFromUi,
+    statusLabel: dto.canAnalyze ? "已配置，可进行分析" : "当前无 API，无法进行分析",
+    sourceLabel,
+    blockingMessage: dto.canAnalyze ? null : "当前无 API，无法进行分析，但仍可查看已有任务与结果。",
   };
 }

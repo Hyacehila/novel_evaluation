@@ -4,16 +4,27 @@ const { spawn } = require('node:child_process');
 
 const webRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(webRoot, '..', '..');
-const artifactsDir = path.join(webRoot, '.playwright');
+const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? 'startup_key';
+const artifactsDir = path.join(webRoot, '.playwright', providerMode);
 const logsDir = path.join(artifactsDir, 'logs');
 const dbPath = path.join(artifactsDir, 'e2e.sqlite3');
 
 fs.mkdirSync(logsDir, { recursive: true });
 fs.rmSync(dbPath, { force: true });
 
-if (!process.env.NOVEL_EVAL_DEEPSEEK_API_KEY) {
-  console.error('NOVEL_EVAL_DEEPSEEK_API_KEY is required for real-provider Playwright E2E.');
+if (providerMode === 'startup_key' && !process.env.NOVEL_EVAL_DEEPSEEK_API_KEY) {
+  console.error('NOVEL_EVAL_DEEPSEEK_API_KEY is required for startup_key Playwright E2E.');
   process.exit(1);
+}
+
+const childEnv = {
+  ...process.env,
+  PYTHONPATH: repoRoot,
+  NOVEL_EVAL_DB_PATH: dbPath,
+  NOVEL_EVAL_LOG_DIR: logsDir,
+};
+if (providerMode === 'runtime_key') {
+  delete childEnv.NOVEL_EVAL_DEEPSEEK_API_KEY;
 }
 
 const uvCommand = process.platform === 'win32' ? 'uv.exe' : 'uv';
@@ -23,13 +34,7 @@ const child = spawn(
   {
     cwd: repoRoot,
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      PYTHONPATH: repoRoot,
-      NOVEL_EVAL_DB_PATH: dbPath,
-      NOVEL_EVAL_LOG_DIR: logsDir,
-      NOVEL_EVAL_REQUIRE_REAL_PROVIDER: '1',
-    },
+    env: childEnv,
   }
 );
 

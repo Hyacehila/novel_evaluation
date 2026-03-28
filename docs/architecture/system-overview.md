@@ -9,7 +9,7 @@
 - 前端：`Next.js (App Router) + React + TypeScript + pnpm`
 - 后端：`Python 3.13 + uv + FastAPI + Pydantic`
 - Provider：`DeepSeek API`
-- 编排：`PocketFlow`
+- 编排：`packages/application` 内的 `EvaluationService + ScoringPipeline`
 - 本地状态存储：`SQLite`
 - 用户任务执行：`apps/api` 进程内异步执行
 - worker：仅负责批处理与回归

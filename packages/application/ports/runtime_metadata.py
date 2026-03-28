@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
+
+from packages.schemas.output.provider_status import ProviderConfigurationSource, ProviderStatus
 
 if TYPE_CHECKING:
     from provider_adapters import ProviderExecutionRequest, ProviderExecutionResult
@@ -42,6 +44,17 @@ class ProviderMetadataPort(Protocol):
     model_id: str
 
 
+class ProviderRuntimePort(ProviderMetadataPort, Protocol):
+    def get_status(self) -> ProviderStatus:
+        ...
+
+    def require_configured_adapter(self) -> ProviderExecutionPort:
+        ...
+
+    def configure_runtime_key(self, api_key: str) -> ProviderStatus:
+        ...
+
+
 class ProviderExecutionPort(ProviderMetadataPort, Protocol):
     def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
         ...
@@ -76,3 +89,30 @@ class StaticPromptRuntime:
 class StaticProviderMetadata:
     provider_id: str = "provider-deepseek"
     model_id: str = "deepseek-chat"
+
+
+@runtime_checkable
+class ProviderRuntimeExecutionPort(ProviderRuntimePort, ProviderExecutionPort, Protocol):
+    ...
+
+
+@dataclass(frozen=True, slots=True)
+class StaticProviderRuntime:
+    provider_id: str = "provider-deepseek"
+    model_id: str = "deepseek-chat"
+
+    def get_status(self) -> ProviderStatus:
+        return ProviderStatus(
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configured=False,
+            configurationSource=ProviderConfigurationSource.MISSING,
+            canAnalyze=False,
+            canConfigureFromUi=True,
+        )
+
+    def require_configured_adapter(self) -> ProviderExecutionPort:
+        raise RuntimeError("provider 未配置。")
+
+    def configure_runtime_key(self, api_key: str) -> ProviderStatus:
+        raise RuntimeError("provider runtime 不支持写入。")
