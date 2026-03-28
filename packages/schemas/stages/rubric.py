@@ -15,10 +15,7 @@ from packages.schemas.common.enums import (
     SkeletonDimensionId,
     StageName,
 )
-from packages.schemas.common.validators import (
-    ensure_non_empty_text,
-    validate_confidence,
-)
+from packages.schemas.common.validators import ensure_non_empty_text, validate_confidence
 
 
 class RubricEvaluationEvidenceRef(SchemaModel):
@@ -80,7 +77,7 @@ class RubricEvaluationItem(SchemaModel):
         return self
 
 
-class RubricEvaluationSet(SchemaModel):
+class _RubricEvaluationBase(SchemaModel):
     taskId: str
     stage: Literal[StageName.RUBRIC_EVALUATION] = StageName.RUBRIC_EVALUATION
     schemaVersion: str
@@ -121,12 +118,39 @@ class RubricEvaluationSet(SchemaModel):
     def validate_confidence_value(cls, value: float) -> float:
         return validate_confidence(value, "overallConfidence")
 
+
+class RubricEvaluationSlice(_RubricEvaluationBase):
+    requestedAxes: list[AxisId]
+
+    @field_validator("requestedAxes")
+    @classmethod
+    def validate_requested_axes(cls, value: list[AxisId]) -> list[AxisId]:
+        if not value:
+            raise ValueError("requestedAxes 至少需要一个轴。")
+        if len(set(value)) != len(value):
+            raise ValueError("requestedAxes 不允许重复轴。")
+        return value
+
+    @model_validator(mode="after")
+    def validate_requested_axes_coverage(self) -> "RubricEvaluationSlice":
+        requested_axes = set(self.requestedAxes)
+        observed_axes = [item.axisId for item in self.items]
+        observed_axis_set = set(observed_axes)
+        if len(observed_axes) != len(requested_axes) or observed_axis_set != requested_axes:
+            raise ValueError("RubricEvaluationSlice 必须完整且唯一覆盖 requestedAxes。")
+        if set(self.axisSummaries.keys()) != requested_axes:
+            raise ValueError("axisSummaries 只能且必须覆盖 requestedAxes。")
+        if not set(self.missingRequiredAxes).issubset(requested_axes):
+            raise ValueError("missingRequiredAxes 只能引用 requestedAxes 内的轴。")
+        return self
+
+
+class RubricEvaluationSet(_RubricEvaluationBase):
     @model_validator(mode="after")
     def validate_axis_coverage(self) -> "RubricEvaluationSet":
-        observed_axes = {item.axisId for item in self.items}
+        observed_axes = [item.axisId for item in self.items]
         required_axes = set(AxisId)
-        missing_axes = required_axes - observed_axes
-        if missing_axes:
+        if len(observed_axes) != len(AxisId) or set(observed_axes) != required_axes:
             raise ValueError("RubricEvaluationSet 必须覆盖全部 8 轴。")
         if set(self.axisSummaries.keys()) != required_axes:
             raise ValueError("axisSummaries 必须覆盖全部 8 轴。")

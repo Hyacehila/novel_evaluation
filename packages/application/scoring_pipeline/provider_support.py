@@ -22,6 +22,13 @@ _FAILURE_TYPE_TO_ERROR_CODE = {
     "contract_invalid": ErrorCode.CONTRACT_INVALID,
 }
 
+_SANITIZED_FAILURE_MESSAGE_BY_ERROR_CODE = {
+    ErrorCode.PROVIDER_FAILURE: "模型服务调用失败，请稍后重试。",
+    ErrorCode.TIMEOUT: "模型服务响应超时，请稍后重试。",
+    ErrorCode.DEPENDENCY_UNAVAILABLE: "模型依赖当前不可用，请稍后重试。",
+    ErrorCode.CONTRACT_INVALID: "模型返回内容不满足约定格式。",
+}
+
 logger = logging.getLogger(__name__)
 
 
@@ -99,11 +106,11 @@ def execute_provider_stage(
         providerId=binding.provider_id,
         modelId=binding.model_id,
     )
-    result = provider_adapter.execute(provider_request)
-    duration_ms = int((perf_counter() - started_at) * 1000)
-    failure_type = getattr(result, "failureType", None)
-    if failure_type is not None:
-        error_code = _FAILURE_TYPE_TO_ERROR_CODE[getattr(failure_type, "value", failure_type)]
+    try:
+        result = provider_adapter.execute(provider_request)
+    except Exception as exc:  # noqa: BLE001
+        duration_ms = int((perf_counter() - started_at) * 1000)
+        error_code = _resolve_exception_error_code(exc)
         log_event(
             logger,
             logging.ERROR,
@@ -121,7 +128,51 @@ def execute_provider_stage(
         )
         raise PipelineFailureError(
             error_code=error_code,
-            message=result.message,
+            message=_sanitize_provider_failure_message(error_code=error_code),
+        ) from exc
+    duration_ms = int((perf_counter() - started_at) * 1000)
+    failure_type = getattr(result, "failureType", None)
+    if failure_type is not None:
+        error_code = _resolve_failure_error_code(failure_type=failure_type)
+        log_event(
+            logger,
+            logging.ERROR,
+            "stage_provider_failed",
+            taskId=task_id,
+            stage=stage,
+            requestId=request_id,
+            promptVersion=binding.prompt_version,
+            schemaVersion=binding.schema_version,
+            rubricVersion=binding.rubric_version,
+            providerId=binding.provider_id,
+            modelId=binding.model_id,
+            errorCode=error_code,
+            durationMs=duration_ms,
+        )
+        raise PipelineFailureError(
+            error_code=error_code,
+            message=_sanitize_provider_failure_message(error_code=error_code),
+        )
+    raw_json = getattr(result, "rawJson", None)
+    if not hasattr(result, "rawJson"):
+        log_event(
+            logger,
+            logging.ERROR,
+            "stage_provider_failed",
+            taskId=task_id,
+            stage=stage,
+            requestId=request_id,
+            promptVersion=binding.prompt_version,
+            schemaVersion=binding.schema_version,
+            rubricVersion=binding.rubric_version,
+            providerId=binding.provider_id,
+            modelId=binding.model_id,
+            errorCode=ErrorCode.CONTRACT_INVALID,
+            durationMs=duration_ms,
+        )
+        raise PipelineFailureError(
+            error_code=ErrorCode.CONTRACT_INVALID,
+            message=_sanitize_provider_failure_message(error_code=ErrorCode.CONTRACT_INVALID),
         )
     log_event(
         logger,
@@ -137,7 +188,35 @@ def execute_provider_stage(
         modelId=binding.model_id,
         durationMs=duration_ms,
     )
-    return _thaw_json_like(result.rawJson)
+    return _thaw_json_like(raw_json)
+
+
+def _resolve_failure_error_code(*, failure_type: Any) -> ErrorCode:
+    normalized_failure_type = getattr(failure_type, "value", failure_type)
+    if not isinstance(normalized_failure_type, str):
+        return ErrorCode.PROVIDER_FAILURE
+    return _FAILURE_TYPE_TO_ERROR_CODE.get(normalized_failure_type, ErrorCode.PROVIDER_FAILURE)
+
+
+
+def _resolve_exception_error_code(exc: Exception) -> ErrorCode:
+    failure_type = getattr(exc, "failure_type", None)
+    if failure_type is not None:
+        return _resolve_failure_error_code(failure_type=failure_type)
+    exception_name = type(exc).__name__
+    if "Timeout" in exception_name:
+        return ErrorCode.TIMEOUT
+    if "Connection" in exception_name:
+        return ErrorCode.DEPENDENCY_UNAVAILABLE
+    if "Contract" in exception_name:
+        return ErrorCode.CONTRACT_INVALID
+    return ErrorCode.PROVIDER_FAILURE
+
+
+
+def _sanitize_provider_failure_message(*, error_code: ErrorCode) -> str:
+    return _SANITIZED_FAILURE_MESSAGE_BY_ERROR_CODE.get(error_code, _SANITIZED_FAILURE_MESSAGE_BY_ERROR_CODE[ErrorCode.PROVIDER_FAILURE])
+
 
 
 def _thaw_json_like(value: Any) -> Any:

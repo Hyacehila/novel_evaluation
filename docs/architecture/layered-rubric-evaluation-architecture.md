@@ -1,153 +1,217 @@
-# 面向网络小说的双输入全 LLM 分阶段 Rubric 评分架构
+# 面向网络小说的双输入分阶段 Rubric 评分架构
 
-## 目标
+## 文档目标
 
-本文档定义小说智能打分系统的正式评分架构：系统以 `LLM as Judge` 为核心，围绕“章节正文 + 后续大纲”的联合输入，采用“先做 `rubric` 分点评价，再由新模型聚合输出最终结果”的固定单主线流程。
+本文档描述当前代码中的正式评分主线。现状以 `packages/application/scoring_pipeline/*` 与 `packages/schemas/*` 为准，而不是以早期设计稿中的旧四维顶层结果结构为准。
 
-该架构需要同时满足以下目标：
+当前实现的核心结论是：
 
-- 保持对外正式结果结构稳定
-- 提高网络小说评估的解释性与可追踪性
-- 让 Prompt、Schema、Evals 与运行时编排围绕同一主线演进
-- 避免并行评分路径、`pairwise`、分叉升级与外部介入带来的额外治理复杂度
-- 为后续开发提供可以直接落地的阶段边界与映射关系
+- 评分仍采用单主线分阶段编排
+- 主评价层是 `8` 个 rubric 轴
+- 对外正式结果是 `overall + axes`
+- 旧四维骨架不再作为正式阶段输出或 API 结果字段
 
-## 适用范围
+## 适用输入
 
-当前正式输入对象采用联合投稿包模型。
+正式输入仍是联合投稿包：
 
-### 正式推荐输入
-
-- `chapters`：作者上传的前几章节正文
-- `outline`：作者上传的后续大纲规划
-
-### 允许的降级输入
-
-- 只有 `chapters`
-- 只有 `outline`
+- `chapters + outline`：推荐输入
+- `chapters only`：允许，进入降级评测
+- `outline only`：允许，进入降级评测
 
 说明：
 
-- `chapters + outline` 是正式推荐输入形态
-- `chapters only` 与 `outline only` 允许进入降级评估
-- 降级评估必须显式降低部分维度置信度，不能假装信息完整
+- 输入组成由 `input_screening` 决定为 `chapters_outline / chapters_only / outline_only`
+- 只有单侧输入时，`evaluationMode=degraded`
+- 降级语义会体现在 rubric 结果和最终分数上
 
-## 核心原则
+## 当前正式结果结构
 
-### 1. 单主线优先
+`EvaluationResult` 当前固定为：
 
-系统只保留一条正式评分主线，不保留并行评分路径、外部仲裁链路或 `pairwise` 支路。
+- `taskId`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- `resultTime`
+- `axes`
+- `overall`
 
-### 2. 联合输入先于最终结论
+### `axes`
 
-最终输出必须建立在联合输入的分点评价结果之上，而不是将正文和大纲视作两个独立任务后再做松散拼接。
+固定覆盖全部 `8` 个 rubric 轴，每个轴包含：
 
-### 3. `pointwise` 先于整体结论
+- `axisId`
+- `scoreBand`
+- `score`
+- `summary`
+- `reason`
+- `degradedByInput`
+- `riskTags`
 
-正式评分主线只保留 `pointwise` 分点评价：
+### `overall`
 
-- 不使用 `pairwise`
-- 不使用候选比较式裁决
-- 不让聚合层绕过中间阶段直接整体直评
+包含：
 
-### 4. 对外契约稳定，对内阶段分层
-
-系统对外仍返回统一正式结果对象，但内部通过多个阶段对象承接：
-
-- 输入预检查
-- `LLM rubric` 分点评价
-- 轻量一致性整理
-- 新模型聚合输出
-- 正式结果投影
-
-### 5. 证据嵌入评价项
-
-正式主线不再把“证据抽取”定义为独立长期阶段。每个评价项本身必须携带来源信息，并显式区分证据来自：
-
-- `chapters`
-- `outline`
-- `cross_input`
-
-### 6. 一致性能力聚焦跨输入冲突
-
-一致性能力用于检查缺项、冲突、重复处罚、无依据判断，以及正文与大纲之间的承诺冲突，但不承担分叉升级与路由职责。
-
-## Rubric 三层结构
-
-正式评分内部采用三层结构：
-
-1. 新 `8` 轴主评价层
-2. 旧四维骨架层
-3. 对外四分投影层
-
-并额外保留 `fatalRisk` 作为跨层约束维度。
-
-### 第一层：新 `8` 轴主评价层
-
-| 轴 ID | 关注问题 | 主要证据来源 |
-| --- | --- | --- |
-| `hookRetention` | 开局是否能把读者留住，是否具备继续读的直接动力 | 以 `chapters` 为主 |
-| `serialMomentum` | 连载推进惯性是否成立，后续是否有持续拉读者的动能 | `chapters` + `outline` |
-| `characterDrive` | 主角欲望、行为驱动、人物关系张力是否成立 | `chapters` 为主 |
-| `narrativeControl` | 叙事组织、信息投放、语言控制是否稳定 | 以 `chapters` 为主 |
-| `pacingPayoff` | 节奏与兑现关系是否成立，铺垫与回报是否匹配 | `chapters` + `outline` |
-| `settingDifferentiation` | 设定、题材组合与核心卖点是否有差异化且能被利用 | `chapters` + `outline` |
-| `platformFit` | 内容调性与目标平台读者预期是否匹配 | `chapters` + `outline` |
-| `commercialPotential` | 是否具备转化为持续连载商业表现的潜力 | `chapters` + `outline` |
+- `score`
+- `verdict`
+- `summary`
+- `platformCandidates`
+- `marketFit`
 
 说明：
 
-- 新 `8` 轴是正式主评价层
-- 这些轴直接服务网络小说投稿评估，不以文学评论为目标
-- 每个轴都允许带有少量类型敏感性，但这种敏感性必须通过轻量标签条件化，而不是分叉流程
+- 旧版顶层字段 `signingProbability / commercialValue / writingQuality / innovationScore / detailedAnalysis` 已不再属于当前正式结果
+- 对外 API 与前端页面都围绕 `overall + axes` 消费
 
-### 轻量标签机制
+## 当前 `8` 轴
 
-为支持常见网络小说类型差异，系统允许有限标签参与条件化判断，但必须保持简单、稳定、可治理。
-
-建议标签：
-
-- `primaryGenreTag`
-- `secondaryGenreTags`
-- `readerModeTag`
-
-治理要求：
-
-- 标签词表必须封闭
-- 数量必须有限
-- 标签只能影响少量提示与示例选择，不得改变主线结构
-- 女频不再拆成额外独立复杂分支
-
-### 第二层：旧四维骨架层
-
-| 骨架维度 | 作用 |
+| 轴 ID | 当前关注点 |
 | --- | --- |
-| `marketAttraction` | 承接市场吸引、平台适配、追更动能与商业可跑性 |
-| `narrativeExecution` | 承接叙事执行、节奏控制、信息组织与语言控制 |
-| `characterMomentum` | 承接人物驱动、关系张力与情绪抓力 |
-| `noveltyUtility` | 承接设定差异化、新鲜度与卖点可用性 |
+| `hookRetention` | 开局留存与继续阅读动力 |
+| `serialMomentum` | 连载推进惯性与后续承接能力 |
+| `characterDrive` | 主角驱动、关系张力与行动动力 |
+| `narrativeControl` | 叙事组织、信息投放与语言控制 |
+| `pacingPayoff` | 节奏铺垫与兑现关系 |
+| `settingDifferentiation` | 设定差异化与卖点利用度 |
+| `platformFit` | 内容调性与目标平台匹配度 |
+| `commercialPotential` | 连载商业表现潜力 |
+
+## 当前评分主线
+
+```text
+input_screening
+-> rubric_evaluation
+-> consistency_check
+-> aggregation
+-> final_projection
+```
+
+### 1. `input_screening`
+
+职责：
+
+- 判断输入是否可评
+- 判断 `chapters` 与 `outline` 是否足量
+- 输出 `inputComposition` 与 `evaluationMode`
+- 对不可评输入给出阻断语义
+
+阻断后果：
+
+- `continueAllowed=false` 时直接以结构化错误结束，不继续后续阶段
+
+### 2. `rubric_evaluation`
+
+职责：
+
+- 对 `8` 轴进行结构化 pointwise 评价
+- 为每个轴提供理由、证据、风险标签与置信度
+- 输出轴级摘要与总体置信度
+
+当前执行方式：
+
+- 实际上分 `3` 个 slice 调用 provider，再合并为完整结果
+- slice 计划固定为：
+  - `[hookRetention, serialMomentum, characterDrive]`
+  - `[narrativeControl, pacingPayoff, settingDifferentiation]`
+  - `[platformFit, commercialPotential]`
+
+每个 rubric item 当前包含：
+
+- `evaluationId`
+- `axisId`
+- `scoreBand`
+- `reason`
+- `evidenceRefs`
+- `confidence`
+- `riskTags`
+- `blockingSignals`
+- `affectedSkeletonDimensions`
+- `degradedByInput`
 
 说明：
 
-- 旧四维继续保留，但不再是最上层主评价层
-- 它们承担稳定骨架职责，帮助新 `8` 轴与最终四分衔接
+- `affectedSkeletonDimensions` 仍存在，但只是 rubric 项上的兼容映射元数据
+- 当前没有正式的“旧四维骨架阶段输出对象”
 
-### 第三层：对外四分投影层
+### 3. `consistency_check`
 
-系统对外继续保留以下正式字段：
+职责：
 
-- `signingProbability`
-- `commercialValue`
-- `writingQuality`
-- `innovationScore`
+- 检查跨输入冲突
+- 检查无依据结论
+- 检查重复处罚
+- 检查缺失必需轴
+- 记录归一化说明
 
-目标不是替换这些字段，而是让这些字段的来源更加稳定、可解释、可回归。
+当前冲突类型包括：
 
-### 跨层约束：`fatalRisk`
+- `cross_input_mismatch`
+- `unsupported_claim`
+- `duplicated_penalty`
+- `missing_required_axis`
+- `weak_evidence`
 
-`fatalRisk` 作为跨层约束维度保留，不并入新 `8` 轴加权。
+阻断后果：
 
-建议风险项：
+- `continueAllowed=false` 时，流程以 `blocked` 语义结束
+
+### 4. `aggregation`
+
+职责：
+
+- 读取 screening、rubric、consistency 三阶段结果
+- 生成总体结论草案
+- 输出平台候选与市场判断草案
+- 汇总风险标签与总体置信度
+
+当前正式输出字段为：
+
+- `overallVerdictDraft`
+- `overallSummaryDraft`
+- `platformCandidates`
+- `marketFitDraft`
+- `riskTags`
+- `overallConfidence`
+
+说明：
+
+- `aggregation` 当前不再输出旧四维骨架对象
+- 也不再输出对外四分字段草案
+
+### 5. `final_projection`
+
+职责：
+
+- 把 rubric 轴结果与 aggregation 草案投影成正式 `EvaluationResult`
+- 将 `scoreBand` 映射为轴分数
+- 计算 `overall.score`
+
+当前分值映射为：
+
+| `scoreBand` | 轴分数 |
+| --- | --- |
+| `0` | `20` |
+| `1` | `35` |
+| `2` | `55` |
+| `3` | `75` |
+| `4` | `90` |
+
+当前总体分数计算规则：
+
+- 先取 `8` 轴分数平均值
+- `degraded` 模式减 `8`
+- 若一致性阶段检测到重复处罚，减 `3`
+- 若存在 `weak_evidence` 冲突，减 `4`
+- 最终结果夹紧在 `0-100`
+
+## 风险与降级语义
+
+### 风险标签
+
+当前风险标签来自 `FatalRisk` 枚举，例如：
 
 - `aiManualTone`
 - `staleFormula`
@@ -156,187 +220,41 @@
 - `nonNarrativeSubmission`
 - `insufficientMaterial`
 
-作用方式：
+风险标签可出现在：
 
-- 约束 `8` 轴判断上限
-- 约束旧四维骨架层汇总
-- 约束最终四分字段与是否可签结论
+- rubric item 的 `riskTags`
+- aggregation 的 `riskTags`
+- final result 每个 axis 的 `riskTags`
 
-## 映射关系
+### 降级语义
 
-### 新 `8` 轴 → 旧四维骨架层
+- 单侧输入允许进入评分流程
+- rubric item 会通过 `degradedByInput=true` 标记受输入不足影响的轴
+- 最终总体分数会额外施加降级扣分
 
-| 新 `8` 轴 | 主归属骨架维度 | 次级影响 |
-| --- | --- | --- |
-| `hookRetention` | `marketAttraction` | `commercialPotential` 相关判断 |
-| `serialMomentum` | `marketAttraction` | `narrativeExecution` |
-| `characterDrive` | `characterMomentum` | `marketAttraction` |
-| `narrativeControl` | `narrativeExecution` | `characterMomentum` |
-| `pacingPayoff` | `narrativeExecution` | `marketAttraction` |
-| `settingDifferentiation` | `noveltyUtility` | `marketAttraction` |
-| `platformFit` | `marketAttraction` | `commercialPotential` |
-| `commercialPotential` | `marketAttraction` | `characterMomentum` |
+## 与旧结构的关系
 
-### 旧四维骨架层 → 对外四分字段
+当前代码中仍保留两类旧结构痕迹：
 
-| 骨架维度 | 主要影响的对外字段 |
-| --- | --- |
-| `marketAttraction` | `commercialValue` |
-| `narrativeExecution` | `writingQuality` |
-| `characterMomentum` | `commercialValue`、`writingQuality` |
-| `noveltyUtility` | `innovationScore` |
+- `SkeletonDimensionId`：用于 rubric item 的 `affectedSkeletonDimensions` 兼容映射
+- 个别归一化逻辑会识别旧 provider 输出别名
 
-补充规则：
+但需要明确：
 
-- `signingProbability` 建立在前三项基础分之上
-- `platformFit` 对 `signingProbability` 有强约束
-- `fatalRisk` 可以压低所有顶层字段，并在必要时触发不可签或不可评语义
+- 这些痕迹不代表当前正式输出仍是旧四维骨架
+- 当前 API、前端、结果 schema 的唯一正式结果形态是 `overall + axes`
 
-## 原子评分锚点
+## Prompt 与 Schema 落点
 
-建议内部继续使用统一五档制，再映射到外部 `0-100` 区间。
+- `input_screening`、`rubric_evaluation`、`aggregation` 都通过 prompt runtime 解析
+- 正式对外结果落在 `packages/schemas/output/result.py`
+- 中间阶段契约落在 `packages/schemas/stages/*.py`
+- 编排逻辑落在 `packages/application/scoring_pipeline/*`
 
-| 档位 | 含义 |
-| --- | --- |
-| `0` | 不可评、严重失败或命中否决条件 |
-| `1` | 明显薄弱，存在结构性问题 |
-| `2` | 勉强成立，但缺陷显著 |
-| `3` | 合格，具备基础连载可读性 |
-| `4` | 明显突出，具备较强竞争力 |
+## 当前成功标准
 
-分点评价项必须满足：
-
-- 至少给出一个证据引用
-- 必须给出简短理由
-- 必须给出置信度
-- 必须标明证据来源类型
-- 命中 `fatalRisk` 时必须输出风险标签
-
-## 正式评分主线
-
-### 第 1 层：输入预检查
-
-职责：
-
-- 判断联合输入是否可评
-- 判断 `chapters` 与 `outline` 是否存在、是否足量、是否可读
-- 识别输入组成是 `chapters_only`、`outline_only` 还是 `chapters_outline`
-- 识别明显非小说文本、高噪声文本或结构失真文本
-- 输出后续阶段所需的输入充分性与降级语义
-
-输出：`InputScreeningResult`
-
-约束：
-
-- `rateable=false` 时优先进入结构化不可评路径
-- 不可评应返回明确原因，而不是伪造低分结果
-- 若只提供单侧输入，应显式标注降级评估状态
-
-### 第 2 层：LLM Rubric 分点评价
-
-职责：
-
-- 按新 `8` 轴输出结构化评价项
-- 允许每个评价项引用 `chapters`、`outline` 或跨输入观察
-- 为每个评价项给出分档、理由、证据、风险标签与置信度
-- 产出可被旧四维骨架层聚合消费的标准对象
-
-输出：`RubricEvaluationSet`
-
-约束：
-
-- 分点评价项必须包含稳定的 `axisId`
-- 无依据时不得直接输出高分
-- 证据来源必须可追踪
-- 类型条件化只能通过轻量标签与 examples 注入，不能改变主线结构
-
-### 第 3 层：轻量一致性整理
-
-职责：
-
-- 检查分点评价是否缺项
-- 检查正文与大纲之间是否存在明显承诺冲突
-- 检查是否存在重复处罚、无依据结论和空泛解释
-- 为聚合模型提供更干净、可消费的中间结果
-
-输出：`ConsistencyCheckResult`
-
-约束：
-
-- 本层只负责整理与冲突识别
-- 本层不承担额外升级、分流或外部介入职责
-
-### 第 4 层：新模型聚合输出
-
-职责：
-
-- 读取预检查结果、`8` 轴分点评价结果和一致性整理结果
-- 先汇总到旧四维骨架层，再投影到顶层四分字段草案
-- 输出风险标签、强弱项、平台建议、市场判断与编辑结论草案
-- 保持顶层字段逻辑关系稳定
-
-输出：`AggregatedRubricResult`
-
-聚合原则：
-
-- `commercialValue` 主要受 `marketAttraction` 影响，次级参考 `characterMomentum`
-- `writingQuality` 主要受 `narrativeExecution` 影响，次级参考 `characterMomentum`
-- `innovationScore` 主要受 `noveltyUtility` 影响，并受 `fatalRisk` 约束
-- `signingProbability` 不应脱离前三项基础分独立飙升，并应受 `platformFit`、`fatalRisk` 与一致性整理结果约束
-
-### 第 5 层：正式结果投影
-
-职责：
-
-- 将聚合输出映射为稳定正式结果对象
-- 保留支持内部追踪的来源映射关系
-- 对最终结果执行结构校验与正式输出约束检查
-
-输出：`FinalEvaluationProjection`
-
-说明：
-
-- `FinalEvaluationProjection` 属于后端内部最后一步
-- 对外 API 返回体仍应以 `packages/schemas/` 为唯一真源
-
-## Prompt 与 Schema 映射
-
-### Prompt 建议分层
-
-建议正式 Prompt 资产按以下阶段收敛：
-
-- `input_screening`：联合输入预检查 Prompt
-- `rubric_evaluation`：新 `8` 轴分点评价 Prompt
-- `aggregation`：旧四维骨架汇总与最终结果草案 Prompt
-- `versions`：Prompt 版本记录
-- `registry`：Prompt 元数据与启用规则
-
-推荐目录落位：
-
-- `prompts/scoring/screening/`
-- `prompts/scoring/rubric/`
-- `prompts/scoring/aggregation/`
-- `prompts/versions/`
-- `prompts/registry/`
-
-### Schema 建议分层
-
-后续正式结构建议沉淀到：
-
-- `packages/schemas/input/`：联合输入与输入预检查相关结构
-- `packages/schemas/output/`：正式结果结构与投影结构
-- `packages/schemas/evals/`：联合样本、报告与差异结构
-- 评分中间对象在内部契约目录中按阶段扩展
-
-说明：
-
-- 正式对外结果仍以最终输出 Schema 为唯一真源
-- 中间阶段结构只作为后端内部契约维护，不直接暴露给前端作为正式业务接口
-
-## 成功标准
-
-- 系统能解释每个顶层评分主要来自哪些 `8` 轴与骨架维度
-- 系统能处理 `chapters + outline` 的联合输入，并显式识别单侧输入降级
-- 系统只保留一条正式主线，不再存在 `pairwise`、双路径或仲裁阶段
-- Prompt、Schema 与 Evals 围绕同一套双输入 `rubric` 版本同步演进
-- 对外正式结果结构保持稳定，不因内部架构调整而频繁变更
+- 流程能稳定处理双输入与单侧降级输入
+- rubric 阶段完整覆盖全部 `8` 轴
+- 一致性阶段能阻断明显冲突或无依据结论
+- 对外结果稳定保持 `overall + axes`
+- 前后端围绕同一结果结构消费，不再回映射到旧四项评分

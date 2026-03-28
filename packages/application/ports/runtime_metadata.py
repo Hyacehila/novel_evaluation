@@ -54,6 +54,9 @@ class ProviderRuntimePort(ProviderMetadataPort, Protocol):
     def configure_runtime_key(self, api_key: str) -> ProviderStatus:
         ...
 
+    def reset_runtime_key(self) -> ProviderStatus:
+        ...
+
 
 class ProviderExecutionPort(ProviderMetadataPort, Protocol):
     def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
@@ -116,3 +119,6 @@ class StaticProviderRuntime:
 
     def configure_runtime_key(self, api_key: str) -> ProviderStatus:
         raise RuntimeError("provider runtime 不支持写入。")
+
+    def reset_runtime_key(self) -> ProviderStatus:
+        return self.get_status()

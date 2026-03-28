@@ -9,18 +9,21 @@
 - 本地状态存储固定为 `SQLite`
 - 默认数据库路径固定为 `./var/novel-evaluation.sqlite3`
 - 环境变量覆盖固定为 `NOVEL_EVAL_DB_PATH`
-- 用户任务由 `apps/api` 进程内执行器推进
+- 用户任务由 `apps/api` 进程内后台执行器推进
 - `apps/worker` 不承接用户提交任务，只运行批处理与回归
 
 ## 持久化对象
 
-`Phase 1` 至少持久化以下对象：
+用户主链持久化到 SQLite 的对象：
 
 - `EvaluationTask`
 - `EvaluationResultResource`
-- `EvalRecord`（以 `evals/reports/{reportId}.records.json` 形式写出）
-- `EvalBaseline`（以 `evals/baselines/{baselineId}.json` 形式写出）
-- `EvalReport`（以 `evals/reports/{reportId}.json` 形式写出）
+
+回归与批处理写出到文件系统的对象：
+
+- `EvalRecord`：`evals/reports/{reportId}.records.json`
+- `EvalBaseline`：`evals/baselines/{baselineId}.json`
+- `EvalReport`：`evals/reports/{reportId}.json`
 
 说明：
 
@@ -28,11 +31,24 @@
 - Prompt/Schema/Provider 版本元信息必须随任务和回归记录保留
 - `EvalRecord / EvalBaseline / EvalReport` 不进入用户任务 SQLite
 
+## SQLite 结构
+
+当前 API 仓库实现维护两张表：
+
+- `tasks(task_id, created_at, payload)`
+- `results(task_id, payload)`
+
+说明：
+
+- `payload` 以 JSON 文本形式存储 schema 对象
+- `results.task_id` 外键引用 `tasks.task_id`
+- 历史排序基于 `created_at desc, task_id desc`
+
 ## 用户任务执行模型
 
 ### 创建
 
-- `POST /api/tasks` 成功后先创建 `queued` 任务
+- `POST /api/tasks` 成功后先创建 `queued + not_available` 任务
 - 创建成功返回 `201`
 - 每次成功创建都生成新的 `taskId`
 
@@ -45,7 +61,15 @@
   - `completed + blocked`
   - `failed + not_available`
 
-### 非幂等边界
+### 读取期标准化
+
+任务和结果在读取时会做兼容标准化：
+
+- 若任务是 `completed + available`，但结果资源缺失，任务读取会降级为 `completed + not_available`
+- 若结果资源仍是旧版顶层字段结构，结果读取会返回 `not_available`，并提示历史结果结构已过期
+- 若结果资源 payload 损坏，结果读取会返回 `not_available`，并提示结果数据已损坏
+
+## 非幂等边界
 
 - `POST /api/tasks` 明确定义为非幂等
 - 重复提交会创建新任务
@@ -58,7 +82,7 @@
 - 批处理
 - 回归执行
 - baseline comparison
-- 结构化 report 生成
+- report / records 工件生成
 
 `apps/worker` 不负责：
 
@@ -68,8 +92,9 @@
 
 ## 重启语义
 
-- 进程重启后，所有遗留 `processing` 任务统一转为 `failed + not_available`
-- 失败错误码应映射为受控技术失败
+- API 启动时会恢复所有遗留 `queued / processing` 任务
+- 恢复策略不是继续跑，而是统一转为 `failed + not_available`
+- 失败错误码映射为受控技术失败
 - `Phase 1` 不做自动恢复执行
 - 用户若需重试，应重新发起新任务
 
@@ -78,10 +103,10 @@
 - `SQLite` 文件必须被视为本地状态真源
 - 历史列表读取必须基于持久化数据，而不是内存态
 - 重启后 `GET /api/tasks/{taskId}`、`GET /api/tasks/{taskId}/result`、`GET /api/history` 仍可读取已完成资源
+- `dashboard` 的 `recentResults` 只展示当前仍能按新结果 schema 正常读取的结果
 
 ## 与其它文档的关系
 
-- 范围边界见 `docs/planning/mvp-phase-1-scope.md`
 - API 语义见 `apps/api/contracts/api-v0-overview.md`
 - 状态与错误见 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
 - 本地配置见 `docs/operations/runtime-configuration-and-diagnostics.md`

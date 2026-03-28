@@ -184,7 +184,9 @@ def test_complete_task_with_result_moves_to_available() -> None:
     assert result_resource.result is not None
     assert result_resource.result.taskId == task.taskId
     assert result_resource.resultTime is not None
-    assert result_resource.result.signingProbability == 80
+    assert len(result_resource.result.axes) == 8
+    assert result_resource.result.overall.score == 80
+    assert result_resource.result.overall.verdict == "可继续观察"
 
 
 def test_complete_task_with_result_keeps_task_runtime_metadata_in_result() -> None:
@@ -275,6 +277,26 @@ def test_complete_task_with_result_resolves_missing_runtime_metadata_from_collab
     assert result.rubricVersion == "rubric-fallback-v2"
     assert result.providerId == "provider-fallback"
     assert result.modelId == "model-fallback"
+
+
+def test_get_dashboard_uses_overall_result_summary() -> None:
+    service = build_service()
+    task = service.create_task(build_request())
+    service.start_task(task.taskId)
+
+    service.complete_task_with_result(
+        task.taskId,
+        signing_probability=80,
+        commercial_value=78,
+        writing_quality=76,
+        innovation_score=74,
+    )
+
+    dashboard = service.get_dashboard()
+
+    assert len(dashboard.recentResults) == 1
+    assert dashboard.recentResults[0].overallScore == 80
+    assert dashboard.recentResults[0].overallVerdict == "可继续观察"
 
 
 def test_block_task_moves_to_completed_blocked() -> None:

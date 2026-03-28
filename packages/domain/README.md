@@ -13,7 +13,7 @@
 - `EvaluationTask`
 - `EvaluationTaskSummary`
 - `EvaluationResult`
-- `PlatformRecommendation`
+- `EvaluationResultResource`
 - `EvalRecord`
 - 共享词表：
   - `inputComposition`
@@ -69,7 +69,7 @@
 当前最小验收方式：
 
 - `git diff --check`
-- `rg "Manuscript|EvaluationTask|EvaluationResult|不变量|派生字段|关系" docs/architecture/domain-model.md packages/domain/README.md`
+- `rg "Manuscript|EvaluationTask|EvaluationResult|EvaluationResultResource|不变量|派生字段|关系" docs/architecture/domain-model.md packages/domain/README.md`
 
 ## DevFleet 使用约束
 

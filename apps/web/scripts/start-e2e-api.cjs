@@ -21,6 +21,7 @@ const childEnv = {
   ...process.env,
   PYTHONPATH: repoRoot,
   NOVEL_EVAL_DB_PATH: dbPath,
+  NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET: '1',
   NOVEL_EVAL_LOG_DIR: logsDir,
 };
 if (providerMode === 'runtime_key') {

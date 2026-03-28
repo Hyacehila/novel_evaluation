@@ -1,6 +1,6 @@
 # 网络小说打分器
 
-面向中文网文场景的本地单用户评测工具，用结构化流程输出签约概率、平台建议、编辑结论和详细分析。
+面向中文网文场景的本地单用户评测工具，用结构化流程输出总体判断、平台候选、市场判断和 `8` 轴评价结果。
 
 ![结果页截图](output/playwright/readme-result-page.png)
 
@@ -85,6 +85,7 @@ Copy-Item .env.example .env
 - 页面访问不到 API：确认 `.\scripts\run-api.ps1` 正在运行，并检查 `.env` 里的 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
 - 想清空本地数据：关闭 API 后删除 `./var/novel-evaluation.sqlite3`
 - 想跑真实 Playwright E2E：先配置真实 `DeepSeek` Key，再执行 `pnpm --dir apps/web test:e2e`
+- 升级后旧任务结果显示“结果不可用”：当前结果结构已经升级为 `overall + axes`；旧版持久化结果不会自动迁移，会按 `not_available` 展示并提示重新提交
 
 更多问题见 [常见问题](docs/getting-started/faq.md)。
 

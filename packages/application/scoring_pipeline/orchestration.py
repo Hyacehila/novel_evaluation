@@ -16,7 +16,7 @@ from packages.application.scoring_pipeline.models import (
 )
 from packages.application.support.process_logging import log_event
 from packages.application.scoring_pipeline.projection_service import build_final_projection
-from packages.application.scoring_pipeline.rubric_executor import execute_rubric
+from packages.application.scoring_pipeline.rubric_executor import RUBRIC_SLICE_PLAN, execute_rubric
 from packages.application.scoring_pipeline.screening_executor import execute_screening
 from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName, Sufficiency
 from packages.schemas.input.joint_submission import JointSubmissionRequest
@@ -74,7 +74,7 @@ class ScoringPipeline:
             )
             raise PipelineBlockedError(
                 error_code=error_code,
-                message=_build_screening_block_message(screening),
+                message=_build_screening_block_message(error_code=error_code),
             )
 
         rubric_binding = self._resolve_binding(
@@ -143,7 +143,7 @@ class ScoringPipeline:
             ),
         )
         projection_started_at = perf_counter()
-        projection = build_final_projection(aggregation=aggregation)
+        projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
         log_event(
             logger,
             logging.INFO,
@@ -192,16 +192,20 @@ class ScoringPipeline:
 
 
 def _map_screening_block_error(screening) -> ErrorCode:
-    if screening.chaptersSufficiency in {Sufficiency.INSUFFICIENT, Sufficiency.MISSING} and screening.hasOutline:
+    if screening.hasChapters and screening.chaptersSufficiency in {Sufficiency.INSUFFICIENT, Sufficiency.MISSING}:
         return ErrorCode.INSUFFICIENT_CHAPTERS_INPUT
-    if screening.outlineSufficiency in {Sufficiency.INSUFFICIENT, Sufficiency.MISSING}:
+    if screening.hasOutline and screening.outlineSufficiency in {Sufficiency.INSUFFICIENT, Sufficiency.MISSING}:
         return ErrorCode.INSUFFICIENT_OUTLINE_INPUT
     return ErrorCode.JOINT_INPUT_UNRATEABLE
 
 
-def _build_screening_block_message(screening) -> str:
-    if screening.rejectionReasons:
-        return screening.rejectionReasons[0]
+def _build_screening_block_message(*, error_code: ErrorCode) -> str:
+    if error_code is ErrorCode.INSUFFICIENT_CHAPTERS_INPUT:
+        return "正文内容不足，当前无法进入正式评分，请补充正文后重试。"
+    if error_code is ErrorCode.INSUFFICIENT_OUTLINE_INPUT:
+        return "大纲内容不足，当前无法进入正式评分，请补充大纲后重试。"
+    if error_code is ErrorCode.JOINT_INPUT_UNRATEABLE:
+        return "输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。"
     return "输入未满足正式评分的最小可评条件。"
 
 

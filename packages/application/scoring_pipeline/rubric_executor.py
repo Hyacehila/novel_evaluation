@@ -11,12 +11,18 @@ from packages.application.scoring_pipeline.provider_support import execute_provi
 from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import AxisId, FatalRisk, ScoreBand, SkeletonDimensionId, StageName
 from packages.schemas.output.error import ErrorCode
-from packages.schemas.stages.rubric import RubricEvaluationSet
+from packages.schemas.stages.rubric import RubricEvaluationSet, RubricEvaluationSlice
 
 logger = logging.getLogger(__name__)
 
 _STAGE_TIMEOUT_MS = 90_000
 _STAGE_MAX_TOKENS = 6_000
+_SCHEMA_VALIDATION_MAX_ATTEMPTS = 2
+RUBRIC_SLICE_PLAN: tuple[tuple[AxisId, ...], ...] = (
+    (AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE),
+    (AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION),
+    (AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL),
+)
 _DEFAULT_SKELETON_DIMENSIONS_BY_AXIS = {
     AxisId.HOOK_RETENTION.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
     AxisId.SERIAL_MOMENTUM.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
@@ -81,58 +87,162 @@ def execute_rubric(
     provider_adapter: ProviderExecutionPort,
     context: RubricExecutionContext,
 ) -> RubricEvaluationSet:
-    payload = execute_provider_stage(
-        provider_adapter=provider_adapter,
-        binding=context.binding,
-        task_id=context.task_id,
-        stage=StageName.RUBRIC_EVALUATION,
-        input_composition=context.screening.inputComposition,
-        evaluation_mode=context.screening.evaluationMode,
-        timeout_ms=_STAGE_TIMEOUT_MS,
-        max_tokens=_STAGE_MAX_TOKENS,
-        response_format={"type": "json_object"},
-        user_payload={
-            "taskId": context.task_id,
-            "title": context.submission.title,
-            "inputComposition": context.screening.inputComposition.value,
-            "evaluationMode": context.screening.evaluationMode.value,
-            "chapters": [chapter.content for chapter in context.submission.chapters or []],
-            "outline": context.submission.outline.content if context.submission.outline is not None else None,
-            "screening": context.screening.model_dump(mode="json"),
-        },
-    )
-    payload = _normalize_rubric_payload(payload=payload, context=context)
+    slices = [
+        execute_rubric_slice(
+            provider_adapter=provider_adapter,
+            context=RubricExecutionContext(
+                task_id=context.task_id,
+                submission=context.submission,
+                screening=context.screening,
+                binding=context.binding,
+                requested_axes=requested_axes,
+            ),
+        )
+        for requested_axes in RUBRIC_SLICE_PLAN
+    ]
+    return merge_rubric_slices(context=context, slices=slices)
+
+
+
+def execute_rubric_slice(
+    *,
+    provider_adapter: ProviderExecutionPort,
+    context: RubricExecutionContext,
+) -> RubricEvaluationSlice:
+    requested_axes = [axis_id.value for axis_id in context.requested_axes]
+    user_payload = {
+        "taskId": context.task_id,
+        "title": context.submission.title,
+        "inputComposition": context.screening.inputComposition.value,
+        "evaluationMode": context.screening.evaluationMode.value,
+        "requestedAxes": requested_axes,
+        "chapters": [chapter.content for chapter in context.submission.chapters or []],
+        "outline": context.submission.outline.content if context.submission.outline is not None else None,
+        "screening": context.screening.model_dump(mode="json"),
+    }
+    for attempt in range(1, _SCHEMA_VALIDATION_MAX_ATTEMPTS + 1):
+        payload = execute_provider_stage(
+            provider_adapter=provider_adapter,
+            binding=context.binding,
+            task_id=context.task_id,
+            stage=StageName.RUBRIC_EVALUATION,
+            input_composition=context.screening.inputComposition,
+            evaluation_mode=context.screening.evaluationMode,
+            timeout_ms=_STAGE_TIMEOUT_MS,
+            max_tokens=_STAGE_MAX_TOKENS,
+            response_format={"type": "json_object"},
+            user_payload=user_payload,
+        )
+        payload = _normalize_rubric_payload(payload=payload, context=context)
+        try:
+            return RubricEvaluationSlice.model_validate(payload)
+        except Exception as exc:  # noqa: BLE001
+            if attempt < _SCHEMA_VALIDATION_MAX_ATTEMPTS:
+                log_event(
+                    logger,
+                    logging.WARNING,
+                    "stage_schema_invalid_retry",
+                    taskId=context.task_id,
+                    stage=StageName.RUBRIC_EVALUATION,
+                    promptVersion=context.binding.prompt_version,
+                    schemaVersion=context.binding.schema_version,
+                    rubricVersion=context.binding.rubric_version,
+                    providerId=context.binding.provider_id,
+                    modelId=context.binding.model_id,
+                    errorCode=ErrorCode.STAGE_SCHEMA_INVALID,
+                    attempt=attempt,
+                    maxAttempts=_SCHEMA_VALIDATION_MAX_ATTEMPTS,
+                )
+                continue
+            log_event(
+                logger,
+                logging.ERROR,
+                "stage_schema_invalid",
+                taskId=context.task_id,
+                stage=StageName.RUBRIC_EVALUATION,
+                promptVersion=context.binding.prompt_version,
+                schemaVersion=context.binding.schema_version,
+                rubricVersion=context.binding.rubric_version,
+                providerId=context.binding.provider_id,
+                modelId=context.binding.model_id,
+                errorCode=ErrorCode.STAGE_SCHEMA_INVALID,
+                durationMs=0,
+            )
+            raise PipelineFailureError(
+                error_code=ErrorCode.STAGE_SCHEMA_INVALID,
+                message="rubric_evaluation 阶段输出不满足正式 schema。",
+            ) from exc
+
+
+
+def merge_rubric_slices(*, context: RubricExecutionContext, slices: list[RubricEvaluationSlice]) -> RubricEvaluationSet:
+    items_by_axis = {
+        item.axisId: item
+        for rubric_slice in slices
+        for item in rubric_slice.items
+    }
+    axis_summaries = {
+        axis_id: summary
+        for rubric_slice in slices
+        for axis_id, summary in rubric_slice.axisSummaries.items()
+    }
+    risk_tags = list({risk_tag for rubric_slice in slices for risk_tag in rubric_slice.riskTags})
+    missing_required_axes = [axis_id for axis_id in AxisId if axis_id not in items_by_axis]
     try:
-        return RubricEvaluationSet.model_validate(payload)
-    except Exception as exc:  # noqa: BLE001
-        log_event(
-            logger,
-            logging.ERROR,
-            "stage_schema_invalid",
+        return RubricEvaluationSet(
             taskId=context.task_id,
             stage=StageName.RUBRIC_EVALUATION,
-            promptVersion=context.binding.prompt_version,
             schemaVersion=context.binding.schema_version,
+            promptVersion=context.binding.prompt_version,
             rubricVersion=context.binding.rubric_version,
             providerId=context.binding.provider_id,
             modelId=context.binding.model_id,
-            errorCode=ErrorCode.STAGE_SCHEMA_INVALID,
-            durationMs=0,
+            inputComposition=context.screening.inputComposition,
+            evaluationMode=context.screening.evaluationMode,
+            items=[items_by_axis[axis_id] for axis_id in AxisId],
+            axisSummaries={axis_id: axis_summaries[axis_id] for axis_id in AxisId},
+            missingRequiredAxes=missing_required_axes,
+            riskTags=risk_tags,
+            overallConfidence=min(rubric_slice.overallConfidence for rubric_slice in slices),
         )
+    except Exception as exc:  # noqa: BLE001
         raise PipelineFailureError(
             error_code=ErrorCode.STAGE_SCHEMA_INVALID,
             message="rubric_evaluation 阶段输出不满足正式 schema。",
         ) from exc
 
 
+
 def _normalize_rubric_payload(*, payload: Any, context: RubricExecutionContext) -> Any:
     if not isinstance(payload, Mapping):
         return payload
     normalized_payload: dict[str, Any] = dict(payload)
+    requested_axis_values = {axis_id.value for axis_id in context.requested_axes}
     normalized_items = normalized_payload.get("items")
     if isinstance(normalized_items, list):
         normalized_items = [_normalize_rubric_item(item) for item in normalized_items]
+        if requested_axis_values:
+            normalized_items = [
+                item
+                for item in normalized_items
+                if isinstance(item, Mapping) and item.get("axisId") in requested_axis_values
+            ]
         normalized_payload["items"] = normalized_items
+    normalized_axis_summaries = _normalize_axis_summaries(
+        raw_axis_summaries=normalized_payload.get("axisSummaries"),
+        normalized_items=normalized_items,
+    )
+    if requested_axis_values:
+        normalized_axis_summaries = {
+            axis_id: summary
+            for axis_id, summary in normalized_axis_summaries.items()
+            if axis_id in requested_axis_values
+        }
+    normalized_missing_required_axes = _normalize_axis_ids(normalized_payload.get("missingRequiredAxes"))
+    if requested_axis_values:
+        normalized_missing_required_axes = [
+            axis_id for axis_id in normalized_missing_required_axes if axis_id in requested_axis_values
+        ]
     normalized_payload.update(
         {
             "taskId": context.task_id,
@@ -144,15 +254,14 @@ def _normalize_rubric_payload(*, payload: Any, context: RubricExecutionContext) 
             "modelId": context.binding.model_id,
             "inputComposition": context.screening.inputComposition.value,
             "evaluationMode": context.screening.evaluationMode.value,
-            "axisSummaries": _normalize_axis_summaries(
-                raw_axis_summaries=normalized_payload.get("axisSummaries"),
-                normalized_items=normalized_items,
-            ),
-            "missingRequiredAxes": _normalize_axis_ids(normalized_payload.get("missingRequiredAxes")),
+            "requestedAxes": [axis_id.value for axis_id in context.requested_axes],
+            "axisSummaries": normalized_axis_summaries,
+            "missingRequiredAxes": normalized_missing_required_axes,
             "riskTags": _normalize_risk_tags(normalized_payload.get("riskTags")),
         }
     )
     return normalized_payload
+
 
 
 def _normalize_rubric_item(item: Any) -> Any:
@@ -177,6 +286,7 @@ def _normalize_rubric_item(item: Any) -> Any:
     return normalized_item
 
 
+
 def normalized_ref_source_type(reference: Any) -> str | None:
     if not isinstance(reference, Mapping):
         return None
@@ -184,6 +294,7 @@ def normalized_ref_source_type(reference: Any) -> str | None:
     if isinstance(raw_source_type, str):
         return raw_source_type.strip()
     return None
+
 
 
 def _normalize_evidence_refs(
@@ -212,6 +323,7 @@ def _normalize_evidence_refs(
             )
         )
     return normalized_references
+
 
 
 def _normalize_evidence_ref(
@@ -258,6 +370,7 @@ def _normalize_evidence_ref(
     return normalized_reference
 
 
+
 def _normalize_skeleton_dimensions(raw_dimensions: Any, *, axis_key: str | None) -> list[str]:
     normalized_dimensions: list[str] = []
     if isinstance(raw_dimensions, list):
@@ -271,6 +384,7 @@ def _normalize_skeleton_dimensions(raw_dimensions: Any, *, axis_key: str | None)
         return normalized_dimensions
     default_dimension = _DEFAULT_SKELETON_DIMENSIONS_BY_AXIS.get(axis_key or "")
     return [default_dimension] if default_dimension is not None else []
+
 
 
 def _normalize_axis_summaries(
@@ -309,6 +423,7 @@ def _normalize_axis_summaries(
     return normalized_summaries
 
 
+
 def _extract_summary_text(raw_summary: Any) -> str | None:
     if isinstance(raw_summary, str):
         stripped = raw_summary.strip()
@@ -331,6 +446,7 @@ def _extract_summary_text(raw_summary: Any) -> str | None:
     return "；".join(parts) if parts else None
 
 
+
 def _normalize_axis_ids(raw_axis_ids: Any) -> list[str]:
     if not isinstance(raw_axis_ids, list):
         return []
@@ -340,6 +456,7 @@ def _normalize_axis_ids(raw_axis_ids: Any) -> list[str]:
         if axis_key is not None and axis_key not in normalized_axis_ids:
             normalized_axis_ids.append(axis_key)
     return normalized_axis_ids
+
 
 
 def _normalize_risk_tags(raw_risk_tags: Any) -> list[str]:
@@ -356,6 +473,7 @@ def _normalize_risk_tags(raw_risk_tags: Any) -> list[str]:
     return normalized_risk_tags
 
 
+
 def _normalize_text_list(raw_values: Any) -> list[str]:
     if not isinstance(raw_values, list):
         return []
@@ -369,6 +487,7 @@ def _normalize_text_list(raw_values: Any) -> list[str]:
     return normalized_values
 
 
+
 def _normalize_axis_key(raw_axis_id: Any) -> str | None:
     if isinstance(raw_axis_id, AxisId):
         return raw_axis_id.value
@@ -378,10 +497,12 @@ def _normalize_axis_key(raw_axis_id: Any) -> str | None:
     return stripped if stripped in {axis.value for axis in AxisId} else None
 
 
+
 def _normalize_source_type(raw_source_type: str | None) -> str:
     if raw_source_type in _SOURCE_SPAN_KEYS:
         return raw_source_type
     return "chapters"
+
 
 
 def _normalize_score_band(raw_score_band: Any) -> str:
@@ -392,12 +513,14 @@ def _normalize_score_band(raw_score_band: Any) -> str:
     return _SCORE_BAND_ALIASES.get(raw_score_band.strip(), ScoreBand.TWO.value)
 
 
+
 def _normalize_confidence(raw_value: Any, *, fallback: float) -> float:
     if isinstance(raw_value, int | float):
         value = float(raw_value)
         if 0 <= value <= 1:
             return value
     return fallback
+
 
 
 def normalized_text_value(raw_value: Any) -> str | None:

@@ -67,7 +67,7 @@
 1. 输入预检查
 2. `8` 轴 `LLM rubric` 分点评价
 3. 轻量一致性整理
-4. 聚合到旧四维骨架层
+4. 聚合生成 `overallVerdict / overallSummary / platformCandidates / marketFit` 草案
 5. 最终结果投影
 
 ### 治理与回归能力
@@ -135,7 +135,7 @@
 
 前端继续按以下原则开发：
 
-- `Mock-First`
+- `Real-API-First`
 - `Adapter-First`
 - `Polling-First`
 

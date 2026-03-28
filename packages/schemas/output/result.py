@@ -1,46 +1,59 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from typing import Literal
-
-from packages.schemas.common.enums import AxisId, ResultStatus, SkeletonDimensionId, StageName, TopLevelScoreField
+from packages.schemas.common.enums import AxisId, FatalRisk, ResultStatus, ScoreBand, StageName
 from packages.schemas.common.validators import (
     ensure_non_empty_text,
-    validate_confidence,
     validate_percentage,
 )
 
 
-class PlatformRecommendation(SchemaModel):
-    name: str
-    percentage: int
+class AxisEvaluationResult(SchemaModel):
+    axisId: AxisId
+    scoreBand: ScoreBand
+    score: int
+    summary: str
     reason: str
+    degradedByInput: bool
+    riskTags: list[FatalRisk]
 
-    @field_validator("name", "reason")
+    @field_validator("summary", "reason")
     @classmethod
     def validate_text_fields(cls, value: str) -> str:
-        return ensure_non_empty_text(value, "platform field")
+        return ensure_non_empty_text(value, "axis result field")
 
-    @field_validator("percentage")
+    @field_validator("score")
     @classmethod
-    def validate_percentage_value(cls, value: int) -> int:
-        return validate_percentage(value, "percentage")
+    def validate_score(cls, value: int) -> int:
+        return validate_percentage(value, "axis score")
 
 
-class DetailedAnalysis(SchemaModel):
-    plot: str
-    character: str
-    pacing: str
-    worldBuilding: str
+class OverallEvaluationResult(SchemaModel):
+    score: int
+    verdict: str
+    summary: str
+    platformCandidates: list[str]
+    marketFit: str
 
-    @field_validator("plot", "character", "pacing", "worldBuilding")
+    @field_validator("score")
+    @classmethod
+    def validate_score(cls, value: int) -> int:
+        return validate_percentage(value, "overall score")
+
+    @field_validator("verdict", "summary", "marketFit")
     @classmethod
     def validate_text_fields(cls, value: str) -> str:
-        return ensure_non_empty_text(value, "detailedAnalysis field")
+        return ensure_non_empty_text(value, "overall field")
+
+    @field_validator("platformCandidates")
+    @classmethod
+    def validate_platform_candidates(cls, value: list[str]) -> list[str]:
+        return [ensure_non_empty_text(item, "platformCandidates item") for item in value]
 
 
 class FinalEvaluationProjection(SchemaModel):
@@ -51,19 +64,8 @@ class FinalEvaluationProjection(SchemaModel):
     rubricVersion: str
     providerId: str
     modelId: str
-    signingProbability: int
-    commercialValue: int
-    writingQuality: int
-    innovationScore: int
-    strengths: list[str]
-    weaknesses: list[str]
-    platforms: list[PlatformRecommendation]
-    marketFit: str
-    editorVerdict: str
-    detailedAnalysis: DetailedAnalysis
-    overallConfidence: float
-    supportingAxisMap: dict[TopLevelScoreField, list[AxisId]]
-    supportingSkeletonMap: dict[TopLevelScoreField, list[SkeletonDimensionId]]
+    axes: list[AxisEvaluationResult]
+    overall: OverallEvaluationResult
 
     @field_validator(
         "taskId",
@@ -72,39 +74,18 @@ class FinalEvaluationProjection(SchemaModel):
         "rubricVersion",
         "providerId",
         "modelId",
-        "marketFit",
-        "editorVerdict",
     )
     @classmethod
     def validate_text_fields(cls, value: str) -> str:
         return ensure_non_empty_text(value, "projection field")
 
-    @field_validator(
-        "signingProbability",
-        "commercialValue",
-        "writingQuality",
-        "innovationScore",
-    )
-    @classmethod
-    def validate_score_fields(cls, value: int) -> int:
-        return validate_percentage(value, "projection score")
-
-    @field_validator("overallConfidence")
-    @classmethod
-    def validate_overall_confidence(cls, value: float) -> float:
-        return validate_confidence(value, "overallConfidence")
-
-    @field_validator("strengths", "weaknesses")
-    @classmethod
-    def validate_text_list(cls, value: list[str]) -> list[str]:
-        return [ensure_non_empty_text(item, "text list item") for item in value]
-
     @model_validator(mode="after")
-    def validate_supporting_maps(self) -> "FinalEvaluationProjection":
-        if set(self.supportingAxisMap.keys()) != set(TopLevelScoreField):
-            raise ValueError("supportingAxisMap 必须覆盖全部顶层分数字段。")
-        if set(self.supportingSkeletonMap.keys()) != set(TopLevelScoreField):
-            raise ValueError("supportingSkeletonMap 必须覆盖全部顶层分数字段。")
+    def validate_axes_coverage(self) -> "FinalEvaluationProjection":
+        if len(self.axes) != len(AxisId):
+            raise ValueError("axes 必须覆盖全部 8 个 rubric 轴。")
+        axis_ids = [axis.axisId for axis in self.axes]
+        if len(set(axis_ids)) != len(AxisId) or set(axis_ids) != set(AxisId):
+            raise ValueError("axes 必须完整且唯一覆盖全部 AxisId。")
         return self
 
 
@@ -116,16 +97,8 @@ class EvaluationResult(SchemaModel):
     providerId: str
     modelId: str
     resultTime: datetime
-    signingProbability: int
-    commercialValue: int
-    writingQuality: int
-    innovationScore: int
-    strengths: list[str]
-    weaknesses: list[str]
-    platforms: list[PlatformRecommendation]
-    marketFit: str
-    editorVerdict: str
-    detailedAnalysis: DetailedAnalysis
+    axes: list[AxisEvaluationResult]
+    overall: OverallEvaluationResult
 
     @field_validator(
         "taskId",
@@ -134,27 +107,19 @@ class EvaluationResult(SchemaModel):
         "rubricVersion",
         "providerId",
         "modelId",
-        "marketFit",
-        "editorVerdict",
     )
     @classmethod
     def validate_text_fields(cls, value: str) -> str:
         return ensure_non_empty_text(value, "result field")
 
-    @field_validator(
-        "signingProbability",
-        "commercialValue",
-        "writingQuality",
-        "innovationScore",
-    )
-    @classmethod
-    def validate_score_fields(cls, value: int) -> int:
-        return validate_percentage(value, "result score")
-
-    @field_validator("strengths", "weaknesses")
-    @classmethod
-    def validate_text_list(cls, value: list[str]) -> list[str]:
-        return [ensure_non_empty_text(item, "text list item") for item in value]
+    @model_validator(mode="after")
+    def validate_axes_coverage(self) -> "EvaluationResult":
+        if len(self.axes) != len(AxisId):
+            raise ValueError("axes 必须覆盖全部 8 个 rubric 轴。")
+        axis_ids = [axis.axisId for axis in self.axes]
+        if len(set(axis_ids)) != len(AxisId) or set(axis_ids) != set(AxisId):
+            raise ValueError("axes 必须完整且唯一覆盖全部 AxisId。")
+        return self
 
 
 class EvaluationResultResource(SchemaModel):

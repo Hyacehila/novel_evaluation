@@ -25,19 +25,22 @@
 | `ManuscriptOutline` | `implemented` | `packages/schemas/input/manuscript.py` |
 | `Manuscript` | `implemented` | `packages/schemas/input/manuscript.py` |
 | `JointSubmissionRequest` | `implemented` | `packages/schemas/input/joint_submission.py` |
-| `InputScreeningResult` | `implemented` | `packages/schemas/input/screening.py` |
+| `RuntimeProviderKeyRequest` | `implemented` | `packages/schemas/input/provider_configuration.py` |
 | `EvaluationTask` | `implemented` | `packages/schemas/output/task.py` |
 | `EvaluationTaskSummary` | `implemented` | `packages/schemas/output/task.py` |
 | `RecentResultSummary` | `implemented` | `packages/schemas/output/task.py` |
 | `DashboardSummary` | `implemented` | `packages/schemas/output/dashboard.py` |
 | `HistoryList` | `implemented` | `packages/schemas/output/dashboard.py` |
+| `ProviderStatus` | `implemented` | `packages/schemas/output/provider_status.py` |
 
 ## 阶段对象
 
 | 对象 | 状态 | 正式真源文件 |
 | --- | --- | --- |
+| `InputScreeningResult` | `implemented` | `packages/schemas/input/screening.py` |
 | `RubricEvaluationEvidenceRef` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `RubricEvaluationItem` | `implemented` | `packages/schemas/stages/rubric.py` |
+| `RubricEvaluationSlice` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `RubricEvaluationSet` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `ConsistencyConflict` | `implemented` | `packages/schemas/stages/consistency.py` |
 | `ConsistencyCheckResult` | `implemented` | `packages/schemas/stages/consistency.py` |
@@ -48,8 +51,8 @@
 
 | 对象 | 状态 | 正式真源文件 |
 | --- | --- | --- |
-| `PlatformRecommendation` | `implemented` | `packages/schemas/output/result.py` |
-| `DetailedAnalysis` | `implemented` | `packages/schemas/output/result.py` |
+| `AxisEvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
+| `OverallEvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
 | `EvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
 | `EvaluationResultResource` | `implemented` | `packages/schemas/output/result.py` |
 | `ErrorObject` | `implemented` | `packages/schemas/output/error.py` |

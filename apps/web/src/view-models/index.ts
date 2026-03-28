@@ -1,9 +1,7 @@
 import type {
-  DetailedAnalysisDto,
   ErrorCode,
   EvaluationMode,
   InputComposition,
-  PlatformRecommendationDto,
   ProviderConfigurationSource,
   ResultStatus,
   TaskStatus,
@@ -25,8 +23,8 @@ export interface DashboardResultSummaryView {
   taskId: string;
   title: string;
   resultTime: string;
-  signingProbability: number;
-  editorVerdict: string;
+  overallScore: number;
+  overallVerdict: string;
 }
 
 export interface DashboardSummaryView {
@@ -59,6 +57,24 @@ export interface TaskDetailView {
   resultAvailable: boolean;
 }
 
+export interface AxisResultView {
+  axisId: string;
+  scoreBand: string;
+  score: number;
+  summary: string;
+  reason: string;
+  degradedByInput: boolean;
+  riskTags: string[];
+}
+
+export interface OverallResultView {
+  score: number;
+  verdict: string;
+  summary: string;
+  platformCandidates: string[];
+  marketFit: string;
+}
+
 export interface ResultBodyView {
   taskId: string;
   schemaVersion: string;
@@ -67,16 +83,8 @@ export interface ResultBodyView {
   providerId: string;
   modelId: string;
   resultTime: string;
-  signingProbability: number;
-  commercialValue: number;
-  writingQuality: number;
-  innovationScore: number;
-  strengths: string[];
-  weaknesses: string[];
-  platforms: PlatformRecommendationDto[];
-  marketFit: string;
-  editorVerdict: string;
-  detailedAnalysis: DetailedAnalysisDto;
+  axes: AxisResultView[];
+  overall: OverallResultView;
 }
 
 export interface ResultDetailView {

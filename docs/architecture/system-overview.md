@@ -19,6 +19,7 @@
 ### `apps/web`
 
 - 输入或上传正文与大纲
+- 读取 provider 状态并在缺少启动期 key 时录入一次性 runtime key
 - 创建任务
 - 轮询任务状态
 - 查看结果和历史
@@ -42,6 +43,7 @@
 - 用例编排
 - 状态推进
 - 调用 Prompt runtime、Provider adapter、Schema 校验
+- 组织 `input_screening -> rubric_evaluation -> consistency_check -> aggregation -> final_projection`
 
 ### `packages/provider-adapters`
 
@@ -53,7 +55,7 @@
 
 - Prompt 正文在 `Markdown`
 - 元数据在 `YAML`
-- runtime 负责读取、选择、守卫和渲染
+- runtime 负责按 `stage + inputComposition + evaluationMode + providerId + modelId` 读取、选择和返回 Prompt 绑定
 
 ### `evals/`
 
@@ -65,16 +67,23 @@
 1. 输入预检查
 2. `8` 轴 `LLM rubric` 分点评价
 3. 轻量一致性整理
-4. 聚合到旧四维骨架层
-5. 最终结果投影
+4. 聚合生成 `overallVerdictDraft / overallSummaryDraft / platformCandidates / marketFitDraft`
+5. 最终结果投影为 `overall + axes`
 
 这是当前仓库唯一正式评分路径。
+
+补充：
+
+- `rubric_evaluation` 当前按 `3 + 3 + 2` 的请求切片执行，再合并回完整 `8` 轴结果
+- `aggregation` 不再把旧四维骨架作为正式输出对象
+- `final_projection` 会把 rubric 轴结果直接映射为结果页展示的 `axes`，并结合一致性信号推导 `overall.score`
 
 ## 运行与恢复假设
 
 - 本地状态由 `SQLite` 持久化
 - `POST /api/tasks` 创建 `queued` 任务后，由 API 进程内执行器推进
-- 进程重启后，遗留 `processing` 任务统一转为 `failed + not_available`
+- 进程重启后，遗留 `queued / processing` 任务统一转为 `failed + not_available`
+- 已完成任务若关联结果资源已过期或损坏，读取时会降级为 `completed + not_available`
 - worker 不接管用户主任务
 
 ## 当前排除项

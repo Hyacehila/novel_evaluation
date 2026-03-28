@@ -15,9 +15,11 @@
 - `packages/schemas/output/dashboard.py`
   - `DashboardSummary`
   - `HistoryList`
+- `packages/schemas/output/provider_status.py`
+  - `ProviderStatus`
 - `packages/schemas/output/result.py`
-  - `PlatformRecommendation`
-  - `DetailedAnalysis`
+  - `AxisEvaluationResult`
+  - `OverallEvaluationResult`
   - `FinalEvaluationProjection`
   - `EvaluationResult`
   - `EvaluationResultResource`
@@ -38,6 +40,7 @@
 ## 当前边界说明
 
 - `FinalEvaluationProjection` 与 `EvaluationResult` 当前共置于 `result.py`
+- `EvaluationResult` 当前固定为 `overall + axes`
 - `EvaluationResultResource` 是结果资源对象，不允许在 `blocked / not_available` 时返回伪结果正文
 - `DashboardSummary` 与 `HistoryList` 属于摘要聚合对象，不反向成为领域对象真源
 

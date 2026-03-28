@@ -30,7 +30,13 @@ NOVEL_EVAL_DEEPSEEK_API_KEY=<your-real-key>
 
 ### 方式 B：前端录入一次性 runtime key
 
-如果 API 启动时没有 provider key，前端会在新建任务页提供录入口。录入后该 key 仅保存在当前 API 进程内，可立即用于创建分析任务；一旦 API 重启或热重载，该 key 会失效，需要重新录入。
+如果 API 启动时没有 provider key，前端会在页面中提供录入口。录入后该 key 仅保存在当前 API 进程内，可立即用于创建分析任务；一旦 API 重启或热重载，该 key 会失效，需要重新录入。
+
+补充约束：
+
+- 该录入接口只允许本机访问
+- 如果 API 启动时已经通过环境变量配置了 key，或当前进程里已经录入过 runtime key，再次录入会返回 `PROVIDER_CONFIGURATION_LOCKED`
+- 页面录入成功后，`/api/provider-status` 会从 `missing` 切换到 `runtime_memory`
 
 `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` 已弃用，不再控制 API 是否能成功启动；即使设为 `1`，API 在缺少 key 时也只会以只读模式启动。
 

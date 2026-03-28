@@ -9,7 +9,8 @@ from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.result import FinalEvaluationProjection
 from packages.schemas.stages.aggregation import AggregatedRubricResult
 from packages.schemas.stages.consistency import ConsistencyCheckResult
-from packages.schemas.stages.rubric import RubricEvaluationSet
+from packages.schemas.common.enums import AxisId
+from packages.schemas.stages.rubric import RubricEvaluationSet, RubricEvaluationSlice
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,7 @@ class RubricExecutionContext:
     submission: JointSubmissionRequest
     screening: InputScreeningResult
     binding: StagePromptBinding
+    requested_axes: tuple[AxisId, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

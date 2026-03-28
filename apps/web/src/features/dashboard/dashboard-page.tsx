@@ -6,6 +6,7 @@ import { useDashboardQuery } from "@/api/hooks";
 import { routes } from "@/shared/config/routes";
 import {
   formatDateTime,
+  formatScore,
   getInputCompositionLabel,
   getResultStatusLabel,
   getTaskStatusLabel,
@@ -15,7 +16,6 @@ import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
 import { EmptyState, ErrorState, KeyValueGrid, PageIntro } from "@/shared/ui/states";
-
 
 export function DashboardPage() {
   const dashboardQuery = useDashboardQuery();
@@ -171,9 +171,9 @@ export function DashboardPage() {
                             <p className="font-semibold">{result.title}</p>
                             <p className="mt-1 text-sm text-[var(--muted)]">{formatDateTime(result.resultTime)}</p>
                           </div>
-                          <span className="section-title text-3xl font-semibold">{result.signingProbability}</span>
+                          <span className="section-title text-3xl font-semibold">{formatScore(result.overallScore)}</span>
                         </div>
-                        <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{result.editorVerdict}</p>
+                        <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{result.overallVerdict}</p>
                       </Link>
                     ))
                   ) : (

@@ -77,3 +77,46 @@ function Get-EnvOrDefault {
     }
     return $value
 }
+
+function Assert-PortAvailable {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ListenHost,
+        [Parameter(Mandatory = $true)]
+        [int]$Port,
+        [Parameter(Mandatory = $true)]
+        [string]$ServiceName
+    )
+
+    $listeners = @(Get-NetTCPConnection -State Listen -LocalPort $Port -ErrorAction SilentlyContinue)
+    if ($listeners.Count -eq 0) {
+        return
+    }
+
+    $normalizedHost = $ListenHost.Trim().ToLowerInvariant()
+    $matchingListeners = @(
+        $listeners | Where-Object {
+            $listenerHost = $_.LocalAddress.Trim().ToLowerInvariant()
+            if ($normalizedHost -in @("127.0.0.1", "localhost", "::1")) {
+                return $listenerHost -in @("127.0.0.1", "0.0.0.0", "::1", "::")
+            }
+            return $listenerHost -in @($normalizedHost, "0.0.0.0", "::")
+        }
+    )
+
+    if ($matchingListeners.Count -eq 0) {
+        return
+    }
+
+    $processDetails = foreach ($listener in ($matchingListeners | Sort-Object OwningProcess -Unique)) {
+        $process = Get-CimInstance Win32_Process -Filter "ProcessId = $($listener.OwningProcess)" -ErrorAction SilentlyContinue
+        $commandLine = if ($process -and $process.CommandLine) { $process.CommandLine.Trim() } else { "<unknown command line>" }
+        "PID $($listener.OwningProcess) listening on $($listener.LocalAddress):$Port`n  $commandLine"
+    }
+
+    throw @"
+$ServiceName 无法启动：$ListenHost`:$Port 已被占用。
+$($processDetails -join "`n")
+请先关闭占用该端口的旧进程，再重新运行启动脚本。
+"@
+}

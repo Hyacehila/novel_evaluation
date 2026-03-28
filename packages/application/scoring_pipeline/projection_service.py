@@ -1,23 +1,47 @@
 from __future__ import annotations
 
-from packages.schemas.common.enums import TopLevelScoreField
-from packages.schemas.output.result import FinalEvaluationProjection, PlatformRecommendation
+from packages.schemas.common.enums import AxisId, EvaluationMode, ScoreBand
+from packages.schemas.output.result import AxisEvaluationResult, FinalEvaluationProjection, OverallEvaluationResult
 from packages.schemas.stages.aggregation import AggregatedRubricResult
+from packages.schemas.stages.consistency import ConflictType, ConsistencyCheckResult
+from packages.schemas.stages.rubric import RubricEvaluationSet
 
 
-def build_final_projection(*, aggregation: AggregatedRubricResult) -> FinalEvaluationProjection:
-    platform_score = aggregation.topLevelScoresDraft[TopLevelScoreField.COMMERCIAL_VALUE]
-    detailed = aggregation.detailedAnalysisDraft
-    platforms = []
-    if aggregation.platformCandidates:
-        primary_platform = aggregation.platformCandidates[0]
-        platforms = [
-            PlatformRecommendation(
-                name=primary_platform,
-                percentage=platform_score,
-                reason=aggregation.marketFitDraft,
-            )
-        ]
+_SCORE_BAND_TO_SCORE = {
+    ScoreBand.ZERO: 20,
+    ScoreBand.ONE: 35,
+    ScoreBand.TWO: 55,
+    ScoreBand.THREE: 75,
+    ScoreBand.FOUR: 90,
+}
+
+
+def build_final_projection(
+    *,
+    aggregation: AggregatedRubricResult,
+    rubric: RubricEvaluationSet,
+    consistency: ConsistencyCheckResult,
+) -> FinalEvaluationProjection:
+    item_by_axis = {item.axisId: item for item in rubric.items}
+    axes = [
+        AxisEvaluationResult(
+            axisId=axis_id,
+            scoreBand=item_by_axis[axis_id].scoreBand,
+            score=_SCORE_BAND_TO_SCORE[item_by_axis[axis_id].scoreBand],
+            summary=rubric.axisSummaries[axis_id],
+            reason=item_by_axis[axis_id].reason,
+            degradedByInput=item_by_axis[axis_id].degradedByInput,
+            riskTags=list(item_by_axis[axis_id].riskTags),
+        )
+        for axis_id in AxisId
+    ]
+    overall = OverallEvaluationResult(
+        score=_build_overall_score(axes=axes, rubric=rubric, consistency=consistency),
+        verdict=aggregation.overallVerdictDraft,
+        summary=aggregation.overallSummaryDraft,
+        platformCandidates=aggregation.platformCandidates,
+        marketFit=aggregation.marketFitDraft,
+    )
     return FinalEvaluationProjection(
         taskId=aggregation.taskId,
         schemaVersion=aggregation.schemaVersion,
@@ -25,17 +49,22 @@ def build_final_projection(*, aggregation: AggregatedRubricResult) -> FinalEvalu
         rubricVersion=aggregation.rubricVersion,
         providerId=aggregation.providerId,
         modelId=aggregation.modelId,
-        signingProbability=aggregation.topLevelScoresDraft[TopLevelScoreField.SIGNING_PROBABILITY],
-        commercialValue=aggregation.topLevelScoresDraft[TopLevelScoreField.COMMERCIAL_VALUE],
-        writingQuality=aggregation.topLevelScoresDraft[TopLevelScoreField.WRITING_QUALITY],
-        innovationScore=aggregation.topLevelScoresDraft[TopLevelScoreField.INNOVATION_SCORE],
-        strengths=aggregation.strengthCandidates,
-        weaknesses=aggregation.weaknessCandidates,
-        platforms=platforms,
-        marketFit=aggregation.marketFitDraft,
-        editorVerdict=aggregation.editorVerdictDraft,
-        detailedAnalysis=detailed,
-        overallConfidence=aggregation.overallConfidence,
-        supportingAxisMap=aggregation.supportingAxisMap,
-        supportingSkeletonMap=aggregation.supportingSkeletonMap,
+        axes=axes,
+        overall=overall,
     )
+
+
+def _build_overall_score(
+    *,
+    axes: list[AxisEvaluationResult],
+    rubric: RubricEvaluationSet,
+    consistency: ConsistencyCheckResult,
+) -> int:
+    base_score = round(sum(axis.score for axis in axes) / len(axes))
+    if rubric.evaluationMode is EvaluationMode.DEGRADED:
+        base_score -= 8
+    if consistency.duplicatedPenaltiesDetected:
+        base_score -= 3
+    if any(conflict.conflictType is ConflictType.WEAK_EVIDENCE for conflict in consistency.conflicts):
+        base_score -= 4
+    return max(0, min(100, base_score))

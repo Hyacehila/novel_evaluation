@@ -5,6 +5,24 @@ import type {
   TaskStatus,
 } from "@/api/contracts";
 
+const axisLabels: Record<string, string> = {
+  hookRetention: "开篇抓力",
+  serialMomentum: "连载动能",
+  characterDrive: "角色驱动",
+  narrativeControl: "叙事控制",
+  pacingPayoff: "节奏兑现",
+  settingDifferentiation: "设定差异化",
+  platformFit: "平台适配",
+  commercialPotential: "商业潜力",
+};
+
+const scoreBandLabels: Record<string, string> = {
+  "0": "不可评或严重失败",
+  "1": "明显薄弱",
+  "2": "勉强成立",
+  "3": "合格",
+  "4": "明显突出",
+};
 
 export function formatDateTime(value: string | null | undefined) {
   if (!value) {
@@ -73,5 +91,34 @@ export function statusTone(status: TaskStatus | ResultStatus) {
       return "bad";
     default:
       return "warn";
+  }
+}
+
+export function formatScore(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "未生成";
+  }
+  return `${value} 分`;
+}
+
+export function getAxisLabel(axisId: string) {
+  return axisLabels[axisId] ?? axisId;
+}
+
+export function getScoreBandLabel(scoreBand: string) {
+  return scoreBandLabels[scoreBand] ?? scoreBand;
+}
+
+export function getScoreBandTone(scoreBand: string) {
+  switch (scoreBand) {
+    case "0":
+    case "1":
+      return "bad" as const;
+    case "2":
+      return "warn" as const;
+    case "4":
+      return "good" as const;
+    default:
+      return "neutral" as const;
   }
 }

@@ -28,7 +28,7 @@
 
 ## 当前阶段与范围
 
-当前项目仍处于结构建设与治理优先阶段。前端文档当前目标是：在不等待后端完整设计完成的前提下，将 `apps/web` 推进到“可基于 Mock / 适配层直接开工”的状态。
+当前项目已经进入真实 API 联调与持续维护阶段。前端文档当前目标是：让 `apps/web` 的页面、查询层、View Model 与本地代理实现保持一致，并为后续迭代提供稳定边界。
 
 当前阶段已经明确：
 
@@ -42,7 +42,7 @@
 当前阶段不做：
 
 - 不展开具体页面与组件实现代码
-- 不要求后端正式 API 已全部定稿
+- 不把历史设计稿误当作当前实现
 - 不输出视觉设计稿或高保真交互稿
 - 不将 `结果对比页` 推入首期核心交付
 - 不把研究产物或 Mock 契约误当作正式 Schema
@@ -77,9 +77,9 @@
 
 `结果对比页` 当前仅保留在信息架构中，不进入首期核心页，也不提前展开详细规格。
 
-### 8. Mock-First + Adapter-First
+### 8. Adapter-First + Real-API-First
 
-在后端尚未完整展开前，前端通过最小假契约、Mock 数据和 DTO -> View Model 映射层先完成页面实现，后续将返工尽量收敛到 API 适配层。
+当前前端以真实 API 为默认联调路径，通过 DTO -> View Model 映射层隔离后端变化；测试可继续使用 Mock，但 Mock 已不再代表当前主运行路径。
 
 ## 首期产品范围
 
@@ -131,7 +131,7 @@
 | `docs/contracts/frontend-input-and-submit-spec.md` | 输入字段、来源语义、前端边界校验与提交约束 | 设计输入页前阅读 |
 | `docs/contracts/frontend-terminology.md` | 页面、对象、状态与关键字段术语统一 | 全程参考 |
 | `docs/planning/frontend-page-specs.md` | 页面职责、页面模块、展示边界、历史检索与结果呈现规则 | 准备实现页面时阅读 |
-| `docs/architecture/frontend-technical-route.md` | 前端框架、状态分层、表单、查询与 Mock-First 实现基线 | 准备固化技术方案时阅读 |
+| `docs/architecture/frontend-technical-route.md` | 前端框架、状态分层、表单、查询与真实 API 联调基线 | 准备固化技术方案时阅读 |
 | `docs/architecture/frontend-app-shell-and-module-boundaries.md` | `apps/web` 的应用壳、目录结构、模块边界与依赖方向 | 准备搭建工程骨架时阅读 |
 | `docs/contracts/frontend-api-consumption-and-query-strategy.md` | Query / Mutation、轮询、缓存、失效与映射策略 | 准备搭建数据层时阅读 |
 | `docs/contracts/frontend-minimal-api-assumptions.md` | 后端未定稿阶段的最小假契约与 Mock 基线 | 准备搭建 Mock 与接口适配时阅读 |

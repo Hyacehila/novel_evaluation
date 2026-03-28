@@ -99,8 +99,8 @@ export interface RecentResultSummaryDto {
   taskId: string;
   title: string;
   resultTime: string;
-  signingProbability: number;
-  editorVerdict: string;
+  overallScore: number;
+  overallVerdict: string;
 }
 
 export interface DashboardSummaryDto {
@@ -114,17 +114,22 @@ export interface HistoryListDto {
   meta: MetaDataDto;
 }
 
-export interface PlatformRecommendationDto {
-  name: string;
-  percentage: number;
+export interface AxisResultDto {
+  axisId: string;
+  scoreBand: string;
+  score: number;
+  summary: string;
   reason: string;
+  degradedByInput: boolean;
+  riskTags: string[];
 }
 
-export interface DetailedAnalysisDto {
-  plot: string;
-  character: string;
-  pacing: string;
-  worldBuilding: string;
+export interface OverallResultDto {
+  score: number;
+  verdict: string;
+  summary: string;
+  platformCandidates: string[];
+  marketFit: string;
 }
 
 export interface EvaluationResultDto {
@@ -135,16 +140,8 @@ export interface EvaluationResultDto {
   providerId: string;
   modelId: string;
   resultTime: string;
-  signingProbability: number;
-  commercialValue: number;
-  writingQuality: number;
-  innovationScore: number;
-  strengths: string[];
-  weaknesses: string[];
-  platforms: PlatformRecommendationDto[];
-  marketFit: string;
-  editorVerdict: string;
-  detailedAnalysis: DetailedAnalysisDto;
+  axes: AxisResultDto[];
+  overall: OverallResultDto;
 }
 
 export interface EvaluationResultResourceDto {

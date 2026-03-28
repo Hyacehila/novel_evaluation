@@ -96,16 +96,22 @@
 
 字段核心：
 
-- `signingProbability`
-- `commercialValue`
-- `writingQuality`
-- `innovationScore`
-- `strengths`
-- `weaknesses`
-- `platforms`
-- `marketFit`
-- `editorVerdict`
-- `detailedAnalysis`
+- `taskId`
+- `schemaVersion`
+- `promptVersion`
+- `rubricVersion`
+- `providerId`
+- `modelId`
+- `resultTime`
+- `axes`
+- `overall`
+
+说明：
+
+- `axes` 必须完整覆盖全部 `8` 个 `AxisId`
+- 每个轴包含 `scoreBand / score / summary / reason / degradedByInput / riskTags`
+- `overall` 当前只包含 `score / verdict / summary / platformCandidates / marketFit`
+- 旧版顶层字段 `signingProbability / commercialValue / writingQuality / innovationScore / detailedAnalysis` 已不再是当前领域结果结构
 
 ### `EvalRecord`
 

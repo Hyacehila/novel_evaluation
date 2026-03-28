@@ -6,11 +6,13 @@
 - 创建任务使用 Mutation
 - 任务状态继续采用 `Polling-First`
 - 页面只消费 adapter 输出的 View Model
+- provider 状态单独查询
 - 历史页使用 `q/status/cursor/limit`
 
 ## Query Key 建议
 
 - `dashboard-summary`
+- `provider-status`
 - `task-detail:{taskId}`
 - `task-result:{taskId}`
 - `history-list:{q}:{status}:{cursor}:{limit}`
@@ -20,24 +22,32 @@
 ### 首页
 
 - 首次进入立即读取 `dashboard`
-- 存在 `queued/processing` 任务时可每 `15s` 轮询
+- 存在 `queued/processing` 任务时每 `15s` 轮询
+
+### Provider 状态
+
+- 新建任务页首次进入读取 `provider-status`
+- 当前实现不为 `provider-status` 配置定时轮询
+- runtime key 录入成功后，失效 `provider-status`、`dashboard-summary`、`history-list:*`
 
 ### 输入页
 
 - `createTask` 使用 Mutation
 - 支持 JSON 与 multipart 两条提交路径
+- 提交前先检查 `provider-status.canAnalyze`
 - 提交成功后失效 `dashboard-summary` 与 `history-list:*`
 
 ### 任务页
 
-- `queued/processing` 时每 `5s` 轮询
+- `queued/processing` 时每 `2s` 轮询
 - 任务终态后停止轮询
 - `completed + available` 展示结果入口
-- `completed + blocked` 与 `failed + not_available` 展示语义态
+- `completed + blocked`、`completed + not_available` 与 `failed + not_available` 展示语义态
 
 ### 结果页
 
-- 进入页面后读取 `taskResult(taskId)`
+- 先读取 `taskDetail(taskId)`
+- 仅当任务不是 `queued/processing` 时才启用 `taskResult(taskId)`
 - `blocked/not_available` 进入语义态，不展示正文
 - 网络失败可本地派生 `fetch_failed`
 
@@ -61,5 +71,6 @@
 ## 失效策略
 
 - 创建任务成功：失效 `dashboard-summary`、`history-list:*`
-- 任务完成：失效 `dashboard-summary`、`history-list:*`、`task-result:{taskId}`
-- 手动刷新历史：仅失效当前 `history-list:*`
+- 创建任务成功：同时可把返回的 `EvaluationTask` 写入 `task-detail:{taskId}` 缓存
+- runtime key 录入成功：失效 `provider-status`、`dashboard-summary`、`history-list:*`
+- 手动刷新历史：仅重取当前 `history-list:*`

@@ -16,9 +16,7 @@ from packages.schemas.common.enums import (
     StageName,
     StageStatus,
     Sufficiency,
-    TopLevelScoreField,
 )
-from packages.schemas.output.result import DetailedAnalysis
 
 from .contracts import (
     ProviderExecutionFailure,
@@ -138,9 +136,9 @@ class LocalDeterministicProviderAdapter:
 
 _SCORE_BAND_TO_PERCENT = {
     ScoreBand.ZERO.value: 20,
-    ScoreBand.ONE.value: 38,
-    ScoreBand.TWO.value: 56,
-    ScoreBand.THREE.value: 76,
+    ScoreBand.ONE.value: 35,
+    ScoreBand.TWO.value: 55,
+    ScoreBand.THREE.value: 75,
     ScoreBand.FOUR.value: 90,
 }
 
@@ -218,12 +216,8 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
         confidence = 0.9 if evaluation_mode == EvaluationMode.FULL.value else (0.72 if continue_allowed else 0.24)
 
     total_length = len(chapters_text) + len(outline_text)
-    segmentation_plan = {
-        "strategy": "single_pass" if total_length < 1800 else "chunked",
-        "segments": [{"segmentId": "segment_001", "length": total_length}],
-        "overflowPolicy": "truncate_tail" if total_length > 4000 else "none",
-        "truncated": total_length > 4000,
-    }
+    if total_length >= 800 and continue_allowed:
+        confidence = min(0.96, confidence + 0.04)
 
     return {
         "taskId": request.taskId,
@@ -243,56 +237,60 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
         "status": status,
         "rejectionReasons": rejection_reasons,
         "riskTags": risk_tags,
-        "segmentationPlan": segmentation_plan,
+        "segmentationPlan": None,
         "confidence": confidence,
         "continueAllowed": continue_allowed,
     }
 
 
 def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, Any]) -> dict[str, Any]:
-    chapters_text = "\n".join(str(item) for item in payload.get("chapters", [])).strip()
-    outline_text = str(payload.get("outline") or "").strip()
-    screening = payload.get("screening", {})
-    evaluation_mode = str(payload.get("evaluationMode") or screening.get("evaluationMode") or request.evaluationMode.value)
-    input_composition = str(payload.get("inputComposition") or screening.get("inputComposition") or request.inputComposition.value)
-    degraded = evaluation_mode == EvaluationMode.DEGRADED.value
+    chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
+    outline_text = str(payload.get("outline") or "")
+    screening = payload.get("screening") or {}
+    degraded = screening.get("evaluationMode") == EvaluationMode.DEGRADED.value
+    requested_axes = [
+        axis_id
+        for axis_id in AxisId
+        if axis_id.value in {str(value) for value in payload.get("requestedAxes", [])}
+    ]
+    if not requested_axes:
+        requested_axes = list(AxisId)
+    items = []
+    axis_summaries = []
     risk_tags: set[str] = set()
-    axis_summaries: dict[str, str] = {}
-    items: list[dict[str, Any]] = []
-
-    for index, axis_id in enumerate(AxisId, start=1):
+    for axis_id in requested_axes:
         score_band, reason = _score_axis(axis_id, chapters_text=chapters_text, outline_text=outline_text)
-        confidence = max(0.22, 0.84 - (0.12 if degraded else 0.0) - ((4 - int(score_band)) * 0.04))
-        item_risk_tags = [FatalRisk.INSUFFICIENT_MATERIAL.value] if degraded else []
-        if "模板" in chapters_text or "套路" in outline_text:
-            item_risk_tags.append(FatalRisk.STALE_FORMULA.value)
+        degraded_by_input = degraded and axis_id in {
+            AxisId.SERIAL_MOMENTUM,
+            AxisId.PACING_PAYOFF,
+            AxisId.PLATFORM_FIT,
+        }
+        item_risk_tags = [FatalRisk.INSUFFICIENT_MATERIAL.value] if degraded_by_input else []
         risk_tags.update(item_risk_tags)
         items.append(
             {
-                "evaluationId": f"{request.taskId}_{axis_id.value}_{index:02d}",
+                "evaluationId": f"eval-{axis_id.value}",
                 "axisId": axis_id.value,
                 "scoreBand": score_band,
                 "reason": reason,
                 "evidenceRefs": [
                     {
-                        "sourceType": _select_evidence_source(axis_id, chapters_text, outline_text),
-                        "sourceSpan": {"offset": 0, "length": min(80, len(chapters_text or outline_text))},
-                        "excerpt": _build_excerpt(axis_id, chapters_text, outline_text),
-                        "observationType": "deterministic_signal",
-                        "evidenceNote": reason,
-                        "confidence": confidence,
+                        "sourceType": EvidenceSourceType.CHAPTERS.value if chapters_text else EvidenceSourceType.OUTLINE.value,
+                        "sourceSpan": {"chapterIndex": 0} if chapters_text else {"outlineRef": "全段"},
+                        "excerpt": (chapters_text or outline_text or "deterministic fallback")[:120],
+                        "observationType": "narrative_observation",
+                        "evidenceNote": "deterministic fallback 生成的稳定证据。",
+                        "confidence": 0.78 if not degraded_by_input else 0.52,
                     }
                 ],
-                "confidence": confidence,
+                "confidence": 0.8 if not degraded_by_input else 0.55,
                 "riskTags": item_risk_tags,
                 "blockingSignals": [],
-                "affectedSkeletonDimensions": _map_axis_to_skeleton(axis_id),
-                "degradedByInput": degraded,
+                "affectedSkeletonDimensions": [],
+                "degradedByInput": degraded_by_input,
             }
         )
-        axis_summaries[axis_id.value] = reason
-
-    overall_confidence = max(0.2, sum(item["confidence"] for item in items) / len(items))
+        axis_summaries.append({"axisId": axis_id.value, "summary": f"{axis_id.value} 维度总结"})
     return {
         "taskId": request.taskId,
         "stage": request.stage.value,
@@ -301,64 +299,21 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
         "rubricVersion": request.rubricVersion,
         "providerId": request.providerId,
         "modelId": request.modelId,
-        "inputComposition": input_composition,
-        "evaluationMode": evaluation_mode,
+        "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "evaluationMode": screening.get("evaluationMode") or request.evaluationMode.value,
+        "requestedAxes": [axis_id.value for axis_id in requested_axes],
         "items": items,
         "axisSummaries": axis_summaries,
         "missingRequiredAxes": [],
         "riskTags": sorted(risk_tags),
-        "overallConfidence": overall_confidence,
+        "overallConfidence": 0.8 if not degraded else 0.62,
     }
 
 
 def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[str, Any]) -> dict[str, Any]:
-    screening = payload.get("screening", {})
-    rubric = payload.get("rubric", {})
-    consistency = payload.get("consistency", {})
-    item_map = {
-        item["axisId"]: _SCORE_BAND_TO_PERCENT[item["scoreBand"]]
-        for item in rubric.get("items", [])
-    }
-    axis_scores = {axis.value: item_map[axis.value] for axis in AxisId}
-    skeleton_scores = {
-        SkeletonDimensionId.MARKET_ATTRACTION.value: _average(
-            axis_scores[AxisId.HOOK_RETENTION.value],
-            axis_scores[AxisId.SERIAL_MOMENTUM.value],
-            axis_scores[AxisId.PLATFORM_FIT.value],
-            axis_scores[AxisId.COMMERCIAL_POTENTIAL.value],
-        ),
-        SkeletonDimensionId.NARRATIVE_EXECUTION.value: _average(
-            axis_scores[AxisId.NARRATIVE_CONTROL.value],
-            axis_scores[AxisId.PACING_PAYOFF.value],
-        ),
-        SkeletonDimensionId.CHARACTER_MOMENTUM.value: _average(
-            axis_scores[AxisId.CHARACTER_DRIVE.value],
-            axis_scores[AxisId.SERIAL_MOMENTUM.value],
-        ),
-        SkeletonDimensionId.NOVELTY_UTILITY.value: _average(
-            axis_scores[AxisId.SETTING_DIFFERENTIATION.value],
-            axis_scores[AxisId.PLATFORM_FIT.value],
-        ),
-    }
-    top_level_scores = {
-        TopLevelScoreField.SIGNING_PROBABILITY.value: _average(
-            skeleton_scores[SkeletonDimensionId.MARKET_ATTRACTION.value],
-            skeleton_scores[SkeletonDimensionId.NARRATIVE_EXECUTION.value],
-            axis_scores[AxisId.PLATFORM_FIT.value],
-        ),
-        TopLevelScoreField.COMMERCIAL_VALUE.value: _average(
-            skeleton_scores[SkeletonDimensionId.MARKET_ATTRACTION.value],
-            skeleton_scores[SkeletonDimensionId.CHARACTER_MOMENTUM.value],
-        ),
-        TopLevelScoreField.WRITING_QUALITY.value: _average(
-            skeleton_scores[SkeletonDimensionId.NARRATIVE_EXECUTION.value],
-            axis_scores[AxisId.NARRATIVE_CONTROL.value],
-        ),
-        TopLevelScoreField.INNOVATION_SCORE.value: _average(
-            skeleton_scores[SkeletonDimensionId.NOVELTY_UTILITY.value],
-            axis_scores[AxisId.SETTING_DIFFERENTIATION.value],
-        ),
-    }
+    screening = payload.get("screening") or {}
+    rubric = payload.get("rubric") or {}
+    consistency = payload.get("consistency") or {}
     chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
     outline_text = str(payload.get("outline") or "")
     genre = _infer_genre(f"{chapters_text}\n{outline_text}")
@@ -372,11 +327,7 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
     risk_tags = sorted(set(rubric.get("riskTags", [])))
     if not consistency.get("passed", True):
         risk_tags.append(FatalRisk.FAKE_PAYOFF.value)
-    strengths = _top_axes(axis_scores, reverse=True)
-    weaknesses = _top_axes(axis_scores, reverse=False)
-    confidence_penalty = 0.12 if screening.get("evaluationMode") == EvaluationMode.DEGRADED.value else 0.0
-    confidence_penalty += 0.18 if not consistency.get("passed", True) else 0.0
-
+    degraded = screening.get("evaluationMode") == EvaluationMode.DEGRADED.value
     return {
         "taskId": request.taskId,
         "stage": request.stage.value,
@@ -385,49 +336,12 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
         "rubricVersion": request.rubricVersion,
         "providerId": request.providerId,
         "modelId": request.modelId,
-        "axisScores": axis_scores,
-        "skeletonScores": skeleton_scores,
-        "topLevelScoresDraft": top_level_scores,
-        "strengthCandidates": [f"{axis} 维度表现较强" for axis in strengths],
-        "weaknessCandidates": [f"{axis} 维度仍需补强" for axis in weaknesses],
+        "overallVerdictDraft": "建议补全正文后再复核。" if degraded else "建议继续观察并进入样章复核。",
+        "overallSummaryDraft": "当前结果基于 degraded 材料，整体结论偏保守。" if degraded else "章节主线与市场抓手已形成初步可读的总体判断。",
         "platformCandidates": [platform],
         "marketFitDraft": f"当前题材更贴合 {platform} 的用户预期。",
-        "editorVerdictDraft": "建议继续观察并进入样章复核。",
-        "detailedAnalysisDraft": DetailedAnalysis(
-            plot="章节主线已具备基础推进力。",
-            character="角色驱动存在明确行动目标。",
-            pacing="节奏兑现依赖后续章节补强。",
-            worldBuilding="设定卖点已形成初步差异化。",
-        ).model_dump(mode="json"),
-        "supportingAxisMap": {
-            TopLevelScoreField.SIGNING_PROBABILITY.value: [
-                AxisId.COMMERCIAL_POTENTIAL.value,
-                AxisId.PLATFORM_FIT.value,
-            ],
-            TopLevelScoreField.COMMERCIAL_VALUE.value: [
-                AxisId.COMMERCIAL_POTENTIAL.value,
-                AxisId.SERIAL_MOMENTUM.value,
-            ],
-            TopLevelScoreField.WRITING_QUALITY.value: [
-                AxisId.NARRATIVE_CONTROL.value,
-                AxisId.PACING_PAYOFF.value,
-            ],
-            TopLevelScoreField.INNOVATION_SCORE.value: [
-                AxisId.SETTING_DIFFERENTIATION.value,
-                AxisId.HOOK_RETENTION.value,
-            ],
-        },
-        "supportingSkeletonMap": {
-            TopLevelScoreField.SIGNING_PROBABILITY.value: [SkeletonDimensionId.MARKET_ATTRACTION.value],
-            TopLevelScoreField.COMMERCIAL_VALUE.value: [
-                SkeletonDimensionId.MARKET_ATTRACTION.value,
-                SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-            ],
-            TopLevelScoreField.WRITING_QUALITY.value: [SkeletonDimensionId.NARRATIVE_EXECUTION.value],
-            TopLevelScoreField.INNOVATION_SCORE.value: [SkeletonDimensionId.NOVELTY_UTILITY.value],
-        },
         "riskTags": sorted(set(risk_tags)),
-        "overallConfidence": max(0.24, round(rubric.get("overallConfidence", 0.8) - confidence_penalty, 2)),
+        "overallConfidence": max(0.24, round(float(rubric.get("overallConfidence", 0.8)) - (0.12 if degraded else 0.0), 2)),
     }
 
 
@@ -467,59 +381,19 @@ def _score_axis(axis_id: AxisId, *, chapters_text: str, outline_text: str) -> tu
     if axis_id is AxisId.SETTING_DIFFERENTIATION:
         if any(token in combined for token in ("星际", "赛博", "规则怪谈", "修仙", "末世")):
             return ScoreBand.FOUR.value, "题材与设定具备清晰差异化卖点。"
-        return ScoreBand.THREE.value, "设定基础明确，但差异化程度中等。"
+        return ScoreBand.THREE.value, "设定具备基础辨识度，但仍需进一步强化差异化。"
     if axis_id is AxisId.PLATFORM_FIT:
         genre = _infer_genre(combined)
-        return (
-            (ScoreBand.FOUR.value, f"题材标签清晰，平台适配方向稳定。")
-            if genre is not None
-            else (ScoreBand.TWO.value, "平台适配信号不够明确。")
-        )
-    if any(token in combined for token in ("付费", "订阅", "签约", "爆点", "追更")):
-        return ScoreBand.FOUR.value, "商业化抓手明确，具备较强转化潜力。"
-    return ScoreBand.THREE.value, "商业潜力存在，但仍依赖后续兑现。"
+        if genre in {"romance", "urban", "scifi", "fantasy", "horror"}:
+            return ScoreBand.THREE.value, "题材标签和平台预期大体匹配。"
+        return ScoreBand.TWO.value, "平台适配信号仍不充分。"
+    if any(token in combined for token in ("付费", "连载", "追读", "爆点", "爽点")):
+        return ScoreBand.FOUR.value, "商业化信号较明确，具备继续观察价值。"
+    return ScoreBand.THREE.value, "商业化潜力基础尚可，但仍需更多样本验证。"
 
 
-def _select_evidence_source(axis_id: AxisId, chapters_text: str, outline_text: str) -> str:
-    if axis_id in {AxisId.HOOK_RETENTION, AxisId.CHARACTER_DRIVE, AxisId.NARRATIVE_CONTROL}:
-        return EvidenceSourceType.CHAPTERS.value
-    if axis_id in {AxisId.SERIAL_MOMENTUM} and outline_text:
-        return EvidenceSourceType.OUTLINE.value
-    if chapters_text and outline_text:
-        return EvidenceSourceType.CROSS_INPUT.value
-    return EvidenceSourceType.CHAPTERS.value if chapters_text else EvidenceSourceType.OUTLINE.value
-
-
-def _build_excerpt(axis_id: AxisId, chapters_text: str, outline_text: str) -> str:
-    source = outline_text if axis_id is AxisId.SERIAL_MOMENTUM and outline_text else (chapters_text or outline_text)
-    normalized = source.strip()
-    return normalized[:80] if normalized else "样本为空，使用 deterministic fallback。"
-
-
-def _map_axis_to_skeleton(axis_id: AxisId) -> list[str]:
-    if axis_id in {AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL}:
-        return [SkeletonDimensionId.MARKET_ATTRACTION.value]
-    if axis_id in {AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF}:
-        return [SkeletonDimensionId.NARRATIVE_EXECUTION.value]
-    if axis_id is AxisId.CHARACTER_DRIVE:
-        return [SkeletonDimensionId.CHARACTER_MOMENTUM.value]
-    return [SkeletonDimensionId.NOVELTY_UTILITY.value]
-
-
-def _average(*values: int) -> int:
-    return round(sum(values) / len(values))
-
-
-def _top_axes(axis_scores: dict[str, int], *, reverse: bool) -> list[str]:
-    ordered = sorted(axis_scores.items(), key=lambda item: item[1], reverse=reverse)
-    return [axis_id for axis_id, _ in ordered[:2]]
-
-
-def _infer_genre(text: str) -> str | None:
-    normalized = text.strip()
-    if not normalized:
-        return None
+def _infer_genre(text: str) -> str:
     for genre, keywords in _GENRE_KEYWORDS.items():
-        if any(keyword in normalized for keyword in keywords):
+        if any(keyword in text for keyword in keywords):
             return genre
-    return None
+    return "general"

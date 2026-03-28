@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from ipaddress import ip_address
 from typing import Any
 
@@ -26,6 +27,7 @@ from .upload_parsing import build_upload_request, read_upload_text, resolve_uplo
 
 
 router = APIRouter(prefix="/api")
+_ALLOW_E2E_PROVIDER_RESET_ENV = "NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET"
 
 
 @router.get("/provider-status")
@@ -54,6 +56,34 @@ def configure_runtime_provider_key(
             status_code=409,
             code=ErrorCode.PROVIDER_CONFIGURATION_LOCKED,
             message="当前 provider 已配置，不支持在 UI 中重新录入。",
+        ) from exc
+    return SuccessEnvelope(data=provider_status)
+
+
+@router.delete("/provider-status/runtime-key")
+def reset_runtime_provider_key(
+    request: Request,
+    provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
+) -> SuccessEnvelope[ProviderStatus]:
+    if not _is_local_client(request):
+        raise ApiError(
+            status_code=403,
+            code=ErrorCode.FORBIDDEN,
+            message="仅允许本机访问该配置接口。",
+        )
+    if os.getenv(_ALLOW_E2E_PROVIDER_RESET_ENV) != "1":
+        raise ApiError(
+            status_code=403,
+            code=ErrorCode.FORBIDDEN,
+            message="当前环境不允许重置 provider 配置。",
+        )
+    try:
+        provider_status = provider_runtime.reset_runtime_key()
+    except RuntimeError as exc:
+        raise ApiError(
+            status_code=409,
+            code=ErrorCode.PROVIDER_CONFIGURATION_LOCKED,
+            message="当前 provider 由启动环境变量配置，不支持重置。",
         ) from exc
     return SuccessEnvelope(data=provider_status)
 

@@ -3,18 +3,13 @@ from __future__ import annotations
 import base64
 import binascii
 import logging
+from dataclasses import dataclass
 from datetime import datetime
 
-from packages.application.ports.runtime_metadata import (
-    PromptRuntimePort,
-    ProviderExecutionPort,
-    ProviderMetadataPort,
-    RuntimeMetadata,
-    StaticPromptRuntime,
-    StaticProviderMetadata,
-)
-from packages.application.scoring_pipeline import PipelineBlockedError, PipelineFailureError, ScoringPipeline
+from packages.application.ports.runtime_metadata import PromptRuntimePort, ProviderExecutionPort
 from packages.application.ports.task_repository import TaskRepository
+from packages.application.scoring_pipeline.exceptions import PipelineBlockedError, PipelineFailureError
+from packages.application.scoring_pipeline.orchestration import ScoringPipeline
 from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
 from packages.application.support.process_logging import log_event
@@ -22,30 +17,39 @@ from packages.schemas.common.base import MetaData
 from packages.schemas.common.enums import (
     AxisId,
     EvaluationMode,
+    FatalRisk,
     InputComposition,
     ResultStatus,
+    ScoreBand,
     SkeletonDimensionId,
     StageName,
     StageStatus,
     Sufficiency,
     TaskStatus,
-    TopLevelScoreField,
 )
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.dashboard import DashboardSummary, HistoryList
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.result import (
-    DetailedAnalysis,
+    AxisEvaluationResult,
     EvaluationResult,
     EvaluationResultResource,
     FinalEvaluationProjection,
-    PlatformRecommendation,
+    OverallEvaluationResult,
 )
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
 
-
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class RuntimeMetadata:
+    schema_version: str
+    prompt_version: str
+    rubric_version: str
+    provider_id: str
+    model_id: str
 
 
 class EvaluationService:
@@ -54,35 +58,32 @@ class EvaluationService:
         *,
         task_repository: TaskRepository,
         prompt_runtime: PromptRuntimePort | None = None,
-        provider_adapter: ProviderMetadataPort | None = None,
+        provider_adapter: ProviderExecutionPort | None = None,
         id_generator: IdGenerator | None = None,
         clock: Clock | None = None,
     ) -> None:
         self._task_repository = task_repository
-        self._prompt_runtime = prompt_runtime or StaticPromptRuntime()
-        self._provider_adapter = provider_adapter or StaticProviderMetadata()
+        self._prompt_runtime = prompt_runtime
+        self._provider_adapter = provider_adapter
         self._id_generator = id_generator or UuidTaskIdGenerator()
         self._clock = clock or UtcClock()
         self._scoring_pipeline = (
-            ScoringPipeline(
-                prompt_runtime=self._prompt_runtime,
-                provider_adapter=self._provider_adapter,
-            )
-            if hasattr(self._provider_adapter, "execute")
+            ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider_adapter)
+            if prompt_runtime is not None and provider_adapter is not None
             else None
         )
 
     def create_task(self, request: JointSubmissionRequest) -> EvaluationTask:
         task_id = self._id_generator.new_task_id()
-        screening = self._build_input_screening(task_id, request)
         now = self._clock.now()
+        screening = self._build_input_screening(task_id, request)
         task = EvaluationTask(
             taskId=task_id,
             title=request.title,
             inputSummary=self._build_input_summary(request),
-            inputComposition=screening.inputComposition,
-            hasChapters=screening.hasChapters,
-            hasOutline=screening.hasOutline,
+            inputComposition=request.inputComposition,
+            hasChapters=request.hasChapters,
+            hasOutline=request.hasOutline,
             evaluationMode=screening.evaluationMode,
             status=TaskStatus.QUEUED,
             resultStatus=ResultStatus.NOT_AVAILABLE,
@@ -94,26 +95,27 @@ class EvaluationService:
             createdAt=now,
             updatedAt=now,
         )
+        created = self._task_repository.create_task(task)
         log_event(
             logger,
             logging.INFO,
             "task_created",
-            taskId=task.taskId,
+            taskId=created.taskId,
             stage="task_create",
-            promptVersion=task.promptVersion,
-            schemaVersion=task.schemaVersion,
-            rubricVersion=task.rubricVersion,
-            providerId=task.providerId,
-            modelId=task.modelId,
-            resultStatus=task.resultStatus,
+            promptVersion=created.promptVersion,
+            schemaVersion=created.schemaVersion,
+            rubricVersion=created.rubricVersion,
+            providerId=created.providerId,
+            modelId=created.modelId,
+            resultStatus=created.resultStatus,
         )
-        return self._task_repository.create_task(task)
+        return created
 
     def get_task(self, task_id: str) -> EvaluationTask:
         task = self._task_repository.get_task(task_id)
         if task is None:
-            raise LookupError("任务不存在。")
-        return task
+            raise LookupError("任务不存在")
+        return self._normalize_task_result_status(task)
 
     def start_task(self, task_id: str) -> EvaluationTask:
         task = self.get_task(task_id)
@@ -408,7 +410,7 @@ class EvaluationService:
             )
 
     def get_dashboard(self) -> DashboardSummary:
-        tasks = self._task_repository.list_tasks()
+        tasks = [self._normalize_task_result_status(task) for task in self._task_repository.list_tasks()]
         summaries = [self._to_summary(task) for task in tasks]
         active = [summary for task, summary in zip(tasks, summaries) if task.status is TaskStatus.PROCESSING]
         recent_results = [
@@ -416,8 +418,8 @@ class EvaluationService:
                 taskId=task.taskId,
                 title=task.title,
                 resultTime=result.resultTime,
-                signingProbability=result.result.signingProbability,
-                editorVerdict=result.result.editorVerdict,
+                overallScore=result.result.overall.score,
+                overallVerdict=result.result.overall.verdict,
             )
             for task in tasks
             if (result := self._task_repository.get_result(task.taskId)) is not None
@@ -438,7 +440,7 @@ class EvaluationService:
         cursor: str | None = None,
         limit: int = 20,
     ) -> HistoryList:
-        tasks = self._task_repository.list_tasks()
+        tasks = [self._normalize_task_result_status(task) for task in self._task_repository.list_tasks()]
         if q is not None and q != "":
             tasks = [task for task in tasks if q in task.title]
         if status is not None:
@@ -495,6 +497,14 @@ class EvaluationService:
             createdAt=task.createdAt,
         )
 
+    def _normalize_task_result_status(self, task: EvaluationTask) -> EvaluationTask:
+        if task.status is not TaskStatus.COMPLETED or task.resultStatus is not ResultStatus.AVAILABLE:
+            return task
+        result = self._task_repository.get_result(task.taskId)
+        if result is not None and result.resultStatus is ResultStatus.AVAILABLE and result.result is not None:
+            return task
+        return task.model_copy(update={"resultStatus": ResultStatus.NOT_AVAILABLE})
+
     def _build_input_summary(self, request: JointSubmissionRequest) -> str:
         if request.hasChapters and request.hasOutline:
             return f"已提交 {len(request.chapters or [])} 章正文和 1 份大纲"
@@ -541,6 +551,35 @@ class EvaluationService:
         innovation_score: int,
     ) -> FinalEvaluationProjection:
         runtime_metadata = self._resolve_projection_metadata(task)
+        score_by_axis = {
+            AxisId.HOOK_RETENTION: signing_probability,
+            AxisId.SERIAL_MOMENTUM: commercial_value,
+            AxisId.CHARACTER_DRIVE: writing_quality,
+            AxisId.NARRATIVE_CONTROL: innovation_score,
+            AxisId.PACING_PAYOFF: writing_quality,
+            AxisId.SETTING_DIFFERENTIATION: innovation_score,
+            AxisId.PLATFORM_FIT: signing_probability,
+            AxisId.COMMERCIAL_POTENTIAL: commercial_value,
+        }
+        axes = [
+            AxisEvaluationResult(
+                axisId=axis_id,
+                scoreBand=self._score_to_band(score_by_axis[axis_id]),
+                score=score_by_axis[axis_id],
+                summary=f"{axis_id.value} 维度总结",
+                reason="当前阶段使用服务层 deterministic 投影占位。",
+                degradedByInput=task.evaluationMode is EvaluationMode.DEGRADED,
+                riskTags=[FatalRisk.INSUFFICIENT_MATERIAL] if task.evaluationMode is EvaluationMode.DEGRADED else [],
+            )
+            for axis_id in AxisId
+        ]
+        overall = OverallEvaluationResult(
+            score=signing_probability,
+            verdict="可继续观察",
+            summary="整体完成度稳定，仍需观察兑现强度。",
+            platformCandidates=["女频平台 A"],
+            marketFit="具备一定市场接受度",
+        )
         return FinalEvaluationProjection(
             taskId=task.taskId,
             schemaVersion=runtime_metadata.schema_version,
@@ -548,24 +587,8 @@ class EvaluationService:
             rubricVersion=runtime_metadata.rubric_version,
             providerId=runtime_metadata.provider_id,
             modelId=runtime_metadata.model_id,
-            signingProbability=signing_probability,
-            commercialValue=commercial_value,
-            writingQuality=writing_quality,
-            innovationScore=innovation_score,
-            strengths=["题材明确"],
-            weaknesses=["开篇冲突偏弱"],
-            platforms=[PlatformRecommendation(name="女频平台 A", percentage=82, reason="题材匹配度较高")],
-            marketFit="具备一定市场接受度",
-            editorVerdict="可继续观察",
-            detailedAnalysis=DetailedAnalysis(
-                plot="情节推进稳定",
-                character="角色动机明确",
-                pacing="节奏略慢",
-                worldBuilding="设定表达完整",
-            ),
-            overallConfidence=0.82,
-            supportingAxisMap=self._build_supporting_axis_map(),
-            supportingSkeletonMap=self._build_supporting_skeleton_map(),
+            axes=axes,
+            overall=overall,
         )
 
     def _build_result_from_projection(
@@ -582,16 +605,8 @@ class EvaluationService:
             providerId=projection.providerId,
             modelId=projection.modelId,
             resultTime=result_time,
-            signingProbability=projection.signingProbability,
-            commercialValue=projection.commercialValue,
-            writingQuality=projection.writingQuality,
-            innovationScore=projection.innovationScore,
-            strengths=projection.strengths,
-            weaknesses=projection.weaknesses,
-            platforms=projection.platforms,
-            marketFit=projection.marketFit,
-            editorVerdict=projection.editorVerdict,
-            detailedAnalysis=projection.detailedAnalysis,
+            axes=projection.axes,
+            overall=projection.overall,
         )
 
     def _resolve_runtime_metadata(
@@ -603,6 +618,14 @@ class EvaluationService:
         provider_id: str | None = None,
         model_id: str | None = None,
     ) -> RuntimeMetadata:
+        if self._prompt_runtime is None or self._provider_adapter is None:
+            return RuntimeMetadata(
+                schema_version="1.0.0",
+                prompt_version="v1",
+                rubric_version="rubric-v1",
+                provider_id=provider_id or "provider-local",
+                model_id=model_id or "model-local",
+            )
         resolved_provider_id = provider_id or self._provider_adapter.provider_id
         resolved_model_id = model_id or self._provider_adapter.model_id
         resolved_prompt = self._prompt_runtime.resolve(
@@ -656,18 +679,14 @@ class EvaluationService:
             return EvaluationMode.FULL
         return EvaluationMode.DEGRADED
 
-    def _build_supporting_axis_map(self) -> dict[TopLevelScoreField, list[AxisId]]:
-        return {
-            TopLevelScoreField.SIGNING_PROBABILITY: [AxisId.COMMERCIAL_POTENTIAL, AxisId.PLATFORM_FIT],
-            TopLevelScoreField.COMMERCIAL_VALUE: [AxisId.COMMERCIAL_POTENTIAL, AxisId.SERIAL_MOMENTUM],
-            TopLevelScoreField.WRITING_QUALITY: [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF],
-            TopLevelScoreField.INNOVATION_SCORE: [AxisId.SETTING_DIFFERENTIATION, AxisId.HOOK_RETENTION],
-        }
-
-    def _build_supporting_skeleton_map(self) -> dict[TopLevelScoreField, list[SkeletonDimensionId]]:
-        return {
-            TopLevelScoreField.SIGNING_PROBABILITY: [SkeletonDimensionId.MARKET_ATTRACTION],
-            TopLevelScoreField.COMMERCIAL_VALUE: [SkeletonDimensionId.MARKET_ATTRACTION, SkeletonDimensionId.NOVELTY_UTILITY],
-            TopLevelScoreField.WRITING_QUALITY: [SkeletonDimensionId.NARRATIVE_EXECUTION],
-            TopLevelScoreField.INNOVATION_SCORE: [SkeletonDimensionId.NOVELTY_UTILITY, SkeletonDimensionId.CHARACTER_MOMENTUM],
-        }
+    def _score_to_band(self, score: int) -> ScoreBand:
+        ordered_bands = [
+            (90, ScoreBand.FOUR),
+            (75, ScoreBand.THREE),
+            (55, ScoreBand.TWO),
+            (35, ScoreBand.ONE),
+        ]
+        for threshold, band in ordered_bands:
+            if score >= threshold:
+                return band
+        return ScoreBand.ZERO

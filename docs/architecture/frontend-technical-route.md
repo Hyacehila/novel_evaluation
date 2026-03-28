@@ -13,7 +13,7 @@
 ## 核心实现策略
 
 - `Adapter-First`
-- `Mock-First`
+- `Real-API-First`
 - `Polling-First`
 - 页面优先于组件体系
 
@@ -41,6 +41,7 @@
 - task/detail 轮询读
 - result 按需读
 - history 基于 `q/status/cursor/limit`
+- provider-status 单独读，runtime key 配置成功后主动失效相关缓存
 
 ## 不采用
 
@@ -48,6 +49,7 @@
 - 前端持有 Prompt
 - 前端直连 Provider
 - 全局 store 复制服务端状态
+- 以 Mock 作为默认运行路径
 
 ## 运行命令
 

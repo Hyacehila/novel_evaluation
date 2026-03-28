@@ -15,6 +15,7 @@ _ALLOWED_TASK_COMBINATIONS = {
     (TaskStatus.PROCESSING, ResultStatus.NOT_AVAILABLE),
     (TaskStatus.COMPLETED, ResultStatus.AVAILABLE),
     (TaskStatus.COMPLETED, ResultStatus.BLOCKED),
+    (TaskStatus.COMPLETED, ResultStatus.NOT_AVAILABLE),
     (TaskStatus.FAILED, ResultStatus.NOT_AVAILABLE),
 }
 
@@ -125,15 +126,15 @@ class RecentResultSummary(SchemaModel):
     taskId: str
     title: str
     resultTime: datetime
-    signingProbability: int
-    editorVerdict: str
+    overallScore: int
+    overallVerdict: str
 
-    @field_validator("taskId", "title", "editorVerdict")
+    @field_validator("taskId", "title", "overallVerdict")
     @classmethod
     def validate_text_fields(cls, value: str) -> str:
         return ensure_non_empty_text(value, "recent result field")
 
-    @field_validator("signingProbability")
+    @field_validator("overallScore")
     @classmethod
-    def validate_signing_probability(cls, value: int) -> int:
-        return validate_percentage(value, "signingProbability")
+    def validate_overall_score(cls, value: int) -> int:
+        return validate_percentage(value, "overallScore")

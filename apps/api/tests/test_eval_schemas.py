@@ -15,7 +15,8 @@ from packages.schemas.evals import (
     EvalReportType,
 )
 from packages.schemas.output.error import ErrorCode
-from packages.schemas.output.result import DetailedAnalysis, EvaluationResult, PlatformRecommendation
+from packages.schemas.common.enums import AxisId, ScoreBand
+from packages.schemas.output.result import EvaluationResult
 
 
 def build_result() -> EvaluationResult:
@@ -27,27 +28,25 @@ def build_result() -> EvaluationResult:
         providerId="provider-local",
         modelId="model-local",
         resultTime="2026-03-25T00:00:00Z",
-        signingProbability=80,
-        commercialValue=78,
-        writingQuality=76,
-        innovationScore=74,
-        strengths=["人物动机清晰"],
-        weaknesses=["开篇冲突偏慢"],
-        platforms=[
-            PlatformRecommendation(
-                name="女频平台 A",
-                percentage=82,
-                reason="题材匹配度较高",
-            )
+        axes=[
+            {
+                "axisId": axis_id.value,
+                "scoreBand": ScoreBand.THREE.value,
+                "score": 75,
+                "summary": f"{axis_id.value} 维度总结",
+                "reason": "证据充分，表现合格。",
+                "degradedByInput": False,
+                "riskTags": [],
+            }
+            for axis_id in AxisId
         ],
-        marketFit="具备一定市场接受度",
-        editorVerdict="可继续观察",
-        detailedAnalysis=DetailedAnalysis(
-            plot="情节推进稳定",
-            character="角色动机明确",
-            pacing="节奏略慢",
-            worldBuilding="设定表达完整",
-        ),
+        overall={
+            "score": 80,
+            "verdict": "可继续观察",
+            "summary": "整体完成度稳定。",
+            "platformCandidates": ["女频平台 A"],
+            "marketFit": "具备一定市场接受度",
+        },
     )
 
 

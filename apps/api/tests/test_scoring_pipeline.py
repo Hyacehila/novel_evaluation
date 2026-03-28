@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from types import MappingProxyType
 from typing import Any
 
 import pytest
@@ -17,7 +19,7 @@ from packages.application.scoring_pipeline.models import (
 )
 from packages.application.scoring_pipeline.orchestration import ScoringPipeline
 from packages.application.scoring_pipeline.projection_service import build_final_projection
-from packages.application.scoring_pipeline.rubric_executor import execute_rubric
+from packages.application.scoring_pipeline.rubric_executor import execute_rubric, execute_rubric_slice
 from packages.application.scoring_pipeline.screening_executor import execute_screening
 from packages.schemas.common.enums import (
     AxisId,
@@ -32,13 +34,11 @@ from packages.schemas.common.enums import (
     StageStatus,
     Sufficiency,
     TaskStatus,
-    TopLevelScoreField,
 )
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutline
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
-from packages.schemas.output.result import DetailedAnalysis
 from packages.schemas.output.task import EvaluationTask
 from packages.schemas.stages.aggregation import AggregatedRubricResult
 from packages.schemas.stages.consistency import ConflictType
@@ -57,6 +57,18 @@ class StubResolvedPrompt:
 @dataclass(frozen=True, slots=True)
 class StubProviderSuccess:
     rawJson: Any
+    rawText: str = "{}"
+
+
+@dataclass(frozen=True, slots=True)
+class StubProviderFailure:
+    failureType: str
+    message: str
+    rawJson: Any = None
+
+
+@dataclass(frozen=True, slots=True)
+class StubProviderSuccessWithoutRawJson:
     rawText: str = "{}"
 
 
@@ -93,11 +105,13 @@ class RecordingProviderAdapter:
     model_id: str = "model-test"
     requests: list[Any] = field(default_factory=list)
 
-    def execute(self, request: Any) -> StubProviderSuccess:
+    def execute(self, request: Any) -> StubProviderSuccess | StubProviderFailure:
         self.requests.append(request)
         payload = self.payloads[request.stage]
         if callable(payload):
             payload = payload(request)
+        if isinstance(payload, StubProviderFailure):
+            return payload
         return StubProviderSuccess(rawJson=payload)
 
 
@@ -239,51 +253,24 @@ def build_aggregation_result(
     *,
     platform_candidates: list[str] | None = None,
     market_fit: str = "当前题材更贴合女频平台 A 的用户预期。",
-    commercial_value: int = 78,
+    overall_summary: str = "章节主线与市场抓手已形成初步可读的总体判断。",
+    overall_verdict: str = "建议继续观察并进入样章复核。",
+    overall_confidence: float = 0.82,
 ) -> AggregatedRubricResult:
     return AggregatedRubricResult(
         taskId="task_pipeline_001",
+        stage=StageName.AGGREGATION,
         schemaVersion="schema-test-v1",
         promptVersion="prompt-test-v1",
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
-        axisScores={axis_id: 76 for axis_id in AxisId},
-        skeletonScores={dimension_id: 74 for dimension_id in SkeletonDimensionId},
-        topLevelScoresDraft={
-            TopLevelScoreField.SIGNING_PROBABILITY: 80,
-            TopLevelScoreField.COMMERCIAL_VALUE: commercial_value,
-            TopLevelScoreField.WRITING_QUALITY: 76,
-            TopLevelScoreField.INNOVATION_SCORE: 74,
-        },
-        strengthCandidates=["题材抓手明确"],
-        weaknessCandidates=["兑现节奏仍可补强"],
+        overallVerdictDraft=overall_verdict,
+        overallSummaryDraft=overall_summary,
         platformCandidates=platform_candidates if platform_candidates is not None else ["女频平台 A", "女频平台 B"],
         marketFitDraft=market_fit,
-        editorVerdictDraft="建议继续观察并进入样章复核。",
-        detailedAnalysisDraft=DetailedAnalysis(
-            plot="情节推进稳定。",
-            character="角色动机明确。",
-            pacing="节奏略慢但可读。",
-            worldBuilding="设定卖点清晰。",
-        ),
-        supportingAxisMap={
-            TopLevelScoreField.SIGNING_PROBABILITY: [AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL],
-            TopLevelScoreField.COMMERCIAL_VALUE: [AxisId.COMMERCIAL_POTENTIAL, AxisId.SERIAL_MOMENTUM],
-            TopLevelScoreField.WRITING_QUALITY: [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF],
-            TopLevelScoreField.INNOVATION_SCORE: [AxisId.SETTING_DIFFERENTIATION, AxisId.HOOK_RETENTION],
-        },
-        supportingSkeletonMap={
-            TopLevelScoreField.SIGNING_PROBABILITY: [SkeletonDimensionId.MARKET_ATTRACTION],
-            TopLevelScoreField.COMMERCIAL_VALUE: [
-                SkeletonDimensionId.MARKET_ATTRACTION,
-                SkeletonDimensionId.CHARACTER_MOMENTUM,
-            ],
-            TopLevelScoreField.WRITING_QUALITY: [SkeletonDimensionId.NARRATIVE_EXECUTION],
-            TopLevelScoreField.INNOVATION_SCORE: [SkeletonDimensionId.NOVELTY_UTILITY],
-        },
         riskTags=[],
-        overallConfidence=0.82,
+        overallConfidence=overall_confidence,
     )
 
 
@@ -320,6 +307,43 @@ def build_rubric_context(
         screening=screening or build_screening_result(),
         binding=build_stage_binding(stage=StageName.RUBRIC_EVALUATION),
     )
+
+
+def build_rubric_slice_payload(*, requested_axes: list[AxisId]) -> dict[str, Any]:
+    return {
+        "requestedAxes": [axis_id.value for axis_id in requested_axes],
+        "items": [
+            {
+                "evaluationId": f"eval-{axis_id.value}",
+                "axisId": axis_id.value,
+                "scoreBand": ScoreBand.THREE.value,
+                "reason": f"{axis_id.value} 的判断依据完整。",
+                "evidenceRefs": [
+                    {
+                        "sourceType": EvidenceSourceType.CHAPTERS.value,
+                        "sourceSpan": {"chapterIndex": 0},
+                        "excerpt": f"{axis_id.value} 的证据片段。",
+                        "observationType": "narrative_observation",
+                        "evidenceNote": "用于说明判断依据",
+                        "confidence": 0.82,
+                    }
+                ],
+                "confidence": 0.84,
+                "riskTags": [],
+                "blockingSignals": [],
+                "affectedSkeletonDimensions": [SkeletonDimensionId.MARKET_ATTRACTION.value],
+                "degradedByInput": False,
+            }
+            for axis_id in requested_axes
+        ],
+        "axisSummaries": [
+            {"axisId": axis_id.value, "summary": f"{axis_id.value} 总结"}
+            for axis_id in requested_axes
+        ],
+        "missingRequiredAxes": [],
+        "riskTags": [],
+        "overallConfidence": 0.81,
+    }
 
 
 def build_aggregation_context(
@@ -474,54 +498,68 @@ def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
         AxisId.PLATFORM_FIT: "chapters: 第二章; outline: 题材定位",
         AxisId.COMMERCIAL_POTENTIAL: "终章",
     }
-    raw_payload = {
-        "taskId": "task-from-model",
-        "stage": "rubric_evaluation",
-        "schemaVersion": "1.0",
-        "promptVersion": "1.0",
-        "rubricVersion": "1.0",
-        "providerId": "default",
-        "modelId": "default",
-        "inputComposition": "chapters_outline",
-        "evaluationMode": "full",
-        "items": [
-            {
-                "evaluationId": f"model-{axis_id.value}",
-                "axisId": axis_id.value,
-                "scoreBand": "3",
-                "reason": f"{axis_id.value} 的判断依据完整。",
-                "evidenceRefs": [
-                    {
-                        "sourceType": source_type_by_axis[axis_id],
-                        "sourceSpan": source_span_by_axis[axis_id],
-                        "excerpt": f"{axis_id.value} 的证据片段。",
-                        "observationType": "narrative_observation",
-                        "evidenceNote": "模型直接返回了字符串 sourceSpan。",
-                        "confidence": 0.82,
-                    }
-                ],
-                "confidence": 0.84,
-                "riskTags": ["staleFormula", "unknownRisk"],
-                "blockingSignals": [" 节奏仍需补强 ", "", 3],
-                "affectedSkeletonDimensions": [alias_by_axis[axis_id], "ignored_alias"],
-                "degradedByInput": False,
-            }
-            for axis_id in AxisId
-        ],
-        "axisSummaries": [
-            {
-                "axisId": axis_id.value,
-                "summary": f"{axis_id.value} 总结",
-                "strengths": [f"{axis_id.value} 优势"],
-                "weaknesses": [f"{axis_id.value} 弱点"],
-            }
-            for axis_id in AxisId
-        ],
-        "missingRequiredAxes": ["unknownAxis"],
-        "riskTags": ["staleFormula", "ignoredRisk"],
-        "overallConfidence": 0.81,
-    }
-    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: raw_payload})
+    raw_payloads = [
+        {
+            "taskId": "task-from-model",
+            "stage": "rubric_evaluation",
+            "schemaVersion": "1.0",
+            "promptVersion": "1.0",
+            "rubricVersion": "1.0",
+            "providerId": "default",
+            "modelId": "default",
+            "inputComposition": "chapters_outline",
+            "evaluationMode": "full",
+            "items": [
+                {
+                    "evaluationId": f"model-{axis_id.value}",
+                    "axisId": axis_id.value,
+                    "scoreBand": "3",
+                    "reason": f"{axis_id.value} 的判断依据完整。",
+                    "evidenceRefs": [
+                        {
+                            "sourceType": source_type_by_axis[axis_id],
+                            "sourceSpan": source_span_by_axis[axis_id],
+                            "excerpt": f"{axis_id.value} 的证据片段。",
+                            "observationType": "narrative_observation",
+                            "evidenceNote": "模型直接返回了字符串 sourceSpan。",
+                            "confidence": 0.82,
+                        }
+                    ],
+                    "confidence": 0.84,
+                    "riskTags": ["staleFormula", "unknownRisk"],
+                    "blockingSignals": [" 节奏仍需补强 ", "", 3],
+                    "affectedSkeletonDimensions": [alias_by_axis[axis_id], "ignored_alias"],
+                    "degradedByInput": False,
+                }
+                for axis_id in requested_axes
+            ],
+            "axisSummaries": [
+                {
+                    "axisId": axis_id.value,
+                    "summary": f"{axis_id.value} 总结",
+                    "strengths": [f"{axis_id.value} 优势"],
+                    "weaknesses": [f"{axis_id.value} 弱点"],
+                }
+                for axis_id in requested_axes
+            ],
+            "missingRequiredAxes": ["unknownAxis"],
+            "riskTags": ["staleFormula", "ignoredRisk"],
+            "overallConfidence": 0.81,
+        }
+        for requested_axes in [
+            [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE],
+            [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION],
+            [AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL],
+        ]
+    ]
+    rubric_call_index = {"value": 0}
+
+    def provide_rubric_payload(request: Any) -> dict[str, Any]:
+        payload = raw_payloads[rubric_call_index["value"]]
+        rubric_call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: provide_rubric_payload})
 
     result = execute_rubric(provider_adapter=provider, context=build_rubric_context())
 
@@ -557,43 +595,57 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
         chapters_sufficiency=Sufficiency.INSUFFICIENT,
         outline_sufficiency=Sufficiency.INSUFFICIENT,
     )
-    raw_payload = {
-        "taskId": "task-from-model",
-        "stage": "rubric_evaluation",
-        "schemaVersion": "1.0",
-        "promptVersion": "1.0",
-        "rubricVersion": "1.0",
-        "providerId": "default",
-        "modelId": "default",
-        "inputComposition": "chapters_outline",
-        "evaluationMode": "degraded",
-        "items": [
-            {
-                "evaluationId": f"model-{axis_id.value}",
-                "axisId": axis_id.value,
-                "scoreBand": "medium" if axis_id is AxisId.PLATFORM_FIT else "low",
-                "reason": f"{axis_id.value} 在当前梗概材料下只能做保守判断。",
-                "evidenceRefs": [
-                    {
-                        "sourceType": "chapters" if axis_id in {AxisId.HOOK_RETENTION, AxisId.CHARACTER_DRIVE} else "outline",
-                        "reference": f"{axis_id.value} 的摘要式证据。",
-                        "sourceSpan": "第一章" if axis_id is AxisId.HOOK_RETENTION else "全段",
-                    }
-                ],
-                "confidence": 0.42,
-                "riskTags": ["insufficientMaterial"],
-                "blockingSignals": [],
-                "affectedSkeletonDimensions": ["conflict"],
-                "degradedByInput": True,
-            }
-            for axis_id in AxisId
-        ],
-        "axisSummaries": [{ "axisId": axis_id.value, "summary": f"{axis_id.value} 总结" } for axis_id in AxisId],
-        "missingRequiredAxes": ["platformFit"],
-        "riskTags": ["insufficientMaterial"],
-        "overallConfidence": 0.41,
-    }
-    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: raw_payload})
+    raw_payloads = [
+        {
+            "taskId": "task-from-model",
+            "stage": "rubric_evaluation",
+            "schemaVersion": "1.0",
+            "promptVersion": "1.0",
+            "rubricVersion": "1.0",
+            "providerId": "default",
+            "modelId": "default",
+            "inputComposition": "chapters_outline",
+            "evaluationMode": "degraded",
+            "items": [
+                {
+                    "evaluationId": f"model-{axis_id.value}",
+                    "axisId": axis_id.value,
+                    "scoreBand": "medium" if axis_id is AxisId.PLATFORM_FIT else "low",
+                    "reason": f"{axis_id.value} 在当前梗概材料下只能做保守判断。",
+                    "evidenceRefs": [
+                        {
+                            "sourceType": "chapters" if axis_id in {AxisId.HOOK_RETENTION, AxisId.CHARACTER_DRIVE} else "outline",
+                            "reference": f"{axis_id.value} 的摘要式证据。",
+                            "sourceSpan": "第一章" if axis_id is AxisId.HOOK_RETENTION else "全段",
+                        }
+                    ],
+                    "confidence": 0.42,
+                    "riskTags": ["insufficientMaterial"],
+                    "blockingSignals": [],
+                    "affectedSkeletonDimensions": ["conflict"],
+                    "degradedByInput": True,
+                }
+                for axis_id in requested_axes
+            ],
+            "axisSummaries": [{ "axisId": axis_id.value, "summary": f"{axis_id.value} 总结" } for axis_id in requested_axes],
+            "missingRequiredAxes": ["platformFit"] if AxisId.PLATFORM_FIT in requested_axes else [],
+            "riskTags": ["insufficientMaterial"],
+            "overallConfidence": 0.41,
+        }
+        for requested_axes in [
+            [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE],
+            [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION],
+            [AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL],
+        ]
+    ]
+    rubric_call_index = {"value": 0}
+
+    def provide_rubric_payload(request: Any) -> dict[str, Any]:
+        payload = raw_payloads[rubric_call_index["value"]]
+        rubric_call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: provide_rubric_payload})
 
     result = execute_rubric(
         provider_adapter=provider,
@@ -609,7 +661,7 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
     assert hook_item.evidenceRefs[0].observationType == "narrative_observation"
     assert hook_item.evidenceRefs[0].evidenceNote.startswith("由真实 provider")
     assert hook_item.evidenceRefs[0].confidence == pytest.approx(0.42)
-    assert result.missingRequiredAxes == [AxisId.PLATFORM_FIT]
+    assert result.missingRequiredAxes == []
     assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
 
 
@@ -632,30 +684,10 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
         "rubricVersion": "1.0",
         "providerId": "default",
         "modelId": "default",
-        "axisScores": {axis_id.value: 60 + index for index, axis_id in enumerate(AxisId)},
-        "skeletonScores": {dimension_id.value: 70 + index for index, dimension_id in enumerate(SkeletonDimensionId)},
-        "topLevelScoresDraft": {
-            "retentionScore": 61,
-            "serialScore": 62,
-            "characterScore": 63,
-            "narrativeScore": 64,
-            "settingScore": 65,
-            "platformScore": 66,
-            "commercialScore": 67,
-        },
-        "strengthCandidates": ["大纲主线稳定"],
-        "weaknessCandidates": ["正文证据仍偏少"],
         "platformCandidates": ["女频平台 A"],
         "marketFitDraft": "当前材料更适合走保守市场判断。",
         "editorVerdictDraft": "建议补全正文后再复核。",
         "detailedAnalysisDraft": "聚合基于 degraded 模式，只能形成保守摘要。",
-        "supportingAxisMap": {axis_id.value: [f"{axis_id.value}_1"] for axis_id in AxisId},
-        "supportingSkeletonMap": {
-            SkeletonDimensionId.MARKET_ATTRACTION.value: ["hookRetention_1", "serialMomentum_1"],
-            SkeletonDimensionId.NARRATIVE_EXECUTION.value: ["narrativeControl_1", "pacingPayoff_1"],
-            SkeletonDimensionId.CHARACTER_MOMENTUM.value: ["characterDrive_1"],
-            SkeletonDimensionId.NOVELTY_UTILITY.value: ["settingDifferentiation_1"],
-        },
         "riskTags": ["insufficientMaterial"],
         "overallConfidence": 0.44,
     }
@@ -672,17 +704,98 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
     assert result.rubricVersion == "rubric-test-v1"
     assert result.providerId == "provider-test"
     assert result.modelId == "model-test"
-    assert result.topLevelScoresDraft[TopLevelScoreField.SIGNING_PROBABILITY] == 66
-    assert result.topLevelScoresDraft[TopLevelScoreField.COMMERCIAL_VALUE] == 64
-    assert result.detailedAnalysisDraft.plot == "聚合基于 degraded 模式，只能形成保守摘要。"
-    assert result.supportingAxisMap[TopLevelScoreField.SIGNING_PROBABILITY] == [
-        AxisId.PLATFORM_FIT,
-        AxisId.COMMERCIAL_POTENTIAL,
-    ]
-    assert result.supportingSkeletonMap[TopLevelScoreField.WRITING_QUALITY] == [
-        SkeletonDimensionId.NARRATIVE_EXECUTION,
-    ]
+    assert result.overallVerdictDraft == "建议补全正文后再复核。"
+    assert result.overallSummaryDraft == "聚合基于 degraded 模式，只能形成保守摘要。"
+    assert result.platformCandidates == ["女频平台 A"]
+    assert result.marketFitDraft == "当前材料更适合走保守市场判断。"
     assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
+    assert result.overallConfidence == pytest.approx(0.44)
+
+
+def test_execute_rubric_retries_once_after_schema_invalid_payload() -> None:
+    requested_axes = [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE]
+    invalid_payload = build_rubric_slice_payload(requested_axes=requested_axes)
+    invalid_payload["items"] = invalid_payload["items"][:2]
+    invalid_payload["axisSummaries"] = invalid_payload["axisSummaries"][:2]
+    payloads = [invalid_payload, build_rubric_slice_payload(requested_axes=requested_axes)]
+    call_index = {"value": 0}
+
+    def provide_payload(request: Any) -> dict[str, Any]:
+        payload = payloads[call_index["value"]]
+        call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: provide_payload})
+
+    result = execute_rubric_slice(
+        provider_adapter=provider,
+        context=RubricExecutionContext(
+            task_id="task_pipeline_001",
+            submission=build_submission(),
+            screening=build_screening_result(),
+            binding=build_stage_binding(stage=StageName.RUBRIC_EVALUATION),
+            requested_axes=tuple(requested_axes),
+        ),
+    )
+
+    assert [item.axisId for item in result.items] == requested_axes
+    assert len([request for request in provider.requests if request.stage is StageName.RUBRIC_EVALUATION]) == 2
+
+
+def test_execute_aggregation_retries_once_after_schema_invalid_payload() -> None:
+    payloads: list[Any] = [["invalid-payload"], build_aggregation_result().model_dump(mode="json")]
+    call_index = {"value": 0}
+
+    def provide_payload(request: Any) -> Any:
+        payload = payloads[call_index["value"]]
+        call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(payloads={StageName.AGGREGATION: provide_payload})
+
+    result = execute_aggregation(provider_adapter=provider, context=build_aggregation_context())
+
+    assert result.overallVerdictDraft == "建议继续观察并进入样章复核。"
+    assert len([request for request in provider.requests if request.stage is StageName.AGGREGATION]) == 2
+
+
+
+def test_execute_aggregation_fail_fast_on_empty_mapping_payload() -> None:
+    provider = RecordingProviderAdapter(payloads={StageName.AGGREGATION: {}})
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        execute_aggregation(
+            provider_adapter=provider,
+            context=build_aggregation_context(),
+        )
+
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
+    assert "aggregation 阶段输出不满足正式 schema" in exc_info.value.message
+
+
+
+def test_execute_aggregation_fail_fast_on_weak_mapping_payload() -> None:
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.AGGREGATION: {
+                "overallVerdictDraft": MappingProxyType({}),
+                "overallSummaryDraft": MappingProxyType({}),
+                "marketFitDraft": MappingProxyType({}),
+                "platformCandidates": MappingProxyType({}),
+                "riskTags": MappingProxyType({}),
+                "overallConfidence": MappingProxyType({}),
+            }
+        }
+    )
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        execute_aggregation(
+            provider_adapter=provider,
+            context=build_aggregation_context(),
+        )
+
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
+    assert "aggregation 阶段输出不满足正式 schema" in exc_info.value.message
 
 
 def test_run_consistency_check_blocks_on_cross_input_mismatch() -> None:
@@ -816,48 +929,57 @@ def test_run_consistency_check_marks_duplicated_penalties_without_blocking() -> 
     assert any(conflict.conflictType is ConflictType.DUPLICATED_PENALTY for conflict in result.conflicts)
 
 
-def test_build_final_projection_uses_primary_platform_candidate() -> None:
-    aggregation = build_aggregation_result(platform_candidates=["女频平台 A", "女频平台 B"], commercial_value=81)
+def test_build_final_projection_uses_overall_fields() -> None:
+    aggregation = build_aggregation_result(platform_candidates=["女频平台 A", "女频平台 B"], market_fit="当前题材更贴合女频平台 A 的用户预期。")
+    rubric = build_rubric_set()
+    consistency = run_consistency_check(context=build_rubric_context(), rubric=rubric)
 
-    projection = build_final_projection(aggregation=aggregation)
+    projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
 
-    assert [platform.name for platform in projection.platforms] == ["女频平台 A"]
-    assert [platform.percentage for platform in projection.platforms] == [81]
-    assert [platform.reason for platform in projection.platforms] == [aggregation.marketFitDraft]
-    assert projection.detailedAnalysis == aggregation.detailedAnalysisDraft
+    assert len(projection.axes) == len(AxisId)
+    assert projection.overall.score == 75
+    assert projection.overall.verdict == aggregation.overallVerdictDraft
+    assert projection.overall.summary == aggregation.overallSummaryDraft
+    assert projection.overall.platformCandidates == ["女频平台 A", "女频平台 B"]
+    assert projection.overall.marketFit == aggregation.marketFitDraft
 
 
-def test_build_final_projection_does_not_fallback_platforms() -> None:
+def test_build_final_projection_preserves_empty_platform_candidates() -> None:
     aggregation = build_aggregation_result(platform_candidates=[])
+    rubric = build_rubric_set()
+    consistency = run_consistency_check(context=build_rubric_context(), rubric=rubric)
 
-    projection = build_final_projection(aggregation=aggregation)
+    projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
 
-    assert projection.platforms == []
+    assert projection.overall.platformCandidates == []
 
 
-def test_scoring_pipeline_blocks_with_precise_message_for_missing_required_axes() -> None:
+def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested_axis() -> None:
     screening = build_screening_result(
         input_composition=InputComposition.OUTLINE_ONLY,
         evaluation_mode=EvaluationMode.DEGRADED,
         has_chapters=False,
         has_outline=True,
     )
-    rubric = build_rubric_set(
-        input_composition=InputComposition.OUTLINE_ONLY,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        missing_required_axes=[AxisId.PLATFORM_FIT],
-    )
     prompt_runtime = RecordingPromptRuntime()
+
+    def provide_rubric_payload(request: Any) -> dict[str, Any]:
+        requested_axes = [AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]
+        payload = build_rubric_slice_payload(requested_axes=requested_axes)
+        if AxisId.PLATFORM_FIT in requested_axes:
+            payload["items"] = [item for item in payload["items"] if item["axisId"] != AxisId.PLATFORM_FIT.value]
+        return payload
+
     provider = RecordingProviderAdapter(
         payloads={
             StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: rubric.model_dump(mode="json"),
+            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
             StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
         }
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
-    with pytest.raises(PipelineBlockedError) as exc_info:
+    with pytest.raises(PipelineFailureError) as exc_info:
         pipeline.run(
             task=build_task(
                 evaluation_mode=EvaluationMode.DEGRADED,
@@ -866,9 +988,8 @@ def test_scoring_pipeline_blocks_with_precise_message_for_missing_required_axes(
             submission=build_submission(with_chapters=False, with_outline=True),
         )
 
-    assert exc_info.value.error_code is ErrorCode.RESULT_BLOCKED
-    assert "缺少必需评价轴" in exc_info.value.message
-    assert "platformFit" in exc_info.value.message
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
+    assert "rubric_evaluation" in exc_info.value.message
 
 
 def test_scoring_pipeline_uses_joint_input_mismatch_error_for_cross_input_conflict() -> None:
@@ -878,7 +999,7 @@ def test_scoring_pipeline_uses_joint_input_mismatch_error_for_cross_input_confli
     provider = RecordingProviderAdapter(
         payloads={
             StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: rubric.model_dump(mode="json"),
+            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
             StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
         }
     )
@@ -897,13 +1018,103 @@ def test_scoring_pipeline_uses_joint_input_mismatch_error_for_cross_input_confli
     assert "正文与大纲之间存在高严重度冲突" in exc_info.value.message
 
 
+
+def test_scoring_pipeline_masks_screening_rejection_reason_message() -> None:
+    screening = build_screening_result(
+        evaluation_mode=EvaluationMode.DEGRADED,
+        chapters_sufficiency=Sufficiency.INSUFFICIENT,
+        outline_sufficiency=Sufficiency.SUFFICIENT,
+        continue_allowed=False,
+        rateable=False,
+        rejection_reasons=["raw upstream provider reason sk-secret should not leak"],
+    )
+    prompt_runtime = RecordingPromptRuntime()
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineBlockedError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.INSUFFICIENT_CHAPTERS_INPUT
+    assert exc_info.value.message == "正文内容不足，当前无法进入正式评分，请补充正文后重试。"
+    assert "raw upstream" not in exc_info.value.message
+    assert "sk-secret" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_masks_outline_screening_rejection_reason_message() -> None:
+    screening = build_screening_result(
+        input_composition=InputComposition.OUTLINE_ONLY,
+        evaluation_mode=EvaluationMode.DEGRADED,
+        has_chapters=False,
+        has_outline=True,
+        chapters_sufficiency=Sufficiency.MISSING,
+        outline_sufficiency=Sufficiency.INSUFFICIENT,
+        continue_allowed=False,
+        rateable=False,
+        rejection_reasons=["outline upstream provider reason sk-secret should not leak"],
+    )
+    prompt_runtime = RecordingPromptRuntime()
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineBlockedError) as exc_info:
+        pipeline.run(
+            task=build_task(
+                evaluation_mode=EvaluationMode.DEGRADED,
+                input_composition=InputComposition.OUTLINE_ONLY,
+            ),
+            submission=build_submission(with_chapters=False, with_outline=True),
+        )
+
+    assert exc_info.value.error_code is ErrorCode.INSUFFICIENT_OUTLINE_INPUT
+    assert exc_info.value.message == "大纲内容不足，当前无法进入正式评分，请补充大纲后重试。"
+    assert "upstream" not in exc_info.value.message
+    assert "sk-secret" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_masks_joint_unrateable_screening_rejection_reason_message() -> None:
+    screening = build_screening_result(
+        evaluation_mode=EvaluationMode.DEGRADED,
+        chapters_sufficiency=Sufficiency.SUFFICIENT,
+        outline_sufficiency=Sufficiency.SUFFICIENT,
+        continue_allowed=False,
+        rateable=False,
+        rejection_reasons=["joint upstream provider reason sk-secret should not leak"],
+    )
+    prompt_runtime = RecordingPromptRuntime()
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineBlockedError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.JOINT_INPUT_UNRATEABLE
+    assert exc_info.value.message == "输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。"
+    assert "upstream" not in exc_info.value.message
+    assert "sk-secret" not in exc_info.value.message
+
+
 def test_scoring_pipeline_raises_stage_schema_invalid_when_aggregation_payload_invalid() -> None:
     prompt_runtime = RecordingPromptRuntime()
     provider = RecordingProviderAdapter(
         payloads={
             StageName.INPUT_SCREENING: build_screening_result().model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: build_rubric_set().model_dump(mode="json"),
-            StageName.AGGREGATION: {"taskId": "task_pipeline_001", "stage": "aggregation"},
+            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
+            StageName.AGGREGATION: ["invalid-payload"],
         }
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
@@ -915,15 +1126,139 @@ def test_scoring_pipeline_raises_stage_schema_invalid_when_aggregation_payload_i
     assert "aggregation 阶段输出不满足正式 schema" in exc_info.value.message
 
 
-def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> None:
-    screening = build_screening_result()
-    rubric = build_rubric_set()
-    aggregation = build_aggregation_result()
+
+def test_scoring_pipeline_masks_provider_failure_message() -> None:
     prompt_runtime = RecordingPromptRuntime()
     provider = RecordingProviderAdapter(
         payloads={
+            StageName.INPUT_SCREENING: StubProviderFailure(
+                failureType="provider_failure",
+                message="upstream raw error: invalid api key sk-test-secret",
+            ),
+            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
+            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.PROVIDER_FAILURE
+    assert "invalid api key" not in exc_info.value.message
+    assert "sk-test-secret" not in exc_info.value.message
+    assert "upstream raw error" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_maps_unknown_provider_failure_type_to_sanitized_provider_failure() -> None:
+    prompt_runtime = RecordingPromptRuntime()
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: StubProviderFailure(
+                failureType="provider_new_failure",
+                message="upstream raw error: req-secret-001",
+            ),
+            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
+            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.PROVIDER_FAILURE
+    assert "req-secret-001" not in exc_info.value.message
+    assert "provider_new_failure" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_masks_provider_exception_message() -> None:
+    prompt_runtime = RecordingPromptRuntime()
+
+    class RaisingProviderAdapter:
+        provider_id = "provider-test"
+        model_id = "model-test"
+
+        def execute(self, request: Any) -> StubProviderSuccess:
+            raise RuntimeError("provider exploded with token sk-live-secret")
+
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=RaisingProviderAdapter())
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.PROVIDER_FAILURE
+    assert "sk-live-secret" not in exc_info.value.message
+    assert "provider exploded" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_maps_timeout_exception_to_timeout_error() -> None:
+    prompt_runtime = RecordingPromptRuntime()
+
+    class APITimeoutError(Exception):
+        pass
+
+    class RaisingTimeoutProviderAdapter:
+        provider_id = "provider-test"
+        model_id = "model-test"
+
+        def execute(self, request: Any) -> StubProviderSuccess:
+            raise APITimeoutError("provider timeout with token sk-timeout-secret")
+
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=RaisingTimeoutProviderAdapter())
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.TIMEOUT
+    assert "sk-timeout-secret" not in exc_info.value.message
+
+
+
+def test_scoring_pipeline_raises_contract_invalid_when_success_payload_missing_raw_json() -> None:
+    prompt_runtime = RecordingPromptRuntime()
+
+    class MissingRawJsonProviderAdapter:
+        provider_id = "provider-test"
+        model_id = "model-test"
+
+        def execute(self, request: Any) -> StubProviderSuccessWithoutRawJson:
+            return StubProviderSuccessWithoutRawJson()
+
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=MissingRawJsonProviderAdapter())
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.CONTRACT_INVALID
+    assert "rawJson" not in exc_info.value.message
+
+
+def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> None:
+    screening = build_screening_result()
+    aggregation = build_aggregation_result()
+    requested_axes_batches = [
+        [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE],
+        [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION],
+        [AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL],
+    ]
+    rubric_payloads = [build_rubric_slice_payload(requested_axes=batch) for batch in requested_axes_batches]
+    prompt_runtime = RecordingPromptRuntime()
+
+    rubric_call_index = {"value": 0}
+
+    def provide_rubric_payload(request: Any) -> dict[str, Any]:
+        payload = rubric_payloads[rubric_call_index["value"]]
+        rubric_call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(
+        payloads={
             StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: rubric.model_dump(mode="json"),
+            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
             StageName.AGGREGATION: aggregation.model_dump(mode="json"),
         }
     )
@@ -931,7 +1266,10 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
 
     result = pipeline.run(task=build_task(), submission=build_submission())
 
-    assert result.projection.platforms[0].name == "女频平台 A"
+    assert len(result.projection.axes) == len(AxisId)
+    assert result.projection.overall.score == 75
+    assert result.projection.overall.verdict == aggregation.overallVerdictDraft
+    assert result.projection.overall.platformCandidates == aggregation.platformCandidates
     assert prompt_runtime.calls == [
         {
             "stage": "input_screening",
@@ -955,6 +1293,11 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
             "model_id": "model-test",
         },
     ]
+    rubric_requests = [request for request in provider.requests if request.stage is StageName.RUBRIC_EVALUATION]
+    assert len(rubric_requests) == 3
+    assert [json.loads(request.messages[-1].content)["requestedAxes"] for request in rubric_requests] == [
+        [axis_id.value for axis_id in batch] for batch in requested_axes_batches
+    ]
     assert [
         {
             "stage": request.stage.value,
@@ -977,9 +1320,57 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
             "responseFormat": {"type": "json_object"},
         },
         {
+            "stage": "rubric_evaluation",
+            "timeoutMs": 90_000,
+            "maxTokens": 6_000,
+            "responseFormat": {"type": "json_object"},
+        },
+        {
+            "stage": "rubric_evaluation",
+            "timeoutMs": 90_000,
+            "maxTokens": 6_000,
+            "responseFormat": {"type": "json_object"},
+        },
+        {
             "stage": "aggregation",
             "timeoutMs": 90_000,
             "maxTokens": 4_000,
             "responseFormat": {"type": "json_object"},
         },
     ]
+
+
+def test_scoring_pipeline_blocks_when_any_rubric_slice_is_invalid() -> None:
+    screening = build_screening_result()
+    prompt_runtime = RecordingPromptRuntime()
+    requested_axes_batches = [
+        [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE],
+        [AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION],
+        [AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL],
+    ]
+    rubric_payloads = [
+        build_rubric_slice_payload(requested_axes=requested_axes_batches[0]),
+        build_rubric_slice_payload(requested_axes=[AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF]),
+        build_rubric_slice_payload(requested_axes=requested_axes_batches[2]),
+    ]
+    rubric_call_index = {"value": 0}
+
+    def provide_rubric_payload(request: Any) -> dict[str, Any]:
+        payload = rubric_payloads[rubric_call_index["value"]]
+        rubric_call_index["value"] += 1
+        return payload
+
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
+            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
+            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        pipeline.run(task=build_task(), submission=build_submission())
+
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
+    assert "rubric_evaluation" in exc_info.value.message

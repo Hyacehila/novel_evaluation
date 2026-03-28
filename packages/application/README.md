@@ -6,13 +6,14 @@
 
 ## 输入对象
 
-该模块未来主要消费：
+该模块当前主要消费：
 
 - `JointSubmissionRequest`
 - `Manuscript`
 - `EvaluationTask`
 - 阶段契约对象：
   - `InputScreeningResult`
+  - `RubricEvaluationSlice`
   - `RubricEvaluationSet`
   - `ConsistencyCheckResult`
   - `AggregatedRubricResult`
@@ -20,11 +21,15 @@
 
 ## 输出对象
 
-该模块未来主要产出：
+该模块当前主要产出：
 
 - `EvaluationTask`
 - `EvaluationTaskSummary`
+- `EvaluationResultResource`
 - `EvaluationResult`
+- `DashboardSummary`
+- `HistoryList`
+- `ScoringPipelineResult`
 - 面向 worker / API 的统一 use case 返回对象
 
 ## 主要职责
@@ -32,9 +37,11 @@
 - 创建任务
 - 读取任务
 - 读取结果
+- 读取 dashboard / history
 - 组织正式评分主线
 - 选择 Prompt / schema / provider 版本
 - 统一任务状态推进与错误出口
+- 在读取期把旧版或损坏结果标准化为 `not_available`
 
 ## 不负责
 
@@ -48,7 +55,6 @@
 
 该模块依赖：
 
-- `packages/domain/`
 - `packages/schemas/`
 - `packages/provider-adapters/`
 - `packages/prompt-runtime/`
@@ -67,6 +73,7 @@
 - 业务阻断进入 `completed + blocked`
 - 技术失败进入 `failed + not_available`
 - 不允许在 use case 层伪造“低分但成功”的结果替代阻断
+- provider 和 schema 失败都必须转为受控错误码
 
 ## Side Effects
 
@@ -83,7 +90,7 @@
 当前最小验收方式：
 
 - `git diff --check`
-- `rg "EvaluationTask|InputScreeningResult|RubricEvaluationSet|错误语义|验收方式" packages/application/README.md`
+- `rg "EvaluationTask|RubricEvaluationSet|ScoringPipelineResult|错误语义|验收方式" packages/application/README.md`
 
 ## DevFleet 使用约束
 

@@ -11,6 +11,7 @@ Import-ProjectEnv
 
 $apiHost = Get-EnvOrDefault -Name "NOVEL_EVAL_API_HOST" -Default "127.0.0.1"
 $apiPort = Get-EnvOrDefault -Name "NOVEL_EVAL_API_PORT" -Default "8000"
+Assert-PortAvailable -ListenHost $apiHost -Port ([int]$apiPort) -ServiceName "API"
 
 $repoRoot = Get-RepoRoot
 Push-Location $repoRoot

@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from io import BytesIO
 
+import json
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
@@ -326,6 +327,10 @@ def test_get_result_returns_available_after_in_process_execution() -> None:
     assert payload["success"] is True
     assert payload["data"]["resultStatus"] == "available"
     assert payload["data"]["result"] is not None
+    assert len(payload["data"]["result"]["axes"]) == 8
+    assert payload["data"]["result"]["overall"]["score"] == 70
+    assert payload["data"]["result"]["overall"]["verdict"] == "建议继续观察并进入样章复核。"
+    assert "signingProbability" not in payload["data"]["result"]
 
 
 def test_get_provider_status_returns_startup_env_state() -> None:
@@ -344,6 +349,238 @@ def test_get_provider_status_returns_startup_env_state() -> None:
         "canAnalyze": True,
         "canConfigureFromUi": False,
     }
+
+
+
+def test_post_tasks_masks_provider_failure_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    provider_adapters_module = api_dependencies._get_provider_adapters_module()
+
+    class RawFailureProviderAdapter:
+        provider_id = "provider-deepseek"
+        model_id = "deepseek-chat"
+
+        def execute(self, request):
+            return provider_adapters_module.build_provider_failure(
+                provider_id=self.provider_id,
+                model_id=self.model_id,
+                request_id=request.requestId,
+                provider_request_id="req-secret-001",
+                duration_ms=1,
+                failure_type=provider_adapters_module.ProviderFailureType.PROVIDER_FAILURE,
+                message="raw upstream api key sk-secret exposed in provider failure",
+            )
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: RawFailureProviderAdapter(),
+    )
+    client = create_client()
+
+    created = client.post(
+        "/api/tasks",
+        json={
+            "title": "测试稿件",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    ).json()["data"]
+
+    task_response = client.get(f"/api/tasks/{created['taskId']}")
+
+    assert task_response.status_code == 200
+    payload = task_response.json()
+    assert payload["data"]["status"] == "failed"
+    assert payload["data"]["resultStatus"] == "not_available"
+    assert payload["data"]["errorCode"] == ErrorCode.PROVIDER_FAILURE.value
+    assert "deterministic adapter" not in payload["data"]["errorMessage"]
+    assert "provider_failure" not in payload["data"]["errorMessage"]
+
+
+
+def test_post_tasks_masks_screening_block_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    class RawSuccess:
+        def __init__(self, raw_json):
+            self.rawJson = raw_json
+            self.rawText = "{}"
+
+    class ScreeningBlockedProviderAdapter:
+        provider_id = "provider-deepseek"
+        model_id = "deepseek-chat"
+
+        def execute(self, request):
+            if request.stage.value != "input_screening":
+                raise AssertionError(f"unexpected stage: {request.stage.value}")
+            return RawSuccess(
+                {
+                    "inputComposition": "chapters_outline",
+                    "evaluationMode": "degraded",
+                    "chaptersSufficiency": "insufficient",
+                    "outlineSufficiency": "sufficient",
+                    "rateable": False,
+                    "status": "unrateable",
+                    "rejectionReasons": ["raw upstream provider reason sk-secret should not leak"],
+                    "riskTags": ["insufficientMaterial"],
+                    "confidence": 0.2,
+                    "continueAllowed": False,
+                }
+            )
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: ScreeningBlockedProviderAdapter(),
+    )
+    client = create_client()
+
+    created = client.post(
+        "/api/tasks",
+        json={
+            "title": "测试稿件",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    ).json()["data"]
+
+    task_response = client.get(f"/api/tasks/{created['taskId']}")
+
+    assert task_response.status_code == 200
+    payload = task_response.json()
+    assert payload["data"]["status"] == "completed"
+    assert payload["data"]["resultStatus"] == "blocked"
+    assert payload["data"]["errorCode"] == ErrorCode.INSUFFICIENT_CHAPTERS_INPUT.value
+    assert payload["data"]["errorMessage"] == "正文内容不足，当前无法进入正式评分，请补充正文后重试。"
+    assert "raw upstream" not in payload["data"]["errorMessage"]
+    assert "sk-secret" not in payload["data"]["errorMessage"]
+
+    result_response = client.get(f"/api/tasks/{created['taskId']}/result")
+    assert result_response.status_code == 200
+    assert result_response.json()["data"]["message"] == "结果未满足正式展示条件"
+
+
+
+def test_post_tasks_masks_outline_screening_block_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    class RawSuccess:
+        def __init__(self, raw_json):
+            self.rawJson = raw_json
+            self.rawText = "{}"
+
+    class OutlineBlockedProviderAdapter:
+        provider_id = "provider-deepseek"
+        model_id = "deepseek-chat"
+
+        def execute(self, request):
+            if request.stage.value != "input_screening":
+                raise AssertionError(f"unexpected stage: {request.stage.value}")
+            return RawSuccess(
+                {
+                    "inputComposition": "outline_only",
+                    "evaluationMode": "degraded",
+                    "chaptersSufficiency": "missing",
+                    "outlineSufficiency": "insufficient",
+                    "rateable": False,
+                    "status": "unrateable",
+                    "rejectionReasons": ["outline upstream provider reason sk-secret should not leak"],
+                    "riskTags": ["insufficientMaterial"],
+                    "confidence": 0.2,
+                    "continueAllowed": False,
+                }
+            )
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: OutlineBlockedProviderAdapter(),
+    )
+    client = create_client()
+
+    created = client.post(
+        "/api/tasks",
+        json={
+            "title": "仅大纲阻断",
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    ).json()["data"]
+
+    task_response = client.get(f"/api/tasks/{created['taskId']}")
+
+    assert task_response.status_code == 200
+    payload = task_response.json()
+    assert payload["data"]["status"] == "completed"
+    assert payload["data"]["resultStatus"] == "blocked"
+    assert payload["data"]["errorCode"] == ErrorCode.INSUFFICIENT_OUTLINE_INPUT.value
+    assert payload["data"]["errorMessage"] == "大纲内容不足，当前无法进入正式评分，请补充大纲后重试。"
+    assert "upstream" not in payload["data"]["errorMessage"]
+    assert "sk-secret" not in payload["data"]["errorMessage"]
+
+
+
+def test_post_tasks_masks_joint_unrateable_screening_block_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    class RawSuccess:
+        def __init__(self, raw_json):
+            self.rawJson = raw_json
+            self.rawText = "{}"
+
+    class JointUnrateableProviderAdapter:
+        provider_id = "provider-deepseek"
+        model_id = "deepseek-chat"
+
+        def execute(self, request):
+            if request.stage.value != "input_screening":
+                raise AssertionError(f"unexpected stage: {request.stage.value}")
+            return RawSuccess(
+                {
+                    "inputComposition": "chapters_outline",
+                    "evaluationMode": "degraded",
+                    "chaptersSufficiency": "sufficient",
+                    "outlineSufficiency": "sufficient",
+                    "rateable": False,
+                    "status": "unrateable",
+                    "rejectionReasons": ["joint upstream provider reason sk-secret should not leak"],
+                    "riskTags": [],
+                    "confidence": 0.7,
+                    "continueAllowed": False,
+                }
+            )
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: JointUnrateableProviderAdapter(),
+    )
+    client = create_client()
+
+    created = client.post(
+        "/api/tasks",
+        json={
+            "title": "联合不可评阻断",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
+            "outline": {"content": "大纲内容"},
+            "sourceType": "direct_input",
+        },
+    ).json()["data"]
+
+    task_response = client.get(f"/api/tasks/{created['taskId']}")
+
+    assert task_response.status_code == 200
+    payload = task_response.json()
+    assert payload["data"]["status"] == "completed"
+    assert payload["data"]["resultStatus"] == "blocked"
+    assert payload["data"]["errorCode"] == ErrorCode.JOINT_INPUT_UNRATEABLE.value
+    assert payload["data"]["errorMessage"] == "输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。"
+    assert "upstream" not in payload["data"]["errorMessage"]
+    assert "sk-secret" not in payload["data"]["errorMessage"]
 
 
 def test_get_provider_status_returns_missing_state_without_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -445,6 +682,52 @@ def test_runtime_key_configuration_rejects_forwarded_local_request(monkeypatch: 
     payload = response.json()
     assert payload["success"] is False
     assert payload["error"]["code"] == "FORBIDDEN"
+
+
+def test_runtime_key_reset_is_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.delenv("NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET", raising=False)
+    client = create_client()
+
+    response = client.delete("/api/provider-status/runtime-key")
+
+    assert response.status_code == 403
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "FORBIDDEN"
+
+
+def test_runtime_key_reset_clears_runtime_configuration_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET", "1")
+    client = create_client()
+
+    configure_response = client.post("/api/provider-status/runtime-key", json={"apiKey": "runtime-key"})
+    assert configure_response.status_code == 200
+
+    reset_response = client.delete("/api/provider-status/runtime-key")
+
+    assert reset_response.status_code == 200
+    assert reset_response.json()["data"] == {
+        "providerId": "provider-deepseek",
+        "modelId": "deepseek-chat",
+        "configured": False,
+        "configurationSource": "missing",
+        "canAnalyze": False,
+        "canConfigureFromUi": True,
+    }
+
+
+def test_runtime_key_reset_is_locked_when_startup_key_exists(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET", "1")
+    client = create_client()
+
+    response = client.delete("/api/provider-status/runtime-key")
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "PROVIDER_CONFIGURATION_LOCKED"
 
 
 def test_api_starts_without_provider_key_and_keeps_read_only_queries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -553,6 +836,9 @@ def test_get_dashboard_and_history_return_success() -> None:
     assert dashboard.json()["data"]["recentTasks"][0]["status"] == "completed"
     assert dashboard.json()["data"]["recentTasks"][0]["resultStatus"] == "available"
     assert len(dashboard.json()["data"]["recentResults"]) == 1
+    assert dashboard.json()["data"]["recentResults"][0]["overallScore"] == 70
+    assert dashboard.json()["data"]["recentResults"][0]["overallVerdict"] == "建议继续观察并进入样章复核。"
+    assert "signingProbability" not in dashboard.json()["data"]["recentResults"][0]
     assert history.status_code == 200
     assert history.json()["success"] is True
     assert len(history.json()["data"]["items"]) == 1

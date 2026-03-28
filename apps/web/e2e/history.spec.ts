@@ -1,5 +1,7 @@
 import { expect, test, type APIRequestContext } from "@playwright/test";
 
+import { ensureProviderReady, resetRuntimeProviderKey } from "./provider-helpers";
+
 async function createTask(
   request: APIRequestContext,
   payload: {
@@ -30,6 +32,8 @@ async function createTask(
 }
 
 test("历史页支持标题、状态与分页回访", async ({ page, request }) => {
+  await resetRuntimeProviderKey(request);
+  await ensureProviderReady(page);
   await createTask(request, {
     title: "星际远征一号",
     chapters: "剧情梗概：舰长林澈将率舰队离开母星，途中发现补给名单被人篡改，随后会在边境战场里调查幕后黑手并夺回航道控制权。当前只给出事件摘要，没有展开成具体场景、对白和连续叙事。",

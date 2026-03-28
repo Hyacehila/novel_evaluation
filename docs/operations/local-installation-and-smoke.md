@@ -67,7 +67,7 @@ uv run --project apps/worker worker eval --suite smoke [--baseline-id baseline_s
 - 在 web 新建页录入 runtime key，或确保 API 已以启动环境变量方式带 key
 - 提交 `title + chapters + outline`
 - 任务页从 `queued / processing` 轮询到 `completed + available`
-- 结果页展示四项评分、平台建议、编辑结论和详细分析
+- 结果页展示总体评分、总体结论、市场判断、平台候选和 `8` 轴 rubric 结果
 
 ### 2. 文件上传流
 
@@ -94,6 +94,7 @@ uv run --project apps/worker worker eval --suite smoke [--baseline-id baseline_s
 - 重启 API
 - `GET /api/tasks/{taskId}`、`GET /api/tasks/{taskId}/result`、`GET /api/history` 仍可读取
 - 若 API 重启后仍未配置启动期 key，则新建任务再次受限，需重新录入 runtime key
+- 若本地存有旧版结果结构，`GET /api/tasks/{taskId}/result` 会降级为 `not_available` 并返回兼容提示
 
 ## 交付前最小命令检查
 

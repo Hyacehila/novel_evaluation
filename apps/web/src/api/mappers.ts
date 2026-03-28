@@ -36,8 +36,8 @@ export function mapRecentResult(dto: RecentResultSummaryDto): DashboardResultSum
     taskId: dto.taskId,
     title: dto.title,
     resultTime: dto.resultTime,
-    signingProbability: dto.signingProbability,
-    editorVerdict: dto.editorVerdict,
+    overallScore: dto.overallScore,
+    overallVerdict: dto.overallVerdict,
   };
 }
 
@@ -81,7 +81,33 @@ export function mapResultDetail(dto: EvaluationResultResourceDto): ResultDetailV
     state: dto.resultStatus,
     resultStatus: dto.resultStatus,
     resultTime: dto.resultTime,
-    result: dto.result,
+    result: dto.result
+      ? {
+          taskId: dto.result.taskId,
+          schemaVersion: dto.result.schemaVersion,
+          promptVersion: dto.result.promptVersion,
+          rubricVersion: dto.result.rubricVersion,
+          providerId: dto.result.providerId,
+          modelId: dto.result.modelId,
+          resultTime: dto.result.resultTime,
+          axes: dto.result.axes.map((axis) => ({
+            axisId: axis.axisId,
+            scoreBand: axis.scoreBand,
+            score: axis.score,
+            summary: axis.summary,
+            reason: axis.reason,
+            degradedByInput: axis.degradedByInput,
+            riskTags: axis.riskTags,
+          })),
+          overall: {
+            score: dto.result.overall.score,
+            verdict: dto.result.overall.verdict,
+            summary: dto.result.overall.summary,
+            platformCandidates: dto.result.overall.platformCandidates,
+            marketFit: dto.result.overall.marketFit,
+          },
+        }
+      : null,
     message: dto.message,
   };
 }

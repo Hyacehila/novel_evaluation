@@ -22,9 +22,15 @@
 | 输入稿件 | `Manuscript` | 用户提交的联合投稿包对象 |
 | 创建任务请求 | `JointSubmissionRequest` | 新建任务时的正式输入对象 |
 | 任务 | `EvaluationTask` | 一次独立评测任务 |
-| 结果 | `EvaluationResult` | 正式结构化结果 |
-| 历史项 | `HistoryTaskItemView` | 历史记录页主列表对象 |
-| 输入草稿 | `InputDraftView` | 前端编辑中的联合投稿包草稿 |
+| 结果资源 | `EvaluationResultResource` | `/api/tasks/{taskId}/result` 返回的结果资源壳 |
+| 结果 | `EvaluationResult` | `resultStatus=available` 时的正式结构化结果 |
+| 工作台任务摘要 | `DashboardTaskSummaryView` | 工作台首页与历史页共用的任务摘要对象 |
+| 工作台结果摘要 | `DashboardResultSummaryView` | 工作台首页最近结果卡片对象 |
+| 任务详情 | `TaskDetailView` | 任务详情 / 状态页消费对象 |
+| 结果详情 | `ResultDetailView` | 结果详情页消费对象 |
+| 历史列表 | `HistoryListView` | 历史记录页列表与游标元信息对象 |
+| Provider 状态 | `ProviderStatusView` | Provider 配置状态与运行时设置对象 |
+| 创建页本地草稿 | `TaskCreateFormValues + deriveDraftSemantics()` | 新建页本地表单状态与 `inputComposition / evaluationMode` 派生逻辑 |
 
 ## 状态命名
 
@@ -86,6 +92,7 @@
 - 若需新增术语，应先判断是否属于页面、对象、状态、输入组成或展示五类
 - 不要在不同文档中混用“评分任务 / 评测任务”“结果页 / 报告页”等并列称呼
 - 不要把前端本地状态反向写回后端正式枚举
+- 不要继续使用 `HistoryTaskItemView`、`InputDraftView` 这类未在当前代码中落地的旧占位名
 
 ## 与其他文档的关系
 

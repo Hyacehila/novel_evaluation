@@ -12,6 +12,8 @@
 - 采集标题、正文、大纲
 - 采集上传文件
 - 边界内校验
+- 读取 provider 状态
+- 在缺少启动期 key 时提交 runtime key
 - 创建任务
 - 轮询任务状态
 - 读取结果
@@ -20,6 +22,7 @@
 ## 后端负责
 
 - 解析上传文件
+- 管理 provider 运行状态与 runtime key
 - 构建任务
 - 持久化任务与结果
 - 推进用户任务执行
@@ -30,17 +33,33 @@
 
 前端可展示：
 
-- 顶层四项评分
-- 平台推荐
+- `overall.score / overall.verdict / overall.summary`
+- `overall.platformCandidates / overall.marketFit`
+- `axes[*].score / scoreBand / summary / reason / degradedByInput / riskTags`
+- 版本元信息
 - 市场判断
-- 编辑结论
-- 详细分析
-- 基础元信息
+- provider 状态语义
 
 前端不可展示为正式结果的内容：
 
 - 未经校验的原始模型输出
 - `blocked` 或 `not_available` 场景下的伪结果
+- 旧版结果结构自动脑补出的“兼容结果”
+
+## Provider 配置边界
+
+前端只做：
+
+- 读取 `GET /api/provider-status`
+- 在缺少启动期 key 时调用 `POST /api/provider-status/runtime-key`
+- 根据 `canAnalyze / canConfigureFromUi` 决定 UI 是否可提交
+
+后端负责：
+
+- 决定是否允许分析
+- 校验 runtime key 格式
+- 强制本机访问限制
+- 决定配置是否已锁定
 
 ## 上传边界
 

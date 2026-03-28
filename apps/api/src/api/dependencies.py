@@ -53,6 +53,7 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
 logger = logging.getLogger(__name__)
 _REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
 _DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
+_ALLOW_E2E_PROVIDER_RESET_ENV = "NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET"
 _PROVIDER_ID = "provider-deepseek"
 _MODEL_ID = "deepseek-chat"
 
@@ -170,6 +171,22 @@ class ApiProviderRuntimeState:
             modelId=self.model_id,
             configurationSource=ProviderConfigurationSource.RUNTIME_MEMORY.value,
         )
+        return self.get_status()
+
+    def reset_runtime_key(self) -> ProviderStatus:
+        with self._lock:
+            if self._read_startup_api_key() is not None:
+                raise RuntimeError("provider 配置由启动环境变量提供，不能重置。")
+            self._runtime_api_key = None
+        if os.getenv(_ALLOW_E2E_PROVIDER_RESET_ENV) == "1":
+            log_event(
+                logger,
+                logging.INFO,
+                "provider_runtime_key_cleared",
+                providerId=self.provider_id,
+                modelId=self.model_id,
+                configurationSource=ProviderConfigurationSource.MISSING.value,
+            )
         return self.get_status()
 
     def require_configured_adapter(self) -> ProviderExecutionPort:

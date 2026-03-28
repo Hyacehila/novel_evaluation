@@ -1,10 +1,15 @@
 from __future__ import annotations
 
+import json
 import sqlite3
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
+
+from pydantic import ValidationError
 
 from packages.application.ports.task_repository import TaskRepository
-from packages.schemas.common.enums import TaskStatus
+from packages.schemas.common.enums import ResultStatus, TaskStatus
 from packages.schemas.output.result import EvaluationResultResource
 from packages.schemas.output.task import EvaluationTask
 
@@ -73,7 +78,10 @@ class SQLiteTaskRepository(TaskRepository):
             ).fetchone()
         if row is None:
             return None
-        return EvaluationResultResource.model_validate_json(row[0])
+        try:
+            return EvaluationResultResource.model_validate_json(row[0])
+        except ValidationError:
+            return _read_incompatible_result_resource(task_id=task_id, raw_payload=row[0])
 
     def list_tasks(self) -> list[EvaluationTask]:
         with self._connect() as connection:
@@ -114,6 +122,64 @@ class SQLiteTaskRepository(TaskRepository):
         connection = sqlite3.connect(self._db_path)
         connection.execute("PRAGMA foreign_keys = ON")
         return connection
+
+
+
+_LEGACY_RESULT_FIELDS = frozenset(
+    {
+        "signingProbability",
+        "commercialValue",
+        "writingQuality",
+        "innovationScore",
+        "strengths",
+        "weaknesses",
+        "platforms",
+        "marketFit",
+        "editorVerdict",
+        "detailedAnalysis",
+    }
+)
+
+
+
+def _read_incompatible_result_resource(*, task_id: str, raw_payload: str) -> EvaluationResultResource:
+    try:
+        payload = json.loads(raw_payload)
+    except json.JSONDecodeError:
+        return _build_invalid_result_unavailable(task_id=task_id)
+    if not isinstance(payload, Mapping):
+        return _build_invalid_result_unavailable(task_id=task_id)
+    if _is_legacy_result_resource_payload(payload):
+        return _build_legacy_result_unavailable(task_id=task_id)
+    return _build_invalid_result_unavailable(task_id=task_id)
+
+
+
+def _is_legacy_result_resource_payload(payload: Mapping[str, Any]) -> bool:
+    result = payload.get("result")
+    return isinstance(result, Mapping) and any(field in result for field in _LEGACY_RESULT_FIELDS)
+
+
+
+def _build_legacy_result_unavailable(*, task_id: str) -> EvaluationResultResource:
+    return EvaluationResultResource(
+        taskId=task_id,
+        resultStatus=ResultStatus.NOT_AVAILABLE,
+        resultTime=None,
+        result=None,
+        message="历史结果结构已过期，无法按当前 8 轴契约展示，请重新提交新任务。",
+    )
+
+
+
+def _build_invalid_result_unavailable(*, task_id: str) -> EvaluationResultResource:
+    return EvaluationResultResource(
+        taskId=task_id,
+        resultStatus=ResultStatus.NOT_AVAILABLE,
+        resultTime=None,
+        result=None,
+        message="结果数据已损坏，当前不可展示，请重新提交新任务。",
+    )
 
 
 

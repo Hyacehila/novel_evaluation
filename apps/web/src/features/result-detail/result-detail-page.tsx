@@ -2,23 +2,32 @@
 
 import { useTaskQuery, useTaskResultQuery } from "@/api/hooks";
 import { routes } from "@/shared/config/routes";
-import { formatDateTime, getResultStatusLabel, getTaskStatusLabel } from "@/shared/lib/format";
+import {
+  formatDateTime,
+  formatScore,
+  getAxisLabel,
+  getResultStatusLabel,
+  getScoreBandLabel,
+  getScoreBandTone,
+  getTaskStatusLabel,
+  isTaskActive,
+} from "@/shared/lib/format";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Card } from "@/shared/ui/card";
-import { ErrorState, PageIntro, ScoreMeter } from "@/shared/ui/states";
-
+import { ErrorState, PageIntro } from "@/shared/ui/states";
 
 export function ResultDetailPage({ taskId }: { taskId: string }) {
   const taskQuery = useTaskQuery(taskId);
-  const resultQuery = useTaskResultQuery(taskId, Boolean(taskQuery.data));
+  const canReadResult = Boolean(taskQuery.data && !isTaskActive(taskQuery.data.status));
+  const resultQuery = useTaskResultQuery(taskId, canReadResult);
 
   return (
     <div className="page-frame space-y-8">
       <PageIntro
         eyebrow="结果详情页"
-        title="查看正式的结构化评价结果。"
-        description="当结果可用时，这里会展示签约概率、编辑结论、平台建议与详细分析；结果阻断或不可用时会明确提示原因。"
+        title="查看正式的 8 轴结构化评价结果。"
+        description="当结果可用时，这里会展示总体评分、总体结论、市场判断与 8 个 rubric 评价轴；结果阻断或不可用时会明确提示原因。"
         actions={<Button asLink href={routes.task(taskId)} variant="secondary">返回任务页</Button>}
       />
 
@@ -54,13 +63,13 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
         </Card>
       ) : null}
 
-      {taskQuery.data && taskQuery.data.status !== "queued" && taskQuery.data.status !== "processing" && resultQuery.isLoading ? (
+      {taskQuery.data && canReadResult && resultQuery.isLoading ? (
         <Card className="p-8">
           <p className="text-sm text-[var(--muted)]">正在读取结构化评价结果…</p>
         </Card>
       ) : null}
 
-      {taskQuery.data && resultQuery.isError ? (
+      {taskQuery.data && canReadResult && resultQuery.isError ? (
         <ErrorState
           title="结果读取失败"
           description="任务可能已经完成，但当前没有成功读取到结果资源。你可以稍后重试读取。"
@@ -68,7 +77,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
         />
       ) : null}
 
-      {taskQuery.data && resultQuery.data && resultQuery.data.state !== "available" ? (
+      {taskQuery.data && canReadResult && resultQuery.data && resultQuery.data.state !== "available" ? (
         <ErrorState
           title={resultQuery.data.state === "blocked" ? "结果已被阻断" : "结果当前不可用"}
           description={taskQuery.data.errorMessage ?? resultQuery.data.message ?? `当前结果状态为 ${getResultStatusLabel(resultQuery.data.resultStatus)}`}
@@ -76,7 +85,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
         />
       ) : null}
 
-      {taskQuery.data && resultQuery.data?.result ? (
+      {taskQuery.data && resultQuery.data?.state === "available" && resultQuery.data.result ? (
         <>
           <Card className="p-6 md:p-8">
             <div className="flex flex-wrap items-start justify-between gap-5">
@@ -91,20 +100,26 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
             </div>
           </Card>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <ScoreMeter label="签约概率" value={resultQuery.data.result.signingProbability} />
-            <ScoreMeter label="商业价值" value={resultQuery.data.result.commercialValue} />
-            <ScoreMeter label="写作质量" value={resultQuery.data.result.writingQuality} />
-            <ScoreMeter label="创新分" value={resultQuery.data.result.innovationScore} />
-          </div>
-
           <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
             <Card className="p-6">
-              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">编辑摘要</p>
-              <h2 className="section-title mt-3 text-2xl font-semibold">编辑结论与市场判断</h2>
-              <div className="mt-5 space-y-5 text-sm leading-7">
-                <AnalysisCard title="编辑结论" content={resultQuery.data.result.editorVerdict} />
-                <AnalysisCard title="市场判断" content={resultQuery.data.result.marketFit} />
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">总体判断</p>
+              <h2 className="section-title mt-3 text-2xl font-semibold">总体结论与市场判断</h2>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <MetricCard label="总体评分" value={formatScore(resultQuery.data.result.overall.score)} />
+                <MetricCard label="平台候选数" value={`${resultQuery.data.result.overall.platformCandidates.length} 个`} />
+              </div>
+              <div className="mt-5 space-y-4">
+                <AnalysisCard title="总体结论" content={resultQuery.data.result.overall.verdict} />
+                <AnalysisCard title="总体摘要" content={resultQuery.data.result.overall.summary} />
+                <AnalysisCard title="市场判断" content={resultQuery.data.result.overall.marketFit} />
+              </div>
+              <div className="mt-5">
+                <p className="text-sm text-[var(--muted)]">平台候选</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {resultQuery.data.result.overall.platformCandidates.map((platform) => (
+                    <Badge key={platform}>{platform}</Badge>
+                  ))}
+                </div>
               </div>
             </Card>
 
@@ -121,41 +136,22 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
             </Card>
           </div>
 
-          <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-            <Card className="p-6">
-              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">平台推荐</p>
-              <h2 className="section-title mt-3 text-2xl font-semibold">平台建议</h2>
-              <div className="mt-5 space-y-4">
-                {resultQuery.data.result.platforms.map((platform) => (
-                  <div key={platform.name} className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
-                    <div className="flex items-center justify-between gap-4">
-                      <h3 className="font-semibold">{platform.name}</h3>
-                      <span className="section-title text-2xl font-semibold">{platform.percentage}%</span>
-                    </div>
-                    <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{platform.reason}</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">优势与弱点</p>
-              <h2 className="section-title mt-3 text-2xl font-semibold">优势与弱点</h2>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
-                <ListCard title="优势" tone="good" items={resultQuery.data.result.strengths} />
-                <ListCard title="弱点" tone="bad" items={resultQuery.data.result.weaknesses} />
-              </div>
-            </Card>
-          </div>
-
           <Card className="p-6">
-            <p className="text-xs tracking-[0.12em] text-[var(--muted)]">详细分析</p>
-            <h2 className="section-title mt-3 text-2xl font-semibold">详细分析</h2>
+            <p className="text-xs tracking-[0.12em] text-[var(--muted)]">分轴结果</p>
+            <h2 className="section-title mt-3 text-2xl font-semibold">{resultQuery.data.result.axes.length} 轴 rubric 结果</h2>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              <AnalysisCard title="剧情" content={resultQuery.data.result.detailedAnalysis.plot} />
-              <AnalysisCard title="角色" content={resultQuery.data.result.detailedAnalysis.character} />
-              <AnalysisCard title="节奏" content={resultQuery.data.result.detailedAnalysis.pacing} />
-              <AnalysisCard title="世界观" content={resultQuery.data.result.detailedAnalysis.worldBuilding} />
+              {resultQuery.data.result.axes.map((axis) => (
+                <AxisCard
+                  key={axis.axisId}
+                  axisId={axis.axisId}
+                  score={axis.score}
+                  scoreBand={axis.scoreBand}
+                  summary={axis.summary}
+                  reason={axis.reason}
+                  degradedByInput={axis.degradedByInput}
+                  riskTags={axis.riskTags}
+                />
+              ))}
             </div>
           </Card>
         </>
@@ -173,6 +169,15 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
   );
 }
 
+function MetricCard({ label, value }: { label: string; value: string }) {
+  return (
+    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+      <p className="text-sm text-[var(--muted)]">{label}</p>
+      <p className="section-title mt-3 text-3xl font-semibold">{value}</p>
+    </section>
+  );
+}
+
 function AnalysisCard({ title, content }: { title: string; content: string }) {
   return (
     <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
@@ -182,28 +187,40 @@ function AnalysisCard({ title, content }: { title: string; content: string }) {
   );
 }
 
-function ListCard({
-  title,
-  items,
-  tone,
+function AxisCard({
+  axisId,
+  score,
+  scoreBand,
+  summary,
+  reason,
+  degradedByInput,
+  riskTags,
 }: {
-  title: string;
-  items: string[];
-  tone: "good" | "bad";
+  axisId: string;
+  score: number;
+  scoreBand: string;
+  summary: string;
+  reason: string;
+  degradedByInput: boolean;
+  riskTags: string[];
 }) {
-  const className =
-    tone === "good"
-      ? "border-[rgba(47,143,85,0.2)] bg-[rgba(47,143,85,0.08)] text-[var(--good)]"
-      : "border-[rgba(168,51,47,0.2)] bg-[rgba(168,51,47,0.08)] text-[var(--bad)]";
-
   return (
-    <section className={`rounded-[22px] border p-5 ${className}`}>
-      <h3 className="font-semibold">{title}</h3>
-      <ul className="mt-3 space-y-3 text-sm leading-7 text-[var(--foreground)]">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
+    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">{getAxisLabel(axisId)}</h3>
+          <p className="mt-2 text-sm text-[var(--muted)]">{summary}</p>
+        </div>
+        <p className="section-title text-2xl font-semibold">{formatScore(score)}</p>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Badge tone={getScoreBandTone(scoreBand)}>{getScoreBandLabel(scoreBand)}</Badge>
+        {degradedByInput ? <Badge tone="warn">输入降级</Badge> : null}
+        {riskTags.map((riskTag) => (
+          <Badge key={riskTag} tone="bad">{riskTag}</Badge>
         ))}
-      </ul>
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{reason}</p>
     </section>
   );
 }
