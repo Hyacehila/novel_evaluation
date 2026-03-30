@@ -124,12 +124,21 @@ export interface AxisResultDto {
   riskTags: string[];
 }
 
+export interface PlatformCandidateDto {
+  name: string;
+  weight: number;
+  pitchQuote: string;
+}
+
 export interface OverallResultDto {
   score: number;
   verdict: string;
+  verdictSubQuote: string | null;
   summary: string;
-  platformCandidates: string[];
+  platformCandidates: PlatformCandidateDto[];
   marketFit: string;
+  strengths: string[];
+  weaknesses: string[];
 }
 
 export interface EvaluationResultDto {

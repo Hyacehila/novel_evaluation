@@ -9,8 +9,10 @@ from packages.schemas.common.base import SchemaModel
 from packages.schemas.common.enums import AxisId, FatalRisk, ResultStatus, ScoreBand, StageName
 from packages.schemas.common.validators import (
     ensure_non_empty_text,
+    ensure_optional_text,
     validate_percentage,
 )
+from packages.schemas.stages.aggregation import PlatformCandidate
 
 
 class AxisEvaluationResult(SchemaModel):
@@ -36,9 +38,12 @@ class AxisEvaluationResult(SchemaModel):
 class OverallEvaluationResult(SchemaModel):
     score: int
     verdict: str
+    verdictSubQuote: str | None = None   # 市场分析副句，与主判断形成双层结构
     summary: str
-    platformCandidates: list[str]
+    platformCandidates: list[PlatformCandidate]
     marketFit: str
+    strengths: list[str] = []
+    weaknesses: list[str] = []
 
     @field_validator("score")
     @classmethod
@@ -50,10 +55,21 @@ class OverallEvaluationResult(SchemaModel):
     def validate_text_fields(cls, value: str) -> str:
         return ensure_non_empty_text(value, "overall field")
 
-    @field_validator("platformCandidates")
+    @field_validator("verdictSubQuote")
     @classmethod
-    def validate_platform_candidates(cls, value: list[str]) -> list[str]:
-        return [ensure_non_empty_text(item, "platformCandidates item") for item in value]
+    def validate_optional_text_field(cls, value: str | None) -> str | None:
+        return ensure_optional_text(value, "overall optional field")
+
+    @field_validator("strengths", "weaknesses")
+    @classmethod
+    def validate_text_list_fields(cls, value: list[str]) -> list[str]:
+        return [ensure_non_empty_text(item, "overall list item") for item in value]
+
+    @model_validator(mode="after")
+    def validate_platform_candidate_weights(self) -> "OverallEvaluationResult":
+        if self.platformCandidates and sum(candidate.weight for candidate in self.platformCandidates) != 100:
+            raise ValueError("platformCandidates 权重之和必须为 100。")
+        return self
 
 
 class FinalEvaluationProjection(SchemaModel):

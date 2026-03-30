@@ -67,12 +67,21 @@ export interface AxisResultView {
   riskTags: string[];
 }
 
+export interface PlatformCandidateView {
+  name: string;
+  weight: number;
+  pitchQuote: string;
+}
+
 export interface OverallResultView {
   score: number;
   verdict: string;
+  verdictSubQuote: string | null;
   summary: string;
-  platformCandidates: string[];
+  platformCandidates: PlatformCandidateView[];
   marketFit: string;
+  strengths: string[];
+  weaknesses: string[];
 }
 
 export interface ResultBodyView {

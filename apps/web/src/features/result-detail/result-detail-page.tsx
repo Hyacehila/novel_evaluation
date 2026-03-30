@@ -117,7 +117,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
                 <p className="text-sm text-[var(--muted)]">平台候选</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {resultQuery.data.result.overall.platformCandidates.map((platform) => (
-                    <Badge key={platform}>{platform}</Badge>
+                    <Badge key={platform.name}>{platform.name}</Badge>
                   ))}
                 </div>
               </div>

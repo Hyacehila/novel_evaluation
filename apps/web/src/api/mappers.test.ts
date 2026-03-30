@@ -94,9 +94,15 @@ describe("api mappers", () => {
         overall: {
           score: 75,
           verdict: "建议继续观察并进入样章复核。",
+          verdictSubQuote: "情感密度与节奏控制更贴合深耕慢热读者的平台气质。",
           summary: "整体完成度稳定。",
-          platformCandidates: ["女频平台 A", "女频平台 B"],
+          platformCandidates: [
+            { name: "女频平台 A", weight: 70, pitchQuote: "情感流向与平台核心读者群体高度匹配。" },
+            { name: "女频平台 B", weight: 30, pitchQuote: "题材定位次级适配，可作为备选投放渠道。" },
+          ],
           marketFit: "当前题材更贴合女频平台 A 的用户预期。",
+          strengths: ["情感抓手清晰"],
+          weaknesses: ["长线兑现仍需观察"],
         },
       },
       message: null,

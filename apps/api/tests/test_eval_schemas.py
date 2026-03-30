@@ -43,9 +43,12 @@ def build_result() -> EvaluationResult:
         overall={
             "score": 80,
             "verdict": "可继续观察",
+            "verdictSubQuote": "当前样本已体现基础市场承接力，但仍需观察长线兑现稳定性。",
             "summary": "整体完成度稳定。",
-            "platformCandidates": ["女频平台 A"],
+            "platformCandidates": [{"name": "女频平台 A", "weight": 100, "pitchQuote": "情感走向与平台核心读者预期一致，具备明确承接空间。"}],
             "marketFit": "具备一定市场接受度",
+            "strengths": ["结构完成度稳定"],
+            "weaknesses": ["长线兑现仍需继续观察"],
         },
     )
 

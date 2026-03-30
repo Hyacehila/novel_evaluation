@@ -187,6 +187,11 @@ def test_complete_task_with_result_moves_to_available() -> None:
     assert len(result_resource.result.axes) == 8
     assert result_resource.result.overall.score == 80
     assert result_resource.result.overall.verdict == "可继续观察"
+    assert result_resource.result.overall.verdictSubQuote is not None
+    assert result_resource.result.overall.platformCandidates[0].name == "女频平台 A"
+    assert result_resource.result.overall.platformCandidates[0].weight == 100
+    assert result_resource.result.overall.strengths == ["结构完成度稳定"]
+    assert result_resource.result.overall.weaknesses == ["长线兑现仍需继续观察"]
 
 
 def test_complete_task_with_result_keeps_task_runtime_metadata_in_result() -> None:

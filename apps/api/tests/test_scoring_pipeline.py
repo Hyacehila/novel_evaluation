@@ -40,7 +40,7 @@ from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutli
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
-from packages.schemas.stages.aggregation import AggregatedRubricResult
+from packages.schemas.stages.aggregation import AggregatedRubricResult, PlatformCandidate
 from packages.schemas.stages.consistency import ConflictType
 from packages.schemas.stages.rubric import RubricEvaluationEvidenceRef, RubricEvaluationItem, RubricEvaluationSet
 
@@ -249,14 +249,22 @@ def build_rubric_set(
     )
 
 
+def build_platform_candidate(name: str, weight: int, pitch_quote: str) -> PlatformCandidate:
+    return PlatformCandidate(name=name, weight=weight, pitchQuote=pitch_quote)
+
+
 def build_aggregation_result(
     *,
-    platform_candidates: list[str] | None = None,
+    platform_candidates: list[PlatformCandidate] | None = None,
     market_fit: str = "当前题材更贴合女频平台 A 的用户预期。",
     overall_summary: str = "章节主线与市场抓手已形成初步可读的总体判断。",
     overall_verdict: str = "建议继续观察并进入样章复核。",
     overall_confidence: float = 0.82,
 ) -> AggregatedRubricResult:
+    default_candidates = [
+        build_platform_candidate("女频平台 A", 70, "情感流向与平台核心读者群体高度匹配。"),
+        build_platform_candidate("女频平台 B", 30, "题材定位次级适配，可作为备选投放渠道。"),
+    ]
     return AggregatedRubricResult(
         taskId="task_pipeline_001",
         stage=StageName.AGGREGATION,
@@ -267,7 +275,7 @@ def build_aggregation_result(
         modelId="model-test",
         overallVerdictDraft=overall_verdict,
         overallSummaryDraft=overall_summary,
-        platformCandidates=platform_candidates if platform_candidates is not None else ["女频平台 A", "女频平台 B"],
+        platformCandidates=platform_candidates if platform_candidates is not None else default_candidates,
         marketFitDraft=market_fit,
         riskTags=[],
         overallConfidence=overall_confidence,
@@ -684,9 +692,12 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
         "rubricVersion": "1.0",
         "providerId": "default",
         "modelId": "default",
-        "platformCandidates": ["女频平台 A"],
+        "platformCandidates": [
+            {"name": "女频平台 A", "weight": 100, "pitchQuote": "降级模式下保守推荐，题材基本适配。"},
+        ],
         "marketFitDraft": "当前材料更适合走保守市场判断。",
         "editorVerdictDraft": "建议补全正文后再复核。",
+        "verdictSubQuote": "降级评估结论保守，材料补全后可重新判断市场承接能力。",
         "detailedAnalysisDraft": "聚合基于 degraded 模式，只能形成保守摘要。",
         "riskTags": ["insufficientMaterial"],
         "overallConfidence": 0.44,
@@ -705,8 +716,11 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
     assert result.providerId == "provider-test"
     assert result.modelId == "model-test"
     assert result.overallVerdictDraft == "建议补全正文后再复核。"
+    assert result.verdictSubQuote == "降级评估结论保守，材料补全后可重新判断市场承接能力。"
     assert result.overallSummaryDraft == "聚合基于 degraded 模式，只能形成保守摘要。"
-    assert result.platformCandidates == ["女频平台 A"]
+    assert len(result.platformCandidates) == 1
+    assert result.platformCandidates[0].name == "女频平台 A"
+    assert result.platformCandidates[0].weight == 100
     assert result.marketFitDraft == "当前材料更适合走保守市场判断。"
     assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
     assert result.overallConfidence == pytest.approx(0.44)
@@ -930,7 +944,11 @@ def test_run_consistency_check_marks_duplicated_penalties_without_blocking() -> 
 
 
 def test_build_final_projection_uses_overall_fields() -> None:
-    aggregation = build_aggregation_result(platform_candidates=["女频平台 A", "女频平台 B"], market_fit="当前题材更贴合女频平台 A 的用户预期。")
+    candidates = [
+        build_platform_candidate("女频平台 A", 70, "情感流向与平台核心读者群体高度匹配。"),
+        build_platform_candidate("女频平台 B", 30, "题材定位次级适配，可作为备选投放渠道。"),
+    ]
+    aggregation = build_aggregation_result(platform_candidates=candidates, market_fit="当前题材更贴合女频平台 A 的用户预期。")
     rubric = build_rubric_set()
     consistency = run_consistency_check(context=build_rubric_context(), rubric=rubric)
 
@@ -940,8 +958,12 @@ def test_build_final_projection_uses_overall_fields() -> None:
     assert projection.overall.score == 75
     assert projection.overall.verdict == aggregation.overallVerdictDraft
     assert projection.overall.summary == aggregation.overallSummaryDraft
-    assert projection.overall.platformCandidates == ["女频平台 A", "女频平台 B"]
+    assert len(projection.overall.platformCandidates) == 2
+    assert projection.overall.platformCandidates[0].name == "女频平台 A"
+    assert projection.overall.platformCandidates[0].weight == 70
     assert projection.overall.marketFit == aggregation.marketFitDraft
+    assert projection.overall.strengths == aggregation.strengthCandidates
+    assert projection.overall.weaknesses == aggregation.weaknessCandidates
 
 
 def test_build_final_projection_preserves_empty_platform_candidates() -> None:
@@ -952,6 +974,9 @@ def test_build_final_projection_preserves_empty_platform_candidates() -> None:
     projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
 
     assert projection.overall.platformCandidates == []
+    assert projection.overall.verdictSubQuote is None
+    assert projection.overall.strengths == []
+    assert projection.overall.weaknesses == []
 
 
 def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested_axis() -> None:

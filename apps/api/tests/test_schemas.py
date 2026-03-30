@@ -26,7 +26,7 @@ from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.dashboard import DashboardSummary, HistoryList
 from packages.schemas.output.result import EvaluationResult, EvaluationResultResource, FinalEvaluationProjection
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
-from packages.schemas.stages.aggregation import AggregatedRubricResult
+from packages.schemas.stages.aggregation import AggregatedRubricResult, PlatformCandidate
 from packages.schemas.stages.rubric import RubricEvaluationEvidenceRef, RubricEvaluationItem, RubricEvaluationSet, RubricEvaluationSlice
 
 
@@ -54,7 +54,10 @@ def build_overall_payload() -> dict[str, object]:
         "score": 78,
         "verdict": "建议继续观察并进入样章复核。",
         "summary": "整体完成度稳定，仍需观察兑现强度。",
-        "platformCandidates": ["女频平台 A", "女频平台 B"],
+        "platformCandidates": [
+            {"name": "女频平台 A", "weight": 70, "pitchQuote": "情感流向与平台核心读者群体高度匹配。"},
+            {"name": "女频平台 B", "weight": 30, "pitchQuote": "题材定位次级适配，可作为备选投放渠道。"},
+        ],
         "marketFit": "当前题材更贴合女频平台 A 的用户预期。",
     }
 
@@ -128,8 +131,11 @@ def build_aggregation_v2_payload() -> dict[str, object]:
         "providerId": "provider-local",
         "modelId": "model-local",
         "overallVerdictDraft": "建议继续观察并进入样章复核。",
+        "verdictSubQuote": "情感密度与节奏控制契合深耕慢热读者的平台气质，但下沉市场承接空间有限。",
         "overallSummaryDraft": "整体完成度稳定，仍需观察兑现强度。",
-        "platformCandidates": ["女频平台 A"],
+        "platformCandidates": [
+            {"name": "女频平台 A", "weight": 100, "pitchQuote": "情感流向与平台核心读者群体高度匹配。"},
+        ],
         "marketFitDraft": "当前题材更贴合女频平台 A 的用户预期。",
         "riskTags": [FatalRisk.STALE_FORMULA.value],
         "overallConfidence": 0.8,
@@ -513,7 +519,11 @@ def test_dashboard_and_history_summary_accept_valid_payload() -> None:
 def test_aggregated_rubric_result_accepts_complete_valid_payload() -> None:
     result = AggregatedRubricResult.model_validate(build_aggregation_v2_payload())
 
-    assert result.platformCandidates == ["女频平台 A"]
+    assert len(result.platformCandidates) == 1
+    assert isinstance(result.platformCandidates[0], PlatformCandidate)
+    assert result.platformCandidates[0].name == "女频平台 A"
+    assert result.platformCandidates[0].weight == 100
+    assert result.verdictSubQuote == "情感密度与节奏控制契合深耕慢热读者的平台气质，但下沉市场承接空间有限。"
     assert result.overallVerdictDraft == "建议继续观察并进入样章复核。"
 
 

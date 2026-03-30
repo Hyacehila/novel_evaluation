@@ -337,9 +337,12 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
         "providerId": request.providerId,
         "modelId": request.modelId,
         "overallVerdictDraft": "建议补全正文后再复核。" if degraded else "建议继续观察并进入样章复核。",
+        "verdictSubQuote": "当前样本量偏少，市场承接判断需等待正文补全后再确认。" if degraded else f"题材气质与 {platform} 的核心读者预期较为贴合，但仍需观察长线兑现能力。",
         "overallSummaryDraft": "当前结果基于 degraded 材料，整体结论偏保守。" if degraded else "章节主线与市场抓手已形成初步可读的总体判断。",
-        "platformCandidates": [platform],
+        "platformCandidates": [{"name": platform, "weight": 100, "pitchQuote": f"题材卖点与 {platform} 主流读者偏好一致，具备明确承接空间。"}],
         "marketFitDraft": f"当前题材更贴合 {platform} 的用户预期。",
+        "strengthCandidates": ["题材定位清晰", "主线冲突具备继续阅读抓手"],
+        "weaknessCandidates": ["正文样本仍不足以完全验证长线兑现" if degraded else "平台承接仍需更多正文样本验证"],
         "riskTags": sorted(set(risk_tags)),
         "overallConfidence": max(0.24, round(float(rubric.get("overallConfidence", 0.8)) - (0.12 if degraded else 0.0), 2)),
     }

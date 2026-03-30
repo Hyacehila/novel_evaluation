@@ -110,9 +110,12 @@ def _normalize_aggregation_payload(*, payload: Any, context: AggregationExecutio
         "providerId": context.binding.provider_id,
         "modelId": context.binding.model_id,
         "overallVerdictDraft": overall_verdict,
+        "verdictSubQuote": _normalize_text_value(normalized_payload.get("verdictSubQuote")),
         "overallSummaryDraft": overall_summary,
-        "platformCandidates": _normalize_text_list(normalized_payload.get("platformCandidates")),
+        "platformCandidates": _normalize_platform_candidates(normalized_payload.get("platformCandidates")),
         "marketFitDraft": market_fit,
+        "strengthCandidates": _normalize_text_list(normalized_payload.get("strengthCandidates")),
+        "weaknessCandidates": _normalize_text_list(normalized_payload.get("weaknessCandidates")),
         "riskTags": _normalize_risk_tags(normalized_payload.get("riskTags")),
         "overallConfidence": _normalize_confidence(
             normalized_payload.get("overallConfidence"),
@@ -120,6 +123,30 @@ def _normalize_aggregation_payload(*, payload: Any, context: AggregationExecutio
         ),
     }
     return normalized_payload
+
+
+def _normalize_platform_candidates(raw_values: Any) -> list[dict[str, Any]]:
+    """将 LLM 输出的 platformCandidates 规范化为 PlatformCandidate dict 列表。
+
+    每个有效 item 必须是包含 name（非空字符串）、weight（整数）、pitchQuote（非空字符串）的 dict。
+    格式不符的 item 直接丢弃，不做字符串降级。
+    """
+    if not isinstance(raw_values, list):
+        return []
+    normalized: list[dict[str, Any]] = []
+    for item in raw_values:
+        if not isinstance(item, Mapping):
+            continue
+        name = _normalize_text_value(item.get("name"))
+        pitch_quote = _normalize_text_value(item.get("pitchQuote"))
+        if not name or not pitch_quote:
+            continue
+        raw_weight = item.get("weight")
+        if isinstance(raw_weight, float):
+            raw_weight = int(raw_weight)
+        weight = raw_weight if isinstance(raw_weight, int) and 0 <= raw_weight <= 100 else 0
+        normalized.append({"name": name, "weight": weight, "pitchQuote": pitch_quote})
+    return normalized
 
 
 def _normalize_text_list(raw_values: Any) -> list[str]:

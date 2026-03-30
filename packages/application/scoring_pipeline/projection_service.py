@@ -38,9 +38,12 @@ def build_final_projection(
     overall = OverallEvaluationResult(
         score=_build_overall_score(axes=axes, rubric=rubric, consistency=consistency),
         verdict=aggregation.overallVerdictDraft,
+        verdictSubQuote=aggregation.verdictSubQuote,
         summary=aggregation.overallSummaryDraft,
         platformCandidates=aggregation.platformCandidates,
         marketFit=aggregation.marketFitDraft,
+        strengths=aggregation.strengthCandidates,
+        weaknesses=aggregation.weaknessCandidates,
     )
     return FinalEvaluationProjection(
         taskId=aggregation.taskId,

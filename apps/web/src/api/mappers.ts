@@ -102,9 +102,16 @@ export function mapResultDetail(dto: EvaluationResultResourceDto): ResultDetailV
           overall: {
             score: dto.result.overall.score,
             verdict: dto.result.overall.verdict,
+            verdictSubQuote: dto.result.overall.verdictSubQuote,
             summary: dto.result.overall.summary,
-            platformCandidates: dto.result.overall.platformCandidates,
+            platformCandidates: dto.result.overall.platformCandidates.map((candidate) => ({
+              name: candidate.name,
+              weight: candidate.weight,
+              pitchQuote: candidate.pitchQuote,
+            })),
             marketFit: dto.result.overall.marketFit,
+            strengths: dto.result.overall.strengths,
+            weaknesses: dto.result.overall.weaknesses,
           },
         }
       : null,
