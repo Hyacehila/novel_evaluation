@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from packages.application.scoring_pipeline.consistency_rules import (
     CONSISTENCY_CONFIDENCE_PROFILE,
     CONSISTENCY_KEYWORDS,
@@ -15,6 +17,40 @@ from packages.schemas.stages.consistency import (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _GenreSignal:
+    top_genres: tuple[str, ...]
+    top_hit_count: int
+
+    @property
+    def has_signal(self) -> bool:
+        return self.top_hit_count > 0
+
+    @property
+    def strong(self) -> bool:
+        return self.top_hit_count >= CONSISTENCY_THRESHOLDS.strong_genre_signal_hits
+
+    @property
+    def unique(self) -> bool:
+        return len(self.top_genres) == 1
+
+    @property
+    def primary_genre(self) -> str | None:
+        if not self.unique:
+            return None
+        return self.top_genres[0]
+
+
+@dataclass(frozen=True, slots=True)
+class _CrossInputAssessment:
+    blocking_conflict: ConsistencyConflict | None = None
+    normalization_note: str | None = None
+
+    @property
+    def suspected_divergence(self) -> bool:
+        return self.normalization_note is not None and self.blocking_conflict is None
+
+
 def run_consistency_check(*, context: RubricExecutionContext, rubric) -> ConsistencyCheckResult:
     chapters_text = "\n".join(chapter.content for chapter in context.submission.chapters or [])
     outline_text = context.submission.outline.content if context.submission.outline is not None else ""
@@ -24,15 +60,17 @@ def run_consistency_check(*, context: RubricExecutionContext, rubric) -> Consist
     if context.screening.evaluationMode is EvaluationMode.DEGRADED:
         normalization_notes.append("当前输入以 degraded 模式执行，部分长线判断置信度已下调。")
 
-    cross_input_conflict = _build_cross_input_conflict(
+    cross_input_assessment = _assess_cross_input_genre_signal(
         chapters_text=chapters_text,
         outline_text=outline_text,
         input_composition=context.screening.inputComposition,
         evaluation_ids=[item.evaluationId for item in rubric.items],
     )
-    if cross_input_conflict is not None:
-        conflicts.append(cross_input_conflict)
-        normalization_notes.append("检测到正文与大纲题材冲突，主链在 consistency_check 终止。")
+    if cross_input_assessment.blocking_conflict is not None:
+        conflicts.append(cross_input_assessment.blocking_conflict)
+        normalization_notes.append("检测到正文与大纲存在高置信题材冲突，主链在 consistency_check 终止。")
+    elif cross_input_assessment.normalization_note is not None:
+        normalization_notes.append(cross_input_assessment.normalization_note)
 
     weak_evidence_conflict = _build_weak_evidence_conflict(rubric.items)
     if weak_evidence_conflict is not None:
@@ -56,13 +94,15 @@ def run_consistency_check(*, context: RubricExecutionContext, rubric) -> Consist
             f"缺少必需评价轴：{', '.join(axis.value for axis in missing_required_axes)}，当前结果被阻断。"
         )
 
-    cross_input_mismatch_detected = cross_input_conflict is not None
+    cross_input_mismatch_detected = cross_input_assessment.blocking_conflict is not None
+    suspected_cross_input_divergence = cross_input_assessment.suspected_divergence
     unsupported_claims_detected = unsupported_claim_conflict is not None
     duplicated_penalties_detected = duplicated_penalty_conflict is not None
     passed = not cross_input_mismatch_detected and not unsupported_claims_detected and not missing_required_axes
     continue_allowed = passed
     confidence = _resolve_confidence(
         cross_input_mismatch_detected=cross_input_mismatch_detected,
+        suspected_cross_input_divergence=suspected_cross_input_divergence,
         unsupported_claims_detected=unsupported_claims_detected,
         missing_required_axes=missing_required_axes,
         duplicated_penalties_detected=duplicated_penalties_detected,
@@ -90,29 +130,47 @@ def run_consistency_check(*, context: RubricExecutionContext, rubric) -> Consist
     )
 
 
-def _build_cross_input_conflict(
+def _assess_cross_input_genre_signal(
     *,
     chapters_text: str,
     outline_text: str,
     input_composition: InputComposition,
     evaluation_ids: list[str],
-) -> ConsistencyConflict | None:
-    chapter_genre = _infer_genre(chapters_text)
-    outline_genre = _infer_genre(outline_text)
-    if (
-        input_composition is not InputComposition.CHAPTERS_OUTLINE
-        or chapter_genre is None
-        or outline_genre is None
-        or chapter_genre == outline_genre
-    ):
-        return None
-    return ConsistencyConflict(
-        conflictId="conflict_cross_input_mismatch",
-        conflictType=ConflictType.CROSS_INPUT_MISMATCH,
-        relatedEvaluationIds=evaluation_ids[:2],
-        description="正文与大纲的核心题材信号不一致，存在跨输入承诺冲突。",
-        severity=ConflictSeverity.HIGH,
-        normalizationNote="需人工复核投稿包是否混入了不同作品或大纲漂移。",
+) -> _CrossInputAssessment:
+    if input_composition is not InputComposition.CHAPTERS_OUTLINE:
+        return _CrossInputAssessment()
+
+    chapters_signal = _infer_genre_signal(chapters_text)
+    outline_signal = _infer_genre_signal(outline_text)
+    clean_alignment = (
+        chapters_signal.strong
+        and chapters_signal.unique
+        and outline_signal.strong
+        and outline_signal.unique
+        and chapters_signal.primary_genre == outline_signal.primary_genre
+    )
+    confirmed_mismatch = (
+        chapters_signal.strong
+        and chapters_signal.unique
+        and outline_signal.strong
+        and outline_signal.unique
+        and chapters_signal.primary_genre != outline_signal.primary_genre
+    )
+    if confirmed_mismatch:
+        return _CrossInputAssessment(
+            blocking_conflict=ConsistencyConflict(
+                conflictId="conflict_cross_input_mismatch",
+                conflictType=ConflictType.CROSS_INPUT_MISMATCH,
+                relatedEvaluationIds=evaluation_ids[:2],
+                description="正文与大纲的核心题材信号高置信且相互矛盾，存在跨输入承诺冲突。",
+                severity=ConflictSeverity.HIGH,
+                normalizationNote="需人工复核投稿包是否混入了不同作品或大纲漂移。",
+            )
+        )
+    if clean_alignment or not chapters_signal.has_signal or not outline_signal.has_signal:
+        return _CrossInputAssessment()
+    return _CrossInputAssessment(
+        normalization_note="正文与大纲存在疑似题材分歧或混合信号，当前不直接阻断，但已下调一致性置信度。"
     )
 
 
@@ -184,22 +242,26 @@ def _build_missing_required_axes_conflict(*, missing_required_axes: list[AxisId]
 def _resolve_confidence(
     *,
     cross_input_mismatch_detected: bool,
+    suspected_cross_input_divergence: bool,
     unsupported_claims_detected: bool,
     missing_required_axes: list[AxisId],
     duplicated_penalties_detected: bool,
     has_weak_evidence: bool,
 ) -> float:
+    confidence = CONSISTENCY_CONFIDENCE_PROFILE.clean
     if cross_input_mismatch_detected:
         return CONSISTENCY_CONFIDENCE_PROFILE.cross_input_mismatch
     if unsupported_claims_detected:
-        return CONSISTENCY_CONFIDENCE_PROFILE.unsupported_claim
+        confidence = min(confidence, CONSISTENCY_CONFIDENCE_PROFILE.unsupported_claim)
     if missing_required_axes:
-        return CONSISTENCY_CONFIDENCE_PROFILE.missing_required_axes
+        confidence = min(confidence, CONSISTENCY_CONFIDENCE_PROFILE.missing_required_axes)
     if duplicated_penalties_detected:
-        return CONSISTENCY_CONFIDENCE_PROFILE.duplicated_penalty
+        confidence = min(confidence, CONSISTENCY_CONFIDENCE_PROFILE.duplicated_penalty)
+    if suspected_cross_input_divergence:
+        confidence = min(confidence, CONSISTENCY_CONFIDENCE_PROFILE.suspected_cross_input_divergence)
     if has_weak_evidence:
-        return CONSISTENCY_CONFIDENCE_PROFILE.weak_evidence_only
-    return CONSISTENCY_CONFIDENCE_PROFILE.clean
+        confidence = min(confidence, CONSISTENCY_CONFIDENCE_PROFILE.weak_evidence_only)
+    return confidence
 
 
 def _is_unsupported_claim(item) -> bool:
@@ -215,11 +277,17 @@ def _is_unsupported_claim(item) -> bool:
     )
 
 
-def _infer_genre(text: str) -> str | None:
+def _infer_genre_signal(text: str) -> _GenreSignal:
     normalized = text.strip()
     if not normalized:
-        return None
-    for genre, keywords in CONSISTENCY_KEYWORDS.genre_keywords.items():
-        if any(keyword in normalized for keyword in keywords):
-            return genre
-    return None
+        return _GenreSignal(top_genres=(), top_hit_count=0)
+
+    counts = {
+        genre: sum(1 for keyword in keywords if keyword in normalized)
+        for genre, keywords in CONSISTENCY_KEYWORDS.genre_keywords.items()
+    }
+    top_hit_count = max(counts.values(), default=0)
+    if top_hit_count <= 0:
+        return _GenreSignal(top_genres=(), top_hit_count=0)
+    top_genres = tuple(sorted(genre for genre, hit_count in counts.items() if hit_count == top_hit_count))
+    return _GenreSignal(top_genres=top_genres, top_hit_count=top_hit_count)

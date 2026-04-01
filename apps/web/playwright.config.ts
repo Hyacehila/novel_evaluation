@@ -1,6 +1,6 @@
 import { defineConfig } from "@playwright/test";
 
-const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? "startup_key";
+const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? "deterministic";
 
 export default defineConfig({
   testDir: "./e2e",

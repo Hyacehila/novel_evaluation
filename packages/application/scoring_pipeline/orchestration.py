@@ -18,6 +18,7 @@ from packages.application.support.process_logging import log_event
 from packages.application.scoring_pipeline.projection_service import build_final_projection
 from packages.application.scoring_pipeline.rubric_executor import RUBRIC_SLICE_PLAN, execute_rubric
 from packages.application.scoring_pipeline.screening_executor import execute_screening
+from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName, Sufficiency
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.output.error import ErrorCode
@@ -37,6 +38,10 @@ class ScoringPipeline:
         self._provider_adapter = provider_adapter
 
     def run(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> ScoringPipelineResult:
+        screening = self.run_screening(task=task, submission=submission)
+        return self.run_after_screening(task=task, submission=submission, screening=screening)
+
+    def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
         input_composition = submission.inputComposition.value
         evaluation_mode_hint = (
             EvaluationMode.FULL if submission.inputComposition is InputComposition.CHAPTERS_OUTLINE else EvaluationMode.DEGRADED
@@ -56,26 +61,16 @@ class ScoringPipeline:
                 binding=screening_binding,
             ),
         )
-        if not screening.continueAllowed:
-            error_code = _map_screening_block_error(screening)
-            log_event(
-                logger,
-                logging.WARNING,
-                "stage_blocked",
-                taskId=task.taskId,
-                stage=StageName.INPUT_SCREENING,
-                promptVersion=screening.promptVersion,
-                schemaVersion=screening.schemaVersion,
-                rubricVersion=screening.rubricVersion,
-                providerId=screening.providerId,
-                modelId=screening.modelId,
-                errorCode=error_code,
-                durationMs=0,
-            )
-            raise PipelineBlockedError(
-                error_code=error_code,
-                message=_build_screening_block_message(error_code=error_code),
-            )
+        return screening
+
+    def run_after_screening(
+        self,
+        *,
+        task: EvaluationTask,
+        submission: JointSubmissionRequest,
+        screening: InputScreeningResult,
+    ) -> ScoringPipelineResult:
+        self._ensure_screening_continue_allowed(task_id=task.taskId, screening=screening)
 
         rubric_binding = self._resolve_binding(
             stage=StageName.RUBRIC_EVALUATION,
@@ -163,6 +158,30 @@ class ScoringPipeline:
             consistency=consistency,
             aggregation=aggregation,
             projection=projection,
+        )
+
+    def _ensure_screening_continue_allowed(self, *, task_id: str, screening: InputScreeningResult) -> None:
+        if screening.continueAllowed:
+            return
+
+        error_code = _map_screening_block_error(screening)
+        log_event(
+            logger,
+            logging.WARNING,
+            "stage_blocked",
+            taskId=task_id,
+            stage=StageName.INPUT_SCREENING,
+            promptVersion=screening.promptVersion,
+            schemaVersion=screening.schemaVersion,
+            rubricVersion=screening.rubricVersion,
+            providerId=screening.providerId,
+            modelId=screening.modelId,
+            errorCode=error_code,
+            durationMs=0,
+        )
+        raise PipelineBlockedError(
+            error_code=error_code,
+            message=_build_screening_block_message(error_code=error_code),
         )
 
     def _resolve_binding(

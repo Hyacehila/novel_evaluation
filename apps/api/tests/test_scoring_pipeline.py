@@ -830,6 +830,25 @@ def test_run_consistency_check_blocks_on_cross_input_mismatch() -> None:
     assert any(conflict.conflictType is ConflictType.CROSS_INPUT_MISMATCH for conflict in result.conflicts)
 
 
+def test_run_consistency_check_marks_suspected_cross_input_divergence_without_blocking() -> None:
+    context = build_rubric_context(
+        submission=build_submission(
+            chapter_text="都市开篇冲突已经抛出，但题材承诺仍需更多正文确认。",
+            outline_text="星际主线已经启动，不过目前只给出单点设定提示。",
+        )
+    )
+    rubric = build_rubric_set()
+
+    result = run_consistency_check(context=context, rubric=rubric)
+
+    assert result.passed is True
+    assert result.continueAllowed is True
+    assert result.crossInputMismatchDetected is False
+    assert result.confidence == 0.78
+    assert any("疑似题材分歧" in note for note in result.normalizationNotes)
+    assert all(conflict.conflictType is not ConflictType.CROSS_INPUT_MISMATCH for conflict in result.conflicts)
+
+
 def test_run_consistency_check_emits_missing_required_axis_conflict_and_blocks() -> None:
     screening = build_screening_result(
         input_composition=InputComposition.OUTLINE_ONLY,
@@ -1042,6 +1061,36 @@ def test_scoring_pipeline_uses_joint_input_mismatch_error_for_cross_input_confli
     assert exc_info.value.error_code is ErrorCode.JOINT_INPUT_MISMATCH
     assert "正文与大纲之间存在高严重度冲突" in exc_info.value.message
 
+
+
+def test_scoring_pipeline_allows_weak_cross_input_divergence_to_continue() -> None:
+    screening = build_screening_result()
+    aggregation = build_aggregation_result()
+    prompt_runtime = RecordingPromptRuntime()
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
+            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(
+                requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]
+            ),
+            StageName.AGGREGATION: aggregation.model_dump(mode="json"),
+        }
+    )
+    pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
+
+    result = pipeline.run(
+        task=build_task(),
+        submission=build_submission(
+            chapter_text="都市开篇冲突已经抛出，但题材承诺仍需更多正文确认。",
+            outline_text="星际主线已经启动，不过目前只给出单点设定提示。",
+        ),
+    )
+
+    assert result.consistency.crossInputMismatchDetected is False
+    assert result.consistency.continueAllowed is True
+    assert result.consistency.confidence == 0.78
+    assert any("疑似题材分歧" in note for note in result.consistency.normalizationNotes)
+    assert result.projection.overall.verdict == aggregation.overallVerdictDraft
 
 
 def test_scoring_pipeline_masks_screening_rejection_reason_message() -> None:

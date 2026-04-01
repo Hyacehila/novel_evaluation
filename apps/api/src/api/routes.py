@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from ipaddress import ip_address
 from typing import Any
@@ -23,7 +24,12 @@ from packages.application.ports.runtime_metadata import ProviderRuntimePort
 
 from .dependencies import get_evaluation_service, get_provider_runtime_state
 from .errors import ApiError
-from .upload_parsing import build_upload_request, read_upload_text, resolve_upload_max_bytes
+from .upload_parsing import (
+    UPLOAD_TOO_LARGE_MESSAGE,
+    build_upload_request,
+    read_upload_text,
+    resolve_upload_max_bytes,
+)
 
 
 router = APIRouter(prefix="/api")
@@ -162,7 +168,12 @@ async def _parse_submission_request(request: Request) -> JointSubmissionRequest:
 
 async def _parse_json_submission(request: Request) -> JointSubmissionRequest:
     try:
-        payload = await request.json()
+        max_bytes = resolve_upload_max_bytes()
+    except ValueError as exc:
+        raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法") from exc
+
+    try:
+        payload = json.loads(await _read_request_body_with_limit(request, max_bytes=max_bytes))
         return JointSubmissionRequest.model_validate(payload)
     except (ValueError, ValidationError) as exc:
         raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法") from exc
@@ -179,10 +190,10 @@ async def _parse_multipart_submission(request: Request) -> JointSubmissionReques
     except StarletteHTTPException as exc:
         detail = str(exc.detail)
         if "Part exceeded maximum size" in detail:
-            raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message="上传文件超过大小限制") from exc
+            raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE) from exc
         raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法") from exc
     except MultiPartException as exc:
-        raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message="上传文件超过大小限制") from exc
+        raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE) from exc
 
     chapters_upload = _get_optional_upload(form.get("chaptersFile"), field_name="chaptersFile")
     outline_upload = _get_optional_upload(form.get("outlineFile"), field_name="outlineFile")
@@ -215,6 +226,25 @@ def _get_optional_text(value: Any) -> str:
     if isinstance(value, str):
         return value
     raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法")
+
+
+async def _read_request_body_with_limit(request: Request, *, max_bytes: int) -> bytes:
+    content_length = request.headers.get("content-length")
+    if content_length is not None:
+        try:
+            if int(content_length) > max_bytes:
+                raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE)
+        except ValueError:
+            pass
+
+    content = bytearray()
+    async for chunk in request.stream():
+        if not chunk:
+            continue
+        content.extend(chunk)
+        if len(content) > max_bytes:
+            raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE)
+    return bytes(content)
 
 
 

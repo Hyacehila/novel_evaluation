@@ -1,6 +1,6 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
-export const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? "startup_key";
+export const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? "deterministic";
 const runtimeApiKey = process.env.NOVEL_EVAL_DEEPSEEK_API_KEY ?? "";
 const e2eApiOrigin = process.env.NOVEL_EVAL_E2E_API_ORIGIN ?? "http://127.0.0.1:18000";
 

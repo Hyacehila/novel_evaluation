@@ -4,7 +4,7 @@ const { spawn } = require('node:child_process');
 
 const webRoot = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(webRoot, '..', '..');
-const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? 'startup_key';
+const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? 'deterministic';
 const artifactsDir = path.join(webRoot, '.playwright', providerMode);
 const logsDir = path.join(artifactsDir, 'logs');
 const dbPath = path.join(artifactsDir, 'e2e.sqlite3');
@@ -26,6 +26,9 @@ const childEnv = {
 };
 if (providerMode === 'runtime_key') {
   delete childEnv.NOVEL_EVAL_DEEPSEEK_API_KEY;
+}
+if (providerMode === 'deterministic' && !childEnv.NOVEL_EVAL_DEEPSEEK_API_KEY) {
+  childEnv.NOVEL_EVAL_DEEPSEEK_API_KEY = 'deterministic-e2e-key';
 }
 
 const uvCommand = process.platform === 'win32' ? 'uv.exe' : 'uv';

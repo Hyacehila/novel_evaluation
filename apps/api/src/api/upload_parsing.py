@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 _UPLOAD_READ_CHUNK_SIZE = 64 * 1024
 _SUPPORTED_UPLOAD_SUFFIXES = frozenset({".txt", ".md", ".docx"})
+UPLOAD_TOO_LARGE_MESSAGE = "输入内容超过大小限制"
 
 
 def resolve_upload_max_bytes() -> int:
@@ -49,7 +50,7 @@ async def read_upload_text(upload: UploadFile | None, *, max_bytes: int | None =
         while chunk := await upload.read(_UPLOAD_READ_CHUNK_SIZE):
             content.extend(chunk)
             if len(content) > limit:
-                raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message="上传文件超过大小限制")
+                raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE)
     finally:
         await upload.close()
     return parse_upload_bytes(filename=filename, content=bytes(content), max_bytes=limit)
@@ -58,7 +59,7 @@ async def read_upload_text(upload: UploadFile | None, *, max_bytes: int | None =
 def parse_upload_bytes(*, filename: str, content: bytes, max_bytes: int | None = None) -> str:
     limit = max_bytes or DEFAULT_UPLOAD_MAX_BYTES
     if len(content) > limit:
-        raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message="上传文件超过大小限制")
+        raise ApiError(status_code=422, code=ErrorCode.UPLOAD_TOO_LARGE, message=UPLOAD_TOO_LARGE_MESSAGE)
 
     suffix = Path(filename).suffix.lower()
     if suffix not in _SUPPORTED_UPLOAD_SUFFIXES:

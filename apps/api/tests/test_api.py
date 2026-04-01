@@ -53,6 +53,17 @@ def make_docx_bytes(paragraphs: list[str]) -> bytes:
     return buffer.getvalue()
 
 
+def build_json_submission_body(*, chapter_content: str = "chapter", outline_content: str = "outline") -> bytes:
+    return json.dumps(
+        {
+            "title": "payload-size-test",
+            "chapters": [{"title": "c1", "content": chapter_content}],
+            "outline": {"content": outline_content},
+            "sourceType": "direct_input",
+        }
+    ).encode("utf-8")
+
+
 def seed_task(
     *,
     task_id: str,
@@ -248,6 +259,41 @@ def test_post_tasks_rejects_upload_too_large(monkeypatch) -> None:
     assert payload["success"] is False
     assert payload["error"]["code"] == "UPLOAD_TOO_LARGE"
     assert get_task_repository().list_tasks() == []
+
+
+def test_post_tasks_rejects_oversized_json_direct_input(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = create_client()
+    body = build_json_submission_body(chapter_content="x" * 64, outline_content="y" * 32)
+    monkeypatch.setenv("NOVEL_EVAL_UPLOAD_MAX_BYTES", str(len(body) - 1))
+
+    response = client.post(
+        "/api/tasks",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 422
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "UPLOAD_TOO_LARGE"
+    assert get_task_repository().list_tasks() == []
+
+
+def test_post_tasks_accepts_json_direct_input_at_size_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = create_client()
+    body = build_json_submission_body(chapter_content="x" * 64, outline_content="y" * 32)
+    monkeypatch.setenv("NOVEL_EVAL_UPLOAD_MAX_BYTES", str(len(body)))
+
+    response = client.post(
+        "/api/tasks",
+        content=body,
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["taskId"].startswith("task_")
 
 
 def test_post_tasks_rejects_invalid_docx_upload() -> None:

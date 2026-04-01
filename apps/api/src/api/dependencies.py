@@ -54,8 +54,10 @@ logger = logging.getLogger(__name__)
 _REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
 _DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
 _ALLOW_E2E_PROVIDER_RESET_ENV = "NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET"
+_E2E_PROVIDER_MODE_ENV = "NOVEL_EVAL_E2E_PROVIDER_MODE"
 _PROVIDER_ID = "provider-deepseek"
 _MODEL_ID = "deepseek-chat"
+_DETERMINISTIC_PROVIDER_MODE = "deterministic"
 
 
 
@@ -193,11 +195,14 @@ class ApiProviderRuntimeState:
         api_key, configuration_source = self._resolve_api_key()
         if api_key is None:
             raise RuntimeError(f"{_DEEPSEEK_API_KEY_ENV} 未配置，当前不可执行分析。")
+        provider_mode = "deepseek_real"
+        if os.getenv(_E2E_PROVIDER_MODE_ENV) == _DETERMINISTIC_PROVIDER_MODE:
+            provider_mode = _DETERMINISTIC_PROVIDER_MODE
         log_event(
             logger,
             logging.INFO,
             "provider_adapter_configured",
-            providerMode="deepseek_real",
+            providerMode=provider_mode,
             providerId=self.provider_id,
             modelId=self.model_id,
             configurationSource=configuration_source.value,
@@ -256,6 +261,12 @@ def resolve_prompts_root(raw_path: str | None = None) -> Path:
 
 def build_configured_provider_adapter(*, api_key: str) -> ProviderExecutionPort:
     provider_adapters_module = _get_provider_adapters_module()
+    if os.getenv(_E2E_PROVIDER_MODE_ENV) == _DETERMINISTIC_PROVIDER_MODE:
+        return provider_adapters_module.LocalDeterministicProviderAdapter(
+            provider_id=_PROVIDER_ID,
+            model_id=_MODEL_ID,
+            structured_stage_outputs=True,
+        )
     return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key)
 
 

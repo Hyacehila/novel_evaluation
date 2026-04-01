@@ -2,23 +2,30 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from types import SimpleNamespace
 
 import pytest
 
 from packages.application.ports.task_repository import InMemoryTaskRepository
+from packages.application.scoring_pipeline.exceptions import PipelineBlockedError
+from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.services.evaluation_service import EvaluationService
 from packages.application.support.clock import FixedClock
 from packages.application.support.id_generator import StaticIdGenerator, UuidTaskIdGenerator
 from packages.schemas.common.enums import (
     EvaluationMode,
+    FatalRisk,
     InputComposition,
     ResultStatus,
     StageName,
+    StageStatus,
     SubmissionSourceType,
+    Sufficiency,
     TaskStatus,
 )
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutline
+from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
 
@@ -73,6 +80,37 @@ def build_request(*, chapters: bool = True, outline: bool = True) -> JointSubmis
         chapters=[ManuscriptChapter(content="第一章内容", title="第一章")] if chapters else None,
         outline=ManuscriptOutline(content="大纲内容") if outline else None,
         sourceType=SubmissionSourceType.DIRECT_INPUT,
+    )
+
+
+def build_screening_result(
+    *,
+    task_id: str,
+    evaluation_mode: EvaluationMode = EvaluationMode.DEGRADED,
+    continue_allowed: bool = True,
+    chapters_sufficiency: Sufficiency = Sufficiency.SUFFICIENT,
+    outline_sufficiency: Sufficiency = Sufficiency.SUFFICIENT,
+) -> InputScreeningResult:
+    return InputScreeningResult(
+        taskId=task_id,
+        schemaVersion="schema-screening-v2",
+        promptVersion="prompt-screening-v2",
+        rubricVersion="rubric-screening-v2",
+        providerId="provider-test",
+        modelId="model-test",
+        inputComposition=InputComposition.CHAPTERS_OUTLINE,
+        hasChapters=True,
+        hasOutline=True,
+        chaptersSufficiency=chapters_sufficiency,
+        outlineSufficiency=outline_sufficiency,
+        evaluationMode=evaluation_mode,
+        rateable=continue_allowed,
+        status=StageStatus.OK if continue_allowed else StageStatus.UNRATEABLE,
+        rejectionReasons=[] if continue_allowed else ["输入材料不足，无法形成稳定评分结论。"],
+        riskTags=[] if continue_allowed else [FatalRisk.INSUFFICIENT_MATERIAL],
+        segmentationPlan=None,
+        confidence=0.72 if continue_allowed else 0.24,
+        continueAllowed=continue_allowed,
     )
 
 
@@ -338,6 +376,103 @@ def test_fail_task_moves_to_failed_not_available() -> None:
     result_resource = service.get_result(task.taskId)
     assert result_resource.result is None
     assert result_resource.message == "结果尚未生成或当前不可展示"
+
+
+def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
+    service = build_service()
+    submission = build_request()
+    task = service.create_task(submission)
+    screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+
+    class StubPipeline:
+        def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
+            return screening
+
+        def run_after_screening(
+            self,
+            *,
+            task: EvaluationTask,
+            submission: JointSubmissionRequest,
+            screening: InputScreeningResult,
+        ) -> SimpleNamespace:
+            assert task.evaluationMode is EvaluationMode.DEGRADED
+            projection = service._build_final_projection(
+                task,
+                signing_probability=80,
+                commercial_value=78,
+                writing_quality=76,
+                innovation_score=74,
+            )
+            return SimpleNamespace(projection=projection)
+
+    service._scoring_pipeline = StubPipeline()
+
+    service.execute_task(task.taskId, submission)
+
+    updated = service.get_task(task.taskId)
+    assert updated.status is TaskStatus.COMPLETED
+    assert updated.resultStatus is ResultStatus.AVAILABLE
+    assert updated.evaluationMode is EvaluationMode.DEGRADED
+
+
+def test_execute_task_persists_screening_evaluation_mode_on_screening_block() -> None:
+    service = build_service()
+    submission = build_request()
+    task = service.create_task(submission)
+    screening = build_screening_result(
+        task_id=task.taskId,
+        evaluation_mode=EvaluationMode.DEGRADED,
+        continue_allowed=False,
+        chapters_sufficiency=Sufficiency.INSUFFICIENT,
+    )
+
+    class StubPipeline:
+        def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
+            return screening
+
+        def run_after_screening(self, *, task, submission, screening) -> SimpleNamespace:
+            raise PipelineBlockedError(
+                error_code=ErrorCode.INSUFFICIENT_CHAPTERS_INPUT,
+                message="正文内容不足，当前无法进入正式评分，请补充正文后重试。",
+            )
+
+    service._scoring_pipeline = StubPipeline()
+
+    service.execute_task(task.taskId, submission)
+
+    updated = service.get_task(task.taskId)
+    assert updated.status is TaskStatus.COMPLETED
+    assert updated.resultStatus is ResultStatus.BLOCKED
+    assert updated.errorCode is ErrorCode.INSUFFICIENT_CHAPTERS_INPUT
+    assert updated.evaluationMode is EvaluationMode.DEGRADED
+
+
+def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screening() -> None:
+    service = build_service()
+    submission = build_request()
+    task = service.create_task(submission)
+    screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+
+    class StubPipeline:
+        def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
+            return screening
+
+        def run_after_screening(self, *, task, submission, screening) -> SimpleNamespace:
+            assert task.evaluationMode is EvaluationMode.DEGRADED
+            raise PipelineFailureError(
+                error_code=ErrorCode.PROVIDER_FAILURE,
+                message="provider sanitized failure",
+            )
+
+    service._scoring_pipeline = StubPipeline()
+
+    service.execute_task(task.taskId, submission)
+
+    updated = service.get_task(task.taskId)
+    assert updated.status is TaskStatus.FAILED
+    assert updated.resultStatus is ResultStatus.NOT_AVAILABLE
+    assert updated.errorCode is ErrorCode.PROVIDER_FAILURE
+    assert updated.evaluationMode is EvaluationMode.DEGRADED
 
 
 def test_get_history_limits_items_to_20() -> None:

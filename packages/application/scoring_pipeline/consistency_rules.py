@@ -11,11 +11,13 @@ class ConsistencyThresholds:
     unsupported_claim_evidence_confidence: float = 0.55
     duplicated_penalty_occurrences: int = 2
     max_related_evaluation_ids: int = 4
+    strong_genre_signal_hits: int = 2
 
 
 @dataclass(frozen=True, slots=True)
 class ConsistencyConfidenceProfile:
     clean: float = 0.84
+    suspected_cross_input_divergence: float = 0.78
     weak_evidence_only: float = 0.72
     duplicated_penalty: float = 0.58
     missing_required_axes: float = 0.52
@@ -35,11 +37,11 @@ CONSISTENCY_CONFIDENCE_PROFILE = ConsistencyConfidenceProfile()
 CONSISTENCY_KEYWORDS = ConsistencyKeywords(
     genre_keywords=MappingProxyType(
         {
-            "urban": ("都市", "总裁", "豪门", "职场"),
-            "scifi": ("星际", "机甲", "宇宙", "赛博"),
-            "fantasy": ("修仙", "宗门", "仙门", "灵气"),
+            "urban": ("都市", "总裁", "豪门", "职场", "公司", "股权", "董事会", "发布会"),
+            "scifi": ("星际", "机甲", "宇宙", "赛博", "舰队", "母星", "虫族", "跃迁", "边境", "太空"),
+            "fantasy": ("修仙", "宗门", "仙门", "灵气", "秘境", "大阵"),
             "horror": ("规则怪谈", "诡异", "惊悚"),
-            "romance": ("恋爱", "婚约", "感情"),
+            "romance": ("恋爱", "婚约", "感情", "婚礼", "未婚夫"),
         }
     ),
     assertive_reason_tokens=(

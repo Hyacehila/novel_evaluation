@@ -330,7 +330,13 @@ class EvaluationService:
             if self._scoring_pipeline is None:
                 raise ValueError("当前 provider adapter 未接入正式执行接口。")
             task = self.get_task(task_id)
-            pipeline_result = self._scoring_pipeline.run(task=task, submission=submission)
+            screening = self._scoring_pipeline.run_screening(task=task, submission=submission)
+            self._sync_task_with_screening(task_id, screening=screening)
+            pipeline_result = self._scoring_pipeline.run_after_screening(
+                task=self.get_task(task_id),
+                submission=submission,
+                screening=screening,
+            )
             self.complete_task_with_projection(task_id, projection=pipeline_result.projection)
         except PipelineBlockedError as exc:
             self.block_task(
@@ -381,6 +387,24 @@ class EvaluationService:
                 error_code=ErrorCode.INTERNAL_ERROR,
                 error_message="任务执行失败，结果当前不可用，请重新提交新任务。",
             )
+
+    def _sync_task_with_screening(self, task_id: str, *, screening: InputScreeningResult) -> EvaluationTask:
+        task = self.get_task(task_id)
+        if task.status is not TaskStatus.PROCESSING:
+            raise ValueError("只有 processing 状态可以同步 screening 元数据。")
+        now = self._clock.now()
+        updated = task.model_copy(
+            update={
+                "evaluationMode": screening.evaluationMode,
+                "schemaVersion": screening.schemaVersion,
+                "promptVersion": screening.promptVersion,
+                "rubricVersion": screening.rubricVersion,
+                "providerId": screening.providerId,
+                "modelId": screening.modelId,
+                "updatedAt": now,
+            }
+        )
+        return self._task_repository.update_task(updated)
 
     def recover_incomplete_tasks(self) -> None:
         stale_task_ids = [
