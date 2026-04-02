@@ -5,7 +5,9 @@ from enum import StrEnum
 
 class StageName(StrEnum):
     INPUT_SCREENING = "input_screening"
+    TYPE_CLASSIFICATION = "type_classification"
     RUBRIC_EVALUATION = "rubric_evaluation"
+    TYPE_LENS_EVALUATION = "type_lens_evaluation"
     CONSISTENCY_CHECK = "consistency_check"
     AGGREGATION = "aggregation"
     FINAL_PROJECTION = "final_projection"
@@ -74,6 +76,17 @@ class FatalRisk(StrEnum):
     FAKE_PAYOFF = "fakePayoff"
     NON_NARRATIVE_SUBMISSION = "nonNarrativeSubmission"
     INSUFFICIENT_MATERIAL = "insufficientMaterial"
+
+
+class NovelType(StrEnum):
+    FEMALE_GENERAL = "female_general"
+    FANTASY_UPGRADE = "fantasy_upgrade"
+    URBAN_REALITY = "urban_reality"
+    HISTORY_MILITARY = "history_military"
+    SCI_FI_APOCALYPSE = "sci_fi_apocalypse"
+    SUSPENSE_HORROR = "suspense_horror"
+    GAME_DERIVATIVE = "game_derivative"
+    GENERAL_FALLBACK = "general_fallback"
 
 
 class SubmissionSourceType(StrEnum):

@@ -374,8 +374,12 @@ def test_get_result_returns_available_after_in_process_execution() -> None:
     assert payload["data"]["resultStatus"] == "available"
     assert payload["data"]["result"] is not None
     assert len(payload["data"]["result"]["axes"]) == 8
-    assert payload["data"]["result"]["overall"]["score"] == 70
+    assert payload["data"]["result"]["overall"]["score"] == 68
     assert payload["data"]["result"]["overall"]["verdict"] == "建议继续观察并进入样章复核。"
+    assert payload["data"]["result"]["typeAssessment"] is not None
+    assert payload["data"]["result"]["typeAssessment"]["novelType"] == "general_fallback"
+    assert payload["data"]["result"]["typeAssessment"]["fallbackUsed"] is True
+    assert len(payload["data"]["result"]["typeAssessment"]["lenses"]) == 4
     assert "signingProbability" not in payload["data"]["result"]
 
 
@@ -882,7 +886,7 @@ def test_get_dashboard_and_history_return_success() -> None:
     assert dashboard.json()["data"]["recentTasks"][0]["status"] == "completed"
     assert dashboard.json()["data"]["recentTasks"][0]["resultStatus"] == "available"
     assert len(dashboard.json()["data"]["recentResults"]) == 1
-    assert dashboard.json()["data"]["recentResults"][0]["overallScore"] == 70
+    assert dashboard.json()["data"]["recentResults"][0]["overallScore"] == 68
     assert dashboard.json()["data"]["recentResults"][0]["overallVerdict"] == "建议继续观察并进入样章复核。"
     assert "signingProbability" not in dashboard.json()["data"]["recentResults"][0]
     assert history.status_code == 200

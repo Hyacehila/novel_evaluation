@@ -14,7 +14,13 @@ PromptLifecycleStatus = Literal[
     "deprecated",
     "retired",
 ]
-PromptStage = Literal["input_screening", "rubric_evaluation", "aggregation"]
+PromptStage = Literal[
+    "input_screening",
+    "type_classification",
+    "rubric_evaluation",
+    "type_lens_evaluation",
+    "aggregation",
+]
 
 
 class PromptRegistryRecord(SchemaModel):

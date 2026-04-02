@@ -11,6 +11,8 @@ from packages.schemas.stages.aggregation import AggregatedRubricResult
 from packages.schemas.stages.consistency import ConsistencyCheckResult
 from packages.schemas.common.enums import AxisId
 from packages.schemas.stages.rubric import RubricEvaluationSet, RubricEvaluationSlice
+from packages.schemas.stages.type_classification import TypeClassificationResult
+from packages.schemas.stages.type_lens import TypeLensEvaluationResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,11 +50,30 @@ class RubricExecutionContext:
 
 
 @dataclass(frozen=True, slots=True)
+class TypeClassificationExecutionContext:
+    task_id: str
+    submission: JointSubmissionRequest
+    screening: InputScreeningResult
+    binding: StagePromptBinding
+
+
+@dataclass(frozen=True, slots=True)
+class TypeLensExecutionContext:
+    task_id: str
+    submission: JointSubmissionRequest
+    screening: InputScreeningResult
+    type_classification: TypeClassificationResult
+    binding: StagePromptBinding
+
+
+@dataclass(frozen=True, slots=True)
 class AggregationExecutionContext:
     task_id: str
     submission: JointSubmissionRequest
     screening: InputScreeningResult
+    type_classification: TypeClassificationResult
     rubric: RubricEvaluationSet
+    type_lens: TypeLensEvaluationResult
     consistency: ConsistencyCheckResult
     binding: StagePromptBinding
 
@@ -60,7 +81,9 @@ class AggregationExecutionContext:
 @dataclass(frozen=True, slots=True)
 class ScoringPipelineResult:
     screening: InputScreeningResult
+    typeClassification: TypeClassificationResult
     rubric: RubricEvaluationSet
+    typeLens: TypeLensEvaluationResult
     consistency: ConsistencyCheckResult
     aggregation: AggregatedRubricResult
     projection: FinalEvaluationProjection

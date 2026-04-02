@@ -55,20 +55,42 @@ NOVEL_EVAL_DEEPSEEK_API_KEY=<your-real-key>
 
 - 你要验证真实模型输出质量
 - 你要进行真实体验演示
-- 你要执行 `pnpm --dir apps/web test:e2e`
+- 你要执行真实 DeepSeek Playwright E2E
 
-## 什么时候不必急着配置
+## Playwright 真实验收模式
 
-- 你只是第一次安装仓库
-- 你在验证页面、表单、本地持久化以及历史读取
-- 你暂时只需要只读查看已有数据
-- 你在排查是否是环境安装问题
+默认 `pnpm --dir apps/web test:e2e` 走 deterministic provider。
 
-## 相关变量
+若要跑真实 DeepSeek，需在当前 PowerShell 会话设置：
 
-- `NOVEL_EVAL_DEEPSEEK_API_KEY`
-- `NOVEL_EVAL_REQUIRE_REAL_PROVIDER`（已弃用，不再控制 API 启动成功）
-- `NOVEL_EVAL_API_HOST`
-- `NOVEL_EVAL_API_PORT`
+```powershell
+$env:NOVEL_EVAL_DEEPSEEK_API_KEY="<your-real-key>"
+```
 
-完整配置表见 `../operations/runtime-configuration-and-diagnostics.md`。
+然后选择其中一种模式：
+
+### `startup_key`
+
+```powershell
+$env:NOVEL_EVAL_E2E_PROVIDER_MODE="startup_key"
+pnpm --dir apps/web test:e2e
+```
+
+含义：
+
+- API 子进程在启动时即带 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+- UI 只展示“启动环境变量”状态
+
+### `runtime_key`
+
+```powershell
+$env:NOVEL_EVAL_E2E_PROVIDER_MODE="runtime_key"
+pnpm --dir apps/web test:e2e
+```
+
+含义：
+
+- API 子进程以缺少启动期 key 的状态启动
+- 测试流会在页面中录入一次性 runtime key
+
+完整 smoke 与质量门禁见 `../operations/local-installation-and-smoke.md` 和 `../operations/quality-gates-and-regression.md`。

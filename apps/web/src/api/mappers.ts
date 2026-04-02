@@ -67,6 +67,9 @@ export function mapTaskDetail(dto: EvaluationTaskDto): TaskDetailView {
     rubricVersion: dto.rubricVersion,
     providerId: dto.providerId,
     modelId: dto.modelId,
+    novelType: dto.novelType,
+    typeClassificationConfidence: dto.typeClassificationConfidence,
+    typeFallbackUsed: dto.typeFallbackUsed,
     createdAt: dto.createdAt,
     startedAt: dto.startedAt,
     completedAt: dto.completedAt,
@@ -113,6 +116,23 @@ export function mapResultDetail(dto: EvaluationResultResourceDto): ResultDetailV
             strengths: dto.result.overall.strengths,
             weaknesses: dto.result.overall.weaknesses,
           },
+          typeAssessment: dto.result.typeAssessment
+            ? {
+                novelType: dto.result.typeAssessment.novelType,
+                classificationConfidence: dto.result.typeAssessment.classificationConfidence,
+                fallbackUsed: dto.result.typeAssessment.fallbackUsed,
+                summary: dto.result.typeAssessment.summary,
+                lenses: dto.result.typeAssessment.lenses.map((lens) => ({
+                  lensId: lens.lensId,
+                  label: lens.label,
+                  scoreBand: lens.scoreBand,
+                  reason: lens.reason,
+                  confidence: lens.confidence,
+                  degradedByInput: lens.degradedByInput,
+                  riskTags: lens.riskTags,
+                })),
+              }
+            : null,
         }
       : null,
     message: dto.message,

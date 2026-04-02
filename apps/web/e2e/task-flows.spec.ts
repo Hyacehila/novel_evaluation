@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +10,7 @@ const chapterFixture = path.join(currentDir, "fixtures", "chapter.txt");
 const outlineFixture = path.join(currentDir, "fixtures", "outline.md");
 const taskCompletionTimeoutMs = 420_000;
 const taskFlowTimeoutMs = 720_000;
+const readmeScreenshotPath = process.env.NOVEL_EVAL_CAPTURE_README_SCREENSHOT_PATH;
 const successChapters = "第一章里，青岚宗护山大阵突然熄灭，外门弟子顾辞在山门值守时亲眼看见长老重伤归来。执法堂宣布七天后宗门大比照常举行，若无人夺得秘境名额，宗门将被邻宗吞并。顾辞为了保住师父留下的药园，只能冒险借用残缺功法突破境界，同时调查阵法失效的真相。短短一夜里，他先后失去住处、同伴和退路，被迫主动卷入更大的权力斗争。";
 const successOutline = "后续主线围绕宗门大比、秘境夺宝和宗门重建展开。顾辞会先在大比中证明自己，再进入秘境寻找修复大阵的核心灵物，同时逐步揭开长老叛变与外敌联手的内幕。中期通过师徒关系、同门竞争和资源争夺持续升级冲突，后期把宗门存亡、个人成长和秘宝兑现收束到同一条升级主线上。";
 const blockedChapters = "凌晨四点，婚礼酒店的消防警报骤然响起，许棠穿着还没来得及换下的礼服被困在消防通道。她在未婚夫程屿遗落的公文包里翻出一份股权转让协议，确认父亲留下的广告公司正被一步步架空。程屿带着保安追到后厨时，她抱着原件从员工通道冲进暴雨，赶回公司准备当天不能取消的新品发布会。会议室里，供应商撤单、董事会逼宫和媒体偷拍视频同时压来，她只能临时说服男主所在的竞品团队一起直播反击，把婚约阴谋和公司夺权拉进同一场公开战。到收盘前，她还必须保住核心客户和父亲留下的投票权，否则第二天公司就会被强行并购。";
@@ -33,6 +35,15 @@ async function waitForCompletedTask(page: Page) {
     .first();
 
   await expect(completionSignal).toBeVisible({ timeout: 60_000 });
+}
+
+async function captureReadmeScreenshot(page: Page) {
+  if (!readmeScreenshotPath) {
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(readmeScreenshotPath), { recursive: true });
+  await page.screenshot({ path: readmeScreenshotPath, fullPage: true });
 }
 
 test("首页关键入口按钮可导航", async ({ page }) => {
@@ -75,6 +86,8 @@ test("直接输入成功流可到达结果页", async ({ page, request }) => {
   await expect(page).toHaveURL(/\/tasks\/task_/);
   await waitForCompletedTask(page);
   await expect(page.getByText("结果可用", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "类型判断" })).toBeVisible();
+  await expect(page.getByText("识别置信度", { exact: true })).toBeVisible();
   await expect(page.getByText("fetch_failed")).toHaveCount(0);
 
   await page.getByRole("link", { name: "查看结果详情" }).click();
@@ -83,11 +96,15 @@ test("直接输入成功流可到达结果页", async ({ page, request }) => {
   await expect(page.getByText("结构化评价结果", { exact: true })).toBeVisible();
   await expect(page.getByText("总体评分", { exact: true })).toBeVisible();
   await expect(page.getByText("平台候选", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "类型判断与 4 个 lens" })).toBeVisible();
+  await expect(page.getByText("类型总结", { exact: true })).toBeVisible();
+  await expect(page.getByText("类型置信度：")).toHaveCount(4);
   await expect(page.getByText("8 轴 rubric 结果", { exact: true })).toBeVisible();
   await expect(page.getByText("开篇抓力", { exact: true })).toBeVisible();
   await expect(page.getByText("签约概率", { exact: true })).toHaveCount(0);
   await expect(page.getByText("平台建议", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Detailed Analysis")).toHaveCount(0);
+  await captureReadmeScreenshot(page);
 });
 
 test("跨输入冲突会进入阻断态且结果页不展示正式结果正文", async ({ page, request }) => {

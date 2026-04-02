@@ -1,6 +1,7 @@
 import type {
   EvaluationMode,
   InputComposition,
+  NovelType,
   ResultStatus,
   TaskStatus,
 } from "@/api/contracts";
@@ -22,6 +23,17 @@ const scoreBandLabels: Record<string, string> = {
   "2": "勉强成立",
   "3": "合格",
   "4": "明显突出",
+};
+
+const novelTypeLabels: Record<NovelType, string> = {
+  female_general: "女频通用",
+  fantasy_upgrade: "玄幻升级",
+  urban_reality: "都市现实",
+  history_military: "历史军事",
+  sci_fi_apocalypse: "科幻末世",
+  suspense_horror: "悬疑惊悚",
+  game_derivative: "游戏衍生",
+  general_fallback: "通用兜底",
 };
 
 export function formatDateTime(value: string | null | undefined) {
@@ -121,4 +133,15 @@ export function getScoreBandTone(scoreBand: string) {
     default:
       return "neutral" as const;
   }
+}
+
+export function getNovelTypeLabel(novelType: NovelType) {
+  return novelTypeLabels[novelType] ?? novelType;
+}
+
+export function formatConfidence(value: number | null | undefined) {
+  if (value === null || value === undefined) {
+    return "未生成";
+  }
+  return `${Math.round(value * 100)}%`;
 }

@@ -13,18 +13,13 @@
 
 ## 真源关系
 
-当前阶段的结构真源优先级为：
+当前结构真源优先级为：
 
 1. `packages/schemas/` 中已落地的正式 schema 文件
 2. `docs/contracts/canonical-schema-index.md`
 3. 本文档
 4. `docs/contracts/rubric-stage-contracts.md`
 5. API / 前端 / Evals 消费文档
-
-约束：
-
-- API DTO、前端假契约和 Evals 报告都不得反向定义第二套正式结果结构
-- `Pydantic` 只负责边界表达与运行时校验，不替代正式 schema 真源
 
 ## 当前正式 JSON 契约对象
 
@@ -65,7 +60,6 @@
   - `direct_input`
   - `file_upload`
   - `history_derived`
-- 创建请求对象不携带任务状态、结果状态与评分结果字段
 
 ## 二、运行时 Provider 配置对象
 
@@ -112,6 +106,9 @@
 - `rubricVersion`
 - `providerId`
 - `modelId`
+- `novelType`
+- `typeClassificationConfidence`
+- `typeFallbackUsed`
 - `createdAt`
 - `startedAt`
 - `completedAt`
@@ -127,8 +124,9 @@
   - `full`
   - `degraded`
 - `resultAvailable=true` 当且仅当 `resultStatus=available`
-- 合法状态组合必须服从 `apps/api/contracts/job-lifecycle-and-error-semantics.md`
+- 合法状态组合必须服从 `packages/schemas/output/task.py`
 - 当前允许 `completed + not_available`，仅用于读取期兼容降级
+- `novelType / typeClassificationConfidence / typeFallbackUsed` 当前允许为 `null`，因为类型识别会在执行中途写回
 
 ## 四、结果资源对象 `EvaluationResultResource`
 
@@ -161,6 +159,7 @@
 - `resultTime`
 - `axes`
 - `overall`
+- `typeAssessment`
 
 ### `axes`
 
@@ -191,15 +190,49 @@
 
 - `score`
 - `verdict`
+- `verdictSubQuote`
 - `summary`
 - `platformCandidates`
 - `marketFit`
+- `strengths`
+- `weaknesses`
+
+其中 `platformCandidates` 为对象数组，每个候选包含：
+
+- `name`
+- `weight`
+- `pitchQuote`
+
+并满足：
+
+- 多个平台候选的 `weight` 之和必须为 `100`
+
+### `typeAssessment`
+
+当前保持可选，以兼容历史结果读取。存在时固定包含：
+
+- `novelType`
+- `classificationConfidence`
+- `fallbackUsed`
+- `summary`
+- `lenses`
+
+其中 `lenses` 必须完整覆盖当前类型固定的 `4` 个 lens，每个 lens 固定包含：
+
+- `lensId`
+- `label`
+- `scoreBand`
+- `reason`
+- `evidenceRefs`
+- `confidence`
+- `degradedByInput`
+- `riskTags`
 
 ### 结构约束
 
-- `score` 必须是 `0-100` 的整数
+- `overall.score` 必须是 `0-100` 的整数
 - `axes` 必须覆盖全部 `8` 轴
-- `platformCandidates` 必须是字符串数组
+- `typeAssessment` 若存在，其 `lenses` 必须与当前 `novelType` 的固定 lens 集合完全一致
 - 仅在 `resultStatus=available` 时返回 `EvaluationResult` 正文
 
 ### 兼容约束
@@ -210,13 +243,12 @@
 - `commercialValue`
 - `writingQuality`
 - `innovationScore`
-- `strengths`
-- `weaknesses`
-- `platforms`
-- `editorVerdict`
 - `detailedAnalysis`
 
-读取历史旧结果时不会自动转换为新结构，而会降级为 `not_available`。
+读取历史旧结果时：
+
+- 若仍满足当前 `EvaluationResult` schema，可继续读取
+- 若不满足当前 schema，则会降级为 `not_available`
 
 ## 六、摘要对象
 
@@ -294,11 +326,13 @@
 当前内部结构固定为：
 
 1. `InputScreeningResult`
-2. `RubricEvaluationSet`
-3. `ConsistencyCheckResult`
-4. `AggregatedRubricResult`
-5. `FinalEvaluationProjection`
-6. `EvaluationResult`
+2. `TypeClassificationResult`
+3. `RubricEvaluationSet`
+4. `TypeLensEvaluationResult`
+5. `ConsistencyCheckResult`
+6. `AggregatedRubricResult`
+7. `FinalEvaluationProjection`
+8. `EvaluationResult`
 
 说明：
 
@@ -321,10 +355,13 @@
 - `resultStatus`
 - `errorCode`
 - `errorMessage`
+- `novelType`
+- `typeClassificationConfidence`
+- `typeFallbackUsed`
 
 若变更这些字段，必须同步检查：
 
-- `apps/api/contracts/job-lifecycle-and-error-semantics.md`
-- `docs/contracts/frontend-minimal-api-assumptions.md`
+- `docs/contracts/canonical-schema-index.md`
 - `docs/contracts/rubric-stage-contracts.md`
-- `evals/README.md`
+- `docs/contracts/frontend-minimal-api-assumptions.md`
+- `apps/web/src/api/contracts.ts`

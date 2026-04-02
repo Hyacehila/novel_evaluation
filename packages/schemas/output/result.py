@@ -6,13 +6,16 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import AxisId, FatalRisk, ResultStatus, ScoreBand, StageName
+from packages.schemas.common.enums import AxisId, FatalRisk, NovelType, ResultStatus, ScoreBand, StageName
+from packages.schemas.common.novel_types import get_type_lens_ids
 from packages.schemas.common.validators import (
     ensure_non_empty_text,
     ensure_optional_text,
+    validate_confidence,
     validate_percentage,
 )
 from packages.schemas.stages.aggregation import PlatformCandidate
+from packages.schemas.stages.type_lens import TypeLensItem
 
 
 class AxisEvaluationResult(SchemaModel):
@@ -72,6 +75,36 @@ class OverallEvaluationResult(SchemaModel):
         return self
 
 
+class TypeAssessmentResult(SchemaModel):
+    novelType: NovelType
+    classificationConfidence: float
+    fallbackUsed: bool
+    summary: str
+    lenses: list[TypeLensItem]
+
+    @field_validator("classificationConfidence")
+    @classmethod
+    def validate_classification_confidence(cls, value: float) -> float:
+        return validate_confidence(value, "classificationConfidence")
+
+    @field_validator("summary")
+    @classmethod
+    def validate_summary(cls, value: str) -> str:
+        return ensure_non_empty_text(value, "typeAssessment.summary")
+
+    @model_validator(mode="after")
+    def validate_lens_coverage(self) -> "TypeAssessmentResult":
+        expected_lens_ids = set(get_type_lens_ids(self.novelType))
+        observed_lens_ids = [item.lensId for item in self.lenses]
+        if len(observed_lens_ids) != len(expected_lens_ids):
+            raise ValueError("typeAssessment.lenses 必须完整覆盖当前类型的 4 个 lens。")
+        if len(set(observed_lens_ids)) != len(observed_lens_ids):
+            raise ValueError("typeAssessment.lenses 不允许重复 lensId。")
+        if set(observed_lens_ids) != expected_lens_ids:
+            raise ValueError("typeAssessment.lenses 必须匹配当前 novelType 的固定 lens 集合。")
+        return self
+
+
 class FinalEvaluationProjection(SchemaModel):
     taskId: str
     stage: Literal[StageName.FINAL_PROJECTION] = StageName.FINAL_PROJECTION
@@ -82,6 +115,7 @@ class FinalEvaluationProjection(SchemaModel):
     modelId: str
     axes: list[AxisEvaluationResult]
     overall: OverallEvaluationResult
+    typeAssessment: TypeAssessmentResult | None = None
 
     @field_validator(
         "taskId",
@@ -115,6 +149,7 @@ class EvaluationResult(SchemaModel):
     resultTime: datetime
     axes: list[AxisEvaluationResult]
     overall: OverallEvaluationResult
+    typeAssessment: TypeAssessmentResult | None = None
 
     @field_validator(
         "taskId",

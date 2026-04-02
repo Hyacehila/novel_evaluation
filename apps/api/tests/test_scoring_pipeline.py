@@ -27,6 +27,7 @@ from packages.schemas.common.enums import (
     EvidenceSourceType,
     FatalRisk,
     InputComposition,
+    NovelType,
     ResultStatus,
     ScoreBand,
     SkeletonDimensionId,
@@ -43,6 +44,8 @@ from packages.schemas.output.task import EvaluationTask
 from packages.schemas.stages.aggregation import AggregatedRubricResult, PlatformCandidate
 from packages.schemas.stages.consistency import ConflictType
 from packages.schemas.stages.rubric import RubricEvaluationEvidenceRef, RubricEvaluationItem, RubricEvaluationSet
+from packages.schemas.stages.type_classification import TypeClassificationCandidate, TypeClassificationResult
+from packages.schemas.stages.type_lens import TypeLensEvaluationResult, TypeLensItem
 
 
 @dataclass(frozen=True, slots=True)
@@ -282,6 +285,144 @@ def build_aggregation_result(
     )
 
 
+def build_type_classification_result(
+    *,
+    novel_type: NovelType = NovelType.URBAN_REALITY,
+    classification_confidence: float = 0.78,
+    fallback_used: bool = False,
+    input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
+    evaluation_mode: EvaluationMode = EvaluationMode.FULL,
+) -> TypeClassificationResult:
+    secondary_novel_type = (
+        NovelType.URBAN_REALITY
+        if novel_type in {NovelType.FANTASY_UPGRADE, NovelType.GENERAL_FALLBACK}
+        else NovelType.FANTASY_UPGRADE
+    )
+    tertiary_novel_type = (
+        NovelType.GAME_DERIVATIVE
+        if novel_type is not NovelType.GAME_DERIVATIVE and secondary_novel_type is not NovelType.GAME_DERIVATIVE
+        else NovelType.HISTORY_MILITARY
+    )
+    candidates = [
+        TypeClassificationCandidate(
+            novelType=novel_type,
+            confidence=classification_confidence,
+            reason="当前题材信号最稳定。",
+        ),
+        TypeClassificationCandidate(
+            novelType=secondary_novel_type,
+            confidence=max(0.2, round(classification_confidence - 0.18, 2)),
+            reason="存在次级题材信号。",
+        ),
+        TypeClassificationCandidate(
+            novelType=tertiary_novel_type,
+            confidence=max(0.15, round(classification_confidence - 0.29, 2)),
+            reason="保守兜底候选。",
+        ),
+    ]
+    return TypeClassificationResult(
+        taskId="task_pipeline_001",
+        schemaVersion="schema-test-v1",
+        promptVersion="prompt-test-v1",
+        rubricVersion="rubric-test-v1",
+        providerId="provider-test",
+        modelId="model-test",
+        inputComposition=input_composition,
+        evaluationMode=evaluation_mode,
+        candidates=candidates,
+        novelType=NovelType.GENERAL_FALLBACK if fallback_used else novel_type,
+        classificationConfidence=classification_confidence,
+        fallbackUsed=fallback_used,
+        summary="类型信号已形成稳定候选集。",
+    )
+
+
+def build_type_lens_result(
+    *,
+    novel_type: NovelType = NovelType.URBAN_REALITY,
+    input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
+    evaluation_mode: EvaluationMode = EvaluationMode.FULL,
+    score_band: ScoreBand = ScoreBand.THREE,
+) -> TypeLensEvaluationResult:
+    lens_map = {
+        NovelType.FEMALE_GENERAL: [
+            ("emotionImmersion", "情绪钩子与代入"),
+            ("relationshipAppeal", "关系张力与人物吸引"),
+            ("emotionPayoff", "情绪递进与兑现"),
+            ("companionshipValue", "圈层承诺与陪伴价值"),
+        ],
+        NovelType.FANTASY_UPGRADE: [
+            ("upgradeLoop", "升级回路清晰度"),
+            ("powerSystem", "力量体系可读性"),
+            ("rewardDensity", "奖励密度"),
+            ("spectaclePayoff", "奇观/爽点兑现"),
+        ],
+        NovelType.URBAN_REALITY: [
+            ("realityHook", "现实抓手"),
+            ("mobilityTension", "地位跃迁/经营张力"),
+            ("industryCredibility", "行业/现实可信度"),
+            ("conversionHook", "连载转化抓手"),
+        ],
+        NovelType.HISTORY_MILITARY: [
+            ("powerMap", "权力/战争格局清晰度"),
+            ("historicalTexture", "历史质感与可信度"),
+            ("strategyPayoff", "谋略兑现"),
+            ("campaignMomentum", "长线争霸推进"),
+        ],
+        NovelType.SCI_FI_APOCALYPSE: [
+            ("conceptUtility", "概念可利用度"),
+            ("ruleClosure", "规则闭环"),
+            ("pressureSystem", "生存/技术压力系统"),
+            ("worldExpansion", "世界扩展潜力"),
+        ],
+        NovelType.SUSPENSE_HORROR: [
+            ("mysteryHook", "谜面钩子"),
+            ("clueFairness", "线索公平性"),
+            ("tensionSustain", "紧张维持"),
+            ("revealPayoff", "揭示兑现"),
+        ],
+        NovelType.GAME_DERIVATIVE: [
+            ("loopClarity", "副本/循环清晰度"),
+            ("ruleFeedback", "规则反馈明确性"),
+            ("buildVariation", "build/玩法变化"),
+            ("longRunEscalation", "长线 escalations"),
+        ],
+        NovelType.GENERAL_FALLBACK: [
+            ("premiseHook", "premise 与钩子"),
+            ("coreConflict", "核心冲突与目标"),
+            ("executionReadability", "执行与可读性"),
+            ("serialPotential", "连载潜力"),
+        ],
+    }
+    items = [
+        TypeLensItem(
+            lensId=lens_id,
+            label=label,
+            scoreBand=score_band,
+            reason=f"{label} 证据完整。",
+            evidenceRefs=[build_evidence()],
+            confidence=0.8 if evaluation_mode is EvaluationMode.FULL else 0.58,
+            riskTags=[FatalRisk.INSUFFICIENT_MATERIAL] if evaluation_mode is EvaluationMode.DEGRADED else [],
+            degradedByInput=evaluation_mode is EvaluationMode.DEGRADED,
+        )
+        for lens_id, label in lens_map[novel_type]
+    ]
+    return TypeLensEvaluationResult(
+        taskId="task_pipeline_001",
+        schemaVersion="schema-test-v1",
+        promptVersion="prompt-test-v1",
+        rubricVersion="rubric-test-v1",
+        providerId="provider-test",
+        modelId="model-test",
+        inputComposition=input_composition,
+        evaluationMode=evaluation_mode,
+        novelType=novel_type,
+        summary="类型 lens 结果稳定。",
+        items=items,
+        overallConfidence=min(item.confidence for item in items),
+    )
+
+
 def build_task(
     *,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
@@ -359,11 +500,18 @@ def build_aggregation_context(
     submission: JointSubmissionRequest | None = None,
     screening: InputScreeningResult | None = None,
     rubric: RubricEvaluationSet | None = None,
+    type_classification: TypeClassificationResult | None = None,
+    type_lens: TypeLensEvaluationResult | None = None,
 ) -> AggregationExecutionContext:
     resolved_submission = submission or build_submission()
     resolved_screening = screening or build_screening_result()
     resolved_rubric = rubric or build_rubric_set(
         input_composition=resolved_screening.inputComposition,
+        evaluation_mode=resolved_screening.evaluationMode,
+    )
+    resolved_type_classification = type_classification or build_type_classification_result()
+    resolved_type_lens = type_lens or build_type_lens_result(
+        novel_type=resolved_type_classification.novelType,
         evaluation_mode=resolved_screening.evaluationMode,
     )
     rubric_context = build_rubric_context(submission=resolved_submission, screening=resolved_screening)
@@ -372,10 +520,39 @@ def build_aggregation_context(
         task_id="task_pipeline_001",
         submission=resolved_submission,
         screening=resolved_screening,
+        type_classification=resolved_type_classification,
         rubric=resolved_rubric,
+        type_lens=resolved_type_lens,
         consistency=consistency,
         binding=build_stage_binding(stage=StageName.AGGREGATION),
     )
+
+
+def build_pipeline_provider_payloads(
+    *,
+    screening: InputScreeningResult | None = None,
+    type_classification: TypeClassificationResult | None = None,
+    type_lens: TypeLensEvaluationResult | None = None,
+    rubric_payload: Any = None,
+    aggregation_payload: Any = None,
+) -> dict[StageName, Any]:
+    resolved_screening = screening or build_screening_result()
+    resolved_type_classification = type_classification or build_type_classification_result(
+        input_composition=resolved_screening.inputComposition,
+        evaluation_mode=resolved_screening.evaluationMode,
+    )
+    resolved_type_lens = type_lens or build_type_lens_result(
+        novel_type=resolved_type_classification.novelType,
+        input_composition=resolved_screening.inputComposition,
+        evaluation_mode=resolved_screening.evaluationMode,
+    )
+    return {
+        StageName.INPUT_SCREENING: resolved_screening.model_dump(mode="json"),
+        StageName.TYPE_CLASSIFICATION: resolved_type_classification.model_dump(mode="json"),
+        StageName.RUBRIC_EVALUATION: rubric_payload,
+        StageName.TYPE_LENS_EVALUATION: resolved_type_lens.model_dump(mode="json"),
+        StageName.AGGREGATION: aggregation_payload if aggregation_payload is not None else build_aggregation_result().model_dump(mode="json"),
+    }
 
 
 def build_screening_context(
@@ -968,10 +1145,18 @@ def test_build_final_projection_uses_overall_fields() -> None:
         build_platform_candidate("女频平台 B", 30, "题材定位次级适配，可作为备选投放渠道。"),
     ]
     aggregation = build_aggregation_result(platform_candidates=candidates, market_fit="当前题材更贴合女频平台 A 的用户预期。")
+    type_classification = build_type_classification_result()
     rubric = build_rubric_set()
+    type_lens = build_type_lens_result(novel_type=type_classification.novelType)
     consistency = run_consistency_check(context=build_rubric_context(), rubric=rubric)
 
-    projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
+    projection = build_final_projection(
+        aggregation=aggregation,
+        type_classification=type_classification,
+        rubric=rubric,
+        type_lens=type_lens,
+        consistency=consistency,
+    )
 
     assert len(projection.axes) == len(AxisId)
     assert projection.overall.score == 75
@@ -983,19 +1168,83 @@ def test_build_final_projection_uses_overall_fields() -> None:
     assert projection.overall.marketFit == aggregation.marketFitDraft
     assert projection.overall.strengths == aggregation.strengthCandidates
     assert projection.overall.weaknesses == aggregation.weaknessCandidates
+    assert projection.typeAssessment is not None
+    assert projection.typeAssessment.novelType is NovelType.URBAN_REALITY
+    assert len(projection.typeAssessment.lenses) == 4
 
 
 def test_build_final_projection_preserves_empty_platform_candidates() -> None:
     aggregation = build_aggregation_result(platform_candidates=[])
+    type_classification = build_type_classification_result()
     rubric = build_rubric_set()
+    type_lens = build_type_lens_result(novel_type=type_classification.novelType)
     consistency = run_consistency_check(context=build_rubric_context(), rubric=rubric)
 
-    projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
+    projection = build_final_projection(
+        aggregation=aggregation,
+        type_classification=type_classification,
+        rubric=rubric,
+        type_lens=type_lens,
+        consistency=consistency,
+    )
 
     assert projection.overall.platformCandidates == []
     assert projection.overall.verdictSubQuote is None
     assert projection.overall.strengths == []
     assert projection.overall.weaknesses == []
+
+
+def test_build_final_projection_applies_type_weights_and_degraded_penalty() -> None:
+    aggregation = build_aggregation_result()
+    rubric = build_rubric_set(evaluation_mode=EvaluationMode.DEGRADED)
+    consistency = run_consistency_check(
+        context=build_rubric_context(screening=build_screening_result(evaluation_mode=EvaluationMode.DEGRADED)),
+        rubric=rubric,
+    )
+    weighted_type_classification = build_type_classification_result(
+        novel_type=NovelType.FANTASY_UPGRADE,
+        input_composition=InputComposition.CHAPTERS_OUTLINE,
+        evaluation_mode=EvaluationMode.DEGRADED,
+    )
+    weighted_type_lens = build_type_lens_result(
+        novel_type=weighted_type_classification.novelType,
+        input_composition=InputComposition.CHAPTERS_OUTLINE,
+        evaluation_mode=EvaluationMode.DEGRADED,
+        score_band=ScoreBand.FOUR,
+    )
+    fallback_type_classification = build_type_classification_result(
+        novel_type=NovelType.FANTASY_UPGRADE,
+        fallback_used=True,
+        input_composition=InputComposition.CHAPTERS_OUTLINE,
+        evaluation_mode=EvaluationMode.DEGRADED,
+    )
+    fallback_type_lens = build_type_lens_result(
+        novel_type=fallback_type_classification.novelType,
+        input_composition=InputComposition.CHAPTERS_OUTLINE,
+        evaluation_mode=EvaluationMode.DEGRADED,
+        score_band=ScoreBand.FOUR,
+    )
+
+    weighted_projection = build_final_projection(
+        aggregation=aggregation,
+        type_classification=weighted_type_classification,
+        rubric=rubric,
+        type_lens=weighted_type_lens,
+        consistency=consistency,
+    )
+    fallback_projection = build_final_projection(
+        aggregation=aggregation,
+        type_classification=fallback_type_classification,
+        rubric=rubric,
+        type_lens=fallback_type_lens,
+        consistency=consistency,
+    )
+
+    assert weighted_projection.overall.score == 71
+    assert fallback_projection.overall.score == 69
+    assert fallback_projection.typeAssessment is not None
+    assert fallback_projection.typeAssessment.fallbackUsed is True
+    assert fallback_projection.typeAssessment.novelType is NovelType.GENERAL_FALLBACK
 
 
 def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested_axis() -> None:
@@ -1015,11 +1264,21 @@ def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested
         return payload
 
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
-            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
-        }
+        payloads=build_pipeline_provider_payloads(
+            screening=screening,
+            type_classification=build_type_classification_result(
+                novel_type=NovelType.GENERAL_FALLBACK,
+                fallback_used=True,
+                input_composition=screening.inputComposition,
+                evaluation_mode=screening.evaluationMode,
+            ),
+            type_lens=build_type_lens_result(
+                novel_type=NovelType.GENERAL_FALLBACK,
+                input_composition=screening.inputComposition,
+                evaluation_mode=screening.evaluationMode,
+            ),
+            rubric_payload=provide_rubric_payload,
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
@@ -1038,14 +1297,14 @@ def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested
 
 def test_scoring_pipeline_uses_joint_input_mismatch_error_for_cross_input_conflict() -> None:
     screening = build_screening_result()
-    rubric = build_rubric_set()
     prompt_runtime = RecordingPromptRuntime()
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
-            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
-        }
+        payloads=build_pipeline_provider_payloads(
+            screening=screening,
+            rubric_payload=lambda request: build_rubric_slice_payload(
+                requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]
+            ),
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
@@ -1068,13 +1327,13 @@ def test_scoring_pipeline_allows_weak_cross_input_divergence_to_continue() -> No
     aggregation = build_aggregation_result()
     prompt_runtime = RecordingPromptRuntime()
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(
+        payloads=build_pipeline_provider_payloads(
+            screening=screening,
+            rubric_payload=lambda request: build_rubric_slice_payload(
                 requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]
             ),
-            StageName.AGGREGATION: aggregation.model_dump(mode="json"),
-        }
+            aggregation_payload=aggregation.model_dump(mode="json"),
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
@@ -1185,11 +1444,13 @@ def test_scoring_pipeline_masks_joint_unrateable_screening_rejection_reason_mess
 def test_scoring_pipeline_raises_stage_schema_invalid_when_aggregation_payload_invalid() -> None:
     prompt_runtime = RecordingPromptRuntime()
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: build_screening_result().model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: lambda request: build_rubric_slice_payload(requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]),
-            StageName.AGGREGATION: ["invalid-payload"],
-        }
+        payloads=build_pipeline_provider_payloads(
+            screening=build_screening_result(),
+            rubric_payload=lambda request: build_rubric_slice_payload(
+                requested_axes=[AxisId(value) for value in json.loads(request.messages[-1].content)["requestedAxes"]]
+            ),
+            aggregation_payload=["invalid-payload"],
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
@@ -1313,6 +1574,11 @@ def test_scoring_pipeline_raises_contract_invalid_when_success_payload_missing_r
 
 def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> None:
     screening = build_screening_result()
+    type_classification = build_type_classification_result(
+        novel_type=NovelType.FANTASY_UPGRADE,
+        input_composition=screening.inputComposition,
+        evaluation_mode=screening.evaluationMode,
+    )
     aggregation = build_aggregation_result()
     requested_axes_batches = [
         [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE],
@@ -1330,11 +1596,17 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
         return payload
 
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
-            StageName.AGGREGATION: aggregation.model_dump(mode="json"),
-        }
+        payloads=build_pipeline_provider_payloads(
+            screening=screening,
+            type_classification=type_classification,
+            type_lens=build_type_lens_result(
+                novel_type=type_classification.novelType,
+                input_composition=screening.inputComposition,
+                evaluation_mode=screening.evaluationMode,
+            ),
+            rubric_payload=provide_rubric_payload,
+            aggregation_payload=aggregation.model_dump(mode="json"),
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
@@ -1344,6 +1616,11 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
     assert result.projection.overall.score == 75
     assert result.projection.overall.verdict == aggregation.overallVerdictDraft
     assert result.projection.overall.platformCandidates == aggregation.platformCandidates
+    assert result.typeClassification.novelType is NovelType.FANTASY_UPGRADE
+    assert result.typeLens.novelType is NovelType.FANTASY_UPGRADE
+    assert result.projection.typeAssessment is not None
+    assert result.projection.typeAssessment.novelType is NovelType.FANTASY_UPGRADE
+    assert len(result.projection.typeAssessment.lenses) == 4
     assert prompt_runtime.calls == [
         {
             "stage": "input_screening",
@@ -1353,7 +1630,21 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
             "model_id": "model-test",
         },
         {
+            "stage": "type_classification",
+            "input_composition": "chapters_outline",
+            "evaluation_mode": "full",
+            "provider_id": "provider-test",
+            "model_id": "model-test",
+        },
+        {
             "stage": "rubric_evaluation",
+            "input_composition": "chapters_outline",
+            "evaluation_mode": "full",
+            "provider_id": "provider-test",
+            "model_id": "model-test",
+        },
+        {
+            "stage": "type_lens_evaluation",
             "input_composition": "chapters_outline",
             "evaluation_mode": "full",
             "provider_id": "provider-test",
@@ -1388,9 +1679,9 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
             "responseFormat": {"type": "json_object"},
         },
         {
-            "stage": "rubric_evaluation",
+            "stage": "type_classification",
             "timeoutMs": 90_000,
-            "maxTokens": 6_000,
+            "maxTokens": 2_500,
             "responseFormat": {"type": "json_object"},
         },
         {
@@ -1403,6 +1694,18 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
             "stage": "rubric_evaluation",
             "timeoutMs": 90_000,
             "maxTokens": 6_000,
+            "responseFormat": {"type": "json_object"},
+        },
+        {
+            "stage": "rubric_evaluation",
+            "timeoutMs": 90_000,
+            "maxTokens": 6_000,
+            "responseFormat": {"type": "json_object"},
+        },
+        {
+            "stage": "type_lens_evaluation",
+            "timeoutMs": 90_000,
+            "maxTokens": 4_000,
             "responseFormat": {"type": "json_object"},
         },
         {
@@ -1435,11 +1738,10 @@ def test_scoring_pipeline_blocks_when_any_rubric_slice_is_invalid() -> None:
         return payload
 
     provider = RecordingProviderAdapter(
-        payloads={
-            StageName.INPUT_SCREENING: screening.model_dump(mode="json"),
-            StageName.RUBRIC_EVALUATION: provide_rubric_payload,
-            StageName.AGGREGATION: build_aggregation_result().model_dump(mode="json"),
-        }
+        payloads=build_pipeline_provider_payloads(
+            screening=screening,
+            rubric_payload=provide_rubric_payload,
+        )
     )
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 

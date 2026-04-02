@@ -2,13 +2,14 @@
 
 ## 文档角色
 
-本文档定义当前前端围绕评测任务的主流程、轮询策略、结果入口逻辑以及失败 / 阻断语义。
+本文档定义当前前端围绕评测任务的主流程、轮询策略、类型识别展示、结果入口逻辑以及失败 / 阻断语义。
 
-它是前端状态语义的主锚点，用于统一：
+它用于统一：
 
 - 页面流转
 - 查询与轮询节奏
 - `status / resultStatus` 的消费规则
+- 任务页类型识别区与结果页类型评价模块
 - 错误态、阻断态与不可用态
 
 ## 当前前提
@@ -25,7 +26,7 @@
 - 任务完成后默认停留在任务页，由用户手动进入结果页
 - 只有 `available` 结果才能进入正式结果正文路径
 - `blocked`、`not_available`、`fetch_failed` 都只能展示语义态或错误态
-- 摘要页与详情页职责分离
+- 类型识别先显示在任务页，正式类型 lens 再显示在结果页
 
 ## 核心对象流转
 
@@ -46,10 +47,9 @@ EvaluationTask
 -> HistoryListView
 ```
 
-说明：
+补充：
 
-- 新建页本地草稿不再抽象为共享 `InputDraft`
-- 历史页列表项复用 `DashboardTaskSummaryView`
+- `EvaluationTask` 现在会在执行中逐步补齐 `novelType / typeClassificationConfidence / typeFallbackUsed`
 - 结果页消费的是 `EvaluationResultResource -> ResultDetailView`，而不是直接读取原始结果 JSON
 
 ## 主流程
@@ -70,7 +70,10 @@ EvaluationTask
 1. `任务详情 / 状态页` 读取任务详情
 2. 当 `status=queued|processing` 时，每 `2` 秒轮询一次
 3. 页面展示输入摘要、输入组成、评测模式与运行元信息
-4. 页面不读取正式结果正文
+4. 页面固定保留“类型识别”区域：
+   - 类型尚未判出时显示“识别中”
+   - 类型已判出时显示类型 badge、置信度和兜底标记
+5. 页面不读取正式结果正文
 
 ### 流程三：任务结束
 
@@ -85,7 +88,7 @@ EvaluationTask
 
 1. `结果详情页` 先读取任务详情
 2. 只有任务不是活动态时，才读取结果资源
-3. `available` 展示正式 `overall + axes`
+3. `available` 展示正式 `overall + optional typeAssessment + axes`
 4. `blocked` 与 `not_available` 展示语义态说明
 5. 结果资源读取失败时展示 `fetch_failed` 错误态
 
@@ -149,58 +152,6 @@ EvaluationTask
 | `completed` | `not_available` | 正常结束但无可读结果资源 |
 | `failed` | `not_available` | 技术失败 |
 
-约束：
-
-- `completed + not_available` 是允许出现的兼容读取状态
-- `fetch_failed` 只表示本次网络 / 读取失败，不改写后端状态
-
-## 输入与提交流程约束
-
-创建页至少需要表达：
-
-- `title`
-- 文本输入或文件输入模式
-- `chapters` 或 `outline` 至少一侧
-- `inputComposition`
-- `evaluationMode`
-
-说明：
-
-- 正式推荐输入为 `chapters + outline`
-- `chapters only` 与 `outline only` 允许提交，但属于降级评测
-- 上传模式只接受 `TXT / MD / DOCX`
-- provider 不可分析时，创建页禁止发起任务创建
-
-## 状态转移规则
-
-### 输入阶段
-
-```text
-editing -> validation_failed
-editing -> submitting
-submitting -> submit_failed
-submitting -> queued
-```
-
-### 任务阶段
-
-```text
-queued -> processing
-queued -> failed
-processing -> completed
-processing -> failed
-```
-
-### 结果消费阶段
-
-```text
-completed + available -> 允许进入结果页
-completed + blocked -> 结果页展示阻断态
-completed + not_available -> 结果页展示不可用态
-failed + not_available -> 停留任务页失败态
-available -> fetch_failed
-```
-
 ## 页面行为约束
 
 ### 新建评测任务页
@@ -215,6 +166,7 @@ available -> fetch_failed
 - 承载 `queued`、`processing`、`completed`、`failed`
 - 读取 `TaskDetailView`
 - `queued / processing` 时轮询
+- 始终显示类型识别区域
 - `completed + available` 时展示结果入口
 - `completed + blocked` 时展示阻断说明
 - `completed + not_available` 时展示终态元信息，但不展示结果入口
@@ -224,14 +176,18 @@ available -> fetch_failed
 
 - 先确认任务已结束，再读取结果资源
 - `available` 才进入正式结果阅读态
+- 正式正文按以下顺序展示：
+  - 总体判断
+  - 类型评价模块（若 `typeAssessment` 存在）
+  - `8` 轴 rubric 结果
 - `blocked`、`not_available`、`fetch_failed` 都不展示结果正文
-- 正式正文围绕 `overall + axes` 展示
 
 ### 工作台首页与历史记录页
 
 - 只展示摘要，不展示正式结果正文
 - 首页自动刷新只在存在活动任务时开启
 - 历史页通过 URL 保存检索、状态和游标
+- V2 当前不在首页或历史页扩散类型展示
 
 ## 失败与阻断分类
 
@@ -245,30 +201,8 @@ available -> fetch_failed
 | 结果不可用 | 任务结束但无可读结果资源 | `任务详情 / 状态页` 或 `结果详情页` | 否 |
 | 结果读取失败 | 当前结果读取请求失败 | `结果详情页` | 否 |
 
-## 空态、错误态与恢复入口
-
-### 正常空态
-
-以下属于正常空态：
-
-- 工作台暂无最近任务
-- 工作台暂无最近结果
-- 历史记录检索无匹配项
-
-### 错误态
-
-- 工作台摘要读取失败
-- 任务详情读取失败
-- 结果资源读取失败
-- 历史记录读取失败
-
-### 恢复入口
-
-- 工作台、任务页、结果页、历史页都提供显式重试
-- 任务失败或阻断时，引导返回新建页重新提交
-
 ## 与其他文档的关系
 
 - 页面结构见 `docs/architecture/frontend-information-architecture.md`
-- 页面规格见 `docs/planning/frontend-page-specs.md`
+- 页面消费对象见 `docs/contracts/frontend-view-models.md`
 - 查询策略见 `docs/contracts/frontend-api-consumption-and-query-strategy.md`

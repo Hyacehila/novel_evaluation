@@ -1,0 +1,11 @@
+promptId: type-lens-degraded
+stage: type_lens_evaluation
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+inputCompositionScope: *
+evaluationModeScope: degraded
+providerScope: provider-deepseek
+modelScope: deepseek-chat
+enabled: true
+notes: degraded 模式类型 lens 资产，要求保守处理证据和置信度。

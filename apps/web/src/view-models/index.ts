@@ -2,6 +2,7 @@ import type {
   ErrorCode,
   EvaluationMode,
   InputComposition,
+  NovelType,
   ProviderConfigurationSource,
   ResultStatus,
   TaskStatus,
@@ -50,6 +51,9 @@ export interface TaskDetailView {
   rubricVersion: string | null;
   providerId: string | null;
   modelId: string | null;
+  novelType: NovelType | null;
+  typeClassificationConfidence: number | null;
+  typeFallbackUsed: boolean | null;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -84,6 +88,24 @@ export interface OverallResultView {
   weaknesses: string[];
 }
 
+export interface TypeLensView {
+  lensId: string;
+  label: string;
+  scoreBand: string;
+  reason: string;
+  confidence: number;
+  degradedByInput: boolean;
+  riskTags: string[];
+}
+
+export interface TypeAssessmentView {
+  novelType: NovelType;
+  classificationConfidence: number;
+  fallbackUsed: boolean;
+  summary: string;
+  lenses: TypeLensView[];
+}
+
 export interface ResultBodyView {
   taskId: string;
   schemaVersion: string;
@@ -94,6 +116,7 @@ export interface ResultBodyView {
   resultTime: string;
   axes: AxisResultView[];
   overall: OverallResultView;
+  typeAssessment: TypeAssessmentView | null;
 }
 
 export interface ResultDetailView {

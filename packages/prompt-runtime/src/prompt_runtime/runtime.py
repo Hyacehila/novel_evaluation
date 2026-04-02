@@ -15,7 +15,9 @@ from .models import PromptRegistryRecord, PromptStage, PromptVersionRecord, Reso
 
 _FORMAL_STAGE_DIRECTORIES = {
     "input_screening": "screening",
+    "type_classification": "type-classification",
     "rubric_evaluation": "rubric",
+    "type_lens_evaluation": "type-lens",
     "aggregation": "aggregation",
 }
 _LOADABLE_REGISTRY_STATUSES = frozenset({"candidate", "active"})

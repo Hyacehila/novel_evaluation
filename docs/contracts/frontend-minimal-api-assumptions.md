@@ -2,7 +2,7 @@
 
 ## 文档角色
 
-本文档为前端提供应当对齐的 `Phase 1` API 最小消费假设。它以正式契约与当前 API 实现为准，而不是以页面局部假设为准。
+本文档为前端提供应当对齐的 API 最小消费假设。它以正式契约与当前 API 实现为准。
 
 ## 路由集合
 
@@ -46,6 +46,17 @@
 - `startup_env`
 - `runtime_memory`
 
+### `novelType`
+
+- `female_general`
+- `fantasy_upgrade`
+- `urban_reality`
+- `history_military`
+- `sci_fi_apocalypse`
+- `suspense_horror`
+- `game_derivative`
+- `general_fallback`
+
 ## Provider 状态假设
 
 - `GET /api/provider-status` 返回 provider 当前是否可分析
@@ -61,20 +72,22 @@
 - 支持 JSON 与 multipart
 - 创建成功返回完整 `EvaluationTask`
 - 初始状态是 `queued + not_available`
+- 新建任务的 `novelType / typeClassificationConfidence / typeFallbackUsed` 初始允许为 `null`
 - `POST /api/tasks` 非幂等
 - provider 未配置时返回 `409 PROVIDER_NOT_CONFIGURED`
 
-## 历史查询假设
+## 任务读取假设
 
-- `q`：标题子串搜索
-- `status`：任务状态筛选
-- `cursor`：不透明游标
-- `limit`：默认 `20`，最大 `50`
+- 任务在 `processing` 中可能已经补齐类型识别字段
+- `resultAvailable=true` 当且仅当 `resultStatus=available`
+- 当前允许 `completed + not_available` 作为历史兼容状态
 
 ## 结果读取假设
 
 - `available` 才返回 `result`
 - `blocked/not_available` 均返回 `result=null`
+- `result.overall.platformCandidates` 为结构化对象数组，而非字符串数组
+- `result.typeAssessment` 允许为 `null`，用于兼容历史结果读取
 - 前端本地可派生 `fetch_failed`，但它不属于后端正式枚举
 - 旧版持久化结果或损坏结果会被 API 标准化为 `not_available`
 

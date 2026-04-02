@@ -2,12 +2,12 @@
 
 ## 文档角色
 
-本文档冻结 `Phase 1` 共享业务对象的语义、不变量和关系。
+本文档冻结当前共享业务对象的语义、不变量和关系。
 
 ## 建模前提
 
 - 当前只面向本地单用户交付
-- 多用户字段移入未来扩展保留位，不作为当前待确认项
+- 多用户字段移入未来扩展保留位，不作为当前阻塞项
 - 用户任务由 API 进程内执行器推进
 - 回归任务由 worker/evals 驱动
 
@@ -63,6 +63,9 @@
 - `rubricVersion`
 - `providerId`
 - `modelId`
+- `novelType`
+- `typeClassificationConfidence`
+- `typeFallbackUsed`
 - `createdAt`
 - `startedAt`
 - `completedAt`
@@ -75,7 +78,9 @@
   - `processing + not_available`
   - `completed + available`
   - `completed + blocked`
+  - `completed + not_available`
   - `failed + not_available`
+- 类型相关字段允许在任务执行中从 `null` 逐步变为有效值
 
 ### `EvaluationResultResource`
 
@@ -105,13 +110,50 @@
 - `resultTime`
 - `axes`
 - `overall`
+- `typeAssessment`
 
 说明：
 
 - `axes` 必须完整覆盖全部 `8` 个 `AxisId`
 - 每个轴包含 `scoreBand / score / summary / reason / degradedByInput / riskTags`
-- `overall` 当前只包含 `score / verdict / summary / platformCandidates / marketFit`
-- 旧版顶层字段 `signingProbability / commercialValue / writingQuality / innovationScore / detailedAnalysis` 已不再是当前领域结果结构
+- `overall` 当前包含：
+  - `score`
+  - `verdict`
+  - `verdictSubQuote`
+  - `summary`
+  - `platformCandidates`
+  - `marketFit`
+  - `strengths`
+  - `weaknesses`
+- `typeAssessment` 当前为可选，用于兼容历史结果读取
+
+### `TypeClassificationResult`
+
+字段核心：
+
+- `candidates`
+- `novelType`
+- `classificationConfidence`
+- `fallbackUsed`
+- `summary`
+
+说明：
+
+- `candidates` 固定为 `Top-3`
+- `novelType` 由后端阈值逻辑最终选择
+
+### `TypeLensEvaluationResult`
+
+字段核心：
+
+- `novelType`
+- `summary`
+- `items`
+- `overallConfidence`
+
+说明：
+
+- `items` 必须完整覆盖当前 `novelType` 对应的 `4` 个 lens
 
 ### `EvalRecord`
 
@@ -133,38 +175,6 @@
 
 - 执行追踪信息进入 `EvalRecord` 和日志
 - 不进入 `FinalEvaluationProjection`
-
-### `EvalBaseline`
-
-字段核心：
-
-- `baselineId`
-- `caseIds`
-- `promptVersion`
-- `schemaVersion`
-- `rubricVersion`
-- `providerId`
-- `modelId`
-- `createdAt`
-
-### `EvalReport`
-
-字段核心：
-
-- `reportId`
-- `reportType`
-- `caseIds`
-- `promptVersion`
-- `schemaVersion`
-- `rubricVersion`
-- `providerId`
-- `modelId`
-- `createdAt`
-
-`reportType` 固定为：
-
-- `execution_summary`
-- `baseline_comparison`
 
 ## 未来扩展保留位
 

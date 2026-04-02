@@ -1,0 +1,10 @@
+promptId: type-lens-default
+promptVersion: v1
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+owner: prompt-governance
+updatedAt: 2026-04-02T00:00:00Z
+changeSummary: 新增 V2 类型 lens 阶段，按最终类型只输出 4 个固定 lens 的结构化结果。
+rollbackTarget: none
+evalRequirement: uv run --project apps/api pytest apps/api/tests -k "prompt_runtime or scoring_pipeline"

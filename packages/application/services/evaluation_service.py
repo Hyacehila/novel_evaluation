@@ -40,6 +40,7 @@ from packages.schemas.output.result import (
 )
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
 from packages.schemas.stages.aggregation import PlatformCandidate
+from packages.schemas.stages.type_classification import TypeClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -212,6 +213,17 @@ class EvaluationService:
                 "rubricVersion": projection.rubricVersion,
                 "providerId": projection.providerId,
                 "modelId": projection.modelId,
+                "novelType": projection.typeAssessment.novelType if projection.typeAssessment is not None else task.novelType,
+                "typeClassificationConfidence": (
+                    projection.typeAssessment.classificationConfidence
+                    if projection.typeAssessment is not None
+                    else task.typeClassificationConfidence
+                ),
+                "typeFallbackUsed": (
+                    projection.typeAssessment.fallbackUsed
+                    if projection.typeAssessment is not None
+                    else task.typeFallbackUsed
+                ),
                 "completedAt": now,
                 "updatedAt": now,
             }
@@ -332,10 +344,17 @@ class EvaluationService:
             task = self.get_task(task_id)
             screening = self._scoring_pipeline.run_screening(task=task, submission=submission)
             self._sync_task_with_screening(task_id, screening=screening)
-            pipeline_result = self._scoring_pipeline.run_after_screening(
+            type_classification = self._scoring_pipeline.run_type_classification(
                 task=self.get_task(task_id),
                 submission=submission,
                 screening=screening,
+            )
+            self.sync_task_with_type_classification(task_id, type_classification=type_classification)
+            pipeline_result = self._scoring_pipeline.run_after_type_classification(
+                task=self.get_task(task_id),
+                submission=submission,
+                screening=screening,
+                type_classification=type_classification,
             )
             self.complete_task_with_projection(task_id, projection=pipeline_result.projection)
         except PipelineBlockedError as exc:
@@ -401,6 +420,31 @@ class EvaluationService:
                 "rubricVersion": screening.rubricVersion,
                 "providerId": screening.providerId,
                 "modelId": screening.modelId,
+                "updatedAt": now,
+            }
+        )
+        return self._task_repository.update_task(updated)
+
+    def sync_task_with_type_classification(
+        self,
+        task_id: str,
+        *,
+        type_classification: TypeClassificationResult,
+    ) -> EvaluationTask:
+        task = self.get_task(task_id)
+        if task.status is not TaskStatus.PROCESSING:
+            raise ValueError("只有 processing 状态可以同步 type classification 元数据。")
+        now = self._clock.now()
+        updated = task.model_copy(
+            update={
+                "novelType": type_classification.novelType,
+                "typeClassificationConfidence": type_classification.classificationConfidence,
+                "typeFallbackUsed": type_classification.fallbackUsed,
+                "schemaVersion": type_classification.schemaVersion,
+                "promptVersion": type_classification.promptVersion,
+                "rubricVersion": type_classification.rubricVersion,
+                "providerId": type_classification.providerId,
+                "modelId": type_classification.modelId,
                 "updatedAt": now,
             }
         )
@@ -641,6 +685,7 @@ class EvaluationService:
             resultTime=result_time,
             axes=projection.axes,
             overall=projection.overall,
+            typeAssessment=projection.typeAssessment,
         )
 
     def _resolve_runtime_metadata(

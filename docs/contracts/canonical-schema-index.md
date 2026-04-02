@@ -7,7 +7,6 @@
 ## 状态词表
 
 - `implemented`：正式 schema 已存在
-- `doc_frozen`：字段与文件归属已冻结，但代码尚未落地
 - `reserved`：未来扩展保留位
 
 ## 共享基础对象
@@ -16,6 +15,8 @@
 | --- | --- | --- | --- |
 | `SchemaModel` | `implemented` | `packages/schemas/common/base.py` | 共享基类 |
 | `MetaData` | `implemented` | `packages/schemas/common/base.py` | 分页与响应元信息 |
+| `NovelType` | `implemented` | `packages/schemas/common/enums.py` | 当前正式类型枚举 |
+| `TypeLensDefinition` | `implemented` | `packages/schemas/common/novel_types.py` | 类型 lens 目录定义 |
 
 ## 输入与任务对象
 
@@ -38,12 +39,17 @@
 | 对象 | 状态 | 正式真源文件 |
 | --- | --- | --- |
 | `InputScreeningResult` | `implemented` | `packages/schemas/input/screening.py` |
+| `TypeClassificationCandidate` | `implemented` | `packages/schemas/stages/type_classification.py` |
+| `TypeClassificationResult` | `implemented` | `packages/schemas/stages/type_classification.py` |
 | `RubricEvaluationEvidenceRef` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `RubricEvaluationItem` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `RubricEvaluationSlice` | `implemented` | `packages/schemas/stages/rubric.py` |
 | `RubricEvaluationSet` | `implemented` | `packages/schemas/stages/rubric.py` |
+| `TypeLensItem` | `implemented` | `packages/schemas/stages/type_lens.py` |
+| `TypeLensEvaluationResult` | `implemented` | `packages/schemas/stages/type_lens.py` |
 | `ConsistencyConflict` | `implemented` | `packages/schemas/stages/consistency.py` |
 | `ConsistencyCheckResult` | `implemented` | `packages/schemas/stages/consistency.py` |
+| `PlatformCandidate` | `implemented` | `packages/schemas/stages/aggregation.py` |
 | `AggregatedRubricResult` | `implemented` | `packages/schemas/stages/aggregation.py` |
 | `FinalEvaluationProjection` | `implemented` | `packages/schemas/output/result.py` |
 
@@ -53,6 +59,7 @@
 | --- | --- | --- |
 | `AxisEvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
 | `OverallEvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
+| `TypeAssessmentResult` | `implemented` | `packages/schemas/output/result.py` |
 | `EvaluationResult` | `implemented` | `packages/schemas/output/result.py` |
 | `EvaluationResultResource` | `implemented` | `packages/schemas/output/result.py` |
 | `ErrorObject` | `implemented` | `packages/schemas/output/error.py` |
@@ -67,12 +74,6 @@
 | `EvalRecord` | `implemented` | `packages/schemas/evals/record.py` |
 | `EvalBaseline` | `implemented` | `packages/schemas/evals/baseline.py` |
 | `EvalReport` | `implemented` | `packages/schemas/evals/report.py` |
-
-说明：
-
-- `EvalReport` 统一为单一正式对象
-- `reportType` 固定为 `execution_summary | baseline_comparison`
-- 不再保留 `EvalReport` 结构或文件颗粒度待确认项
 
 ## 未来扩展保留位
 

@@ -20,15 +20,16 @@
 面向需要理解边界和真源的开发者：
 
 - `docs/architecture/system-overview.md`
+- `docs/architecture/scoring-pipeline.md`
+- `docs/architecture/layered-rubric-evaluation-architecture.md`
 - `docs/contracts/canonical-schema-index.md`
-- `docs/decisions/`
-- `docs/planning/`
+- `docs/contracts/json-contracts.md`
 
 ## 子目录
 
 - `getting-started/`：用户入口，包含快速开始、真实 Provider 配置和 FAQ
 - `planning/`：范围冻结、实施路线、mission 规划、覆盖矩阵
-- `architecture/`：系统结构、运行模型、分层边界
+- `architecture/`：系统结构、运行模型、评分流水线、前端页面流转
 - `contracts/`：API、Schema、Provider、上传与前端协作契约
 - `operations/`：维护者文档，包含 smoke、配置、诊断、回滚和质量门禁
 - `decisions/`：ADR 与关键决策记录

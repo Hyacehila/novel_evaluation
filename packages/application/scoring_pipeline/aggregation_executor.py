@@ -29,7 +29,9 @@ def execute_aggregation(
         "chapters": [chapter.content for chapter in context.submission.chapters or []],
         "outline": context.submission.outline.content if context.submission.outline is not None else None,
         "screening": context.screening.model_dump(mode="json"),
+        "typeClassification": context.type_classification.model_dump(mode="json"),
         "rubric": context.rubric.model_dump(mode="json"),
+        "typeLens": context.type_lens.model_dump(mode="json"),
         "consistency": context.consistency.model_dump(mode="json"),
     }
     for attempt in range(1, _SCHEMA_VALIDATION_MAX_ATTEMPTS + 1):

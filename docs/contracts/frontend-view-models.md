@@ -15,7 +15,10 @@
 - `DashboardSummaryView`
 - `TaskDetailView`
 - `AxisResultView`
+- `PlatformCandidateView`
 - `OverallResultView`
+- `TypeLensView`
+- `TypeAssessmentView`
 - `ResultBodyView`
 - `ResultDetailView`
 - `HistoryListView`
@@ -85,11 +88,19 @@
 - `rubricVersion`
 - `providerId`
 - `modelId`
+- `novelType`
+- `typeClassificationConfidence`
+- `typeFallbackUsed`
 - `createdAt`
 - `startedAt`
 - `completedAt`
 - `updatedAt`
 - `resultAvailable`
+
+说明：
+
+- `novelType / typeClassificationConfidence / typeFallbackUsed` 用于任务页的“类型识别”区域
+- 在任务仍处于 `processing` 时，这三个字段可能已经从 `null` 变为有效值
 
 ## 5. 结果页对象
 
@@ -103,13 +114,40 @@
 - `degradedByInput`
 - `riskTags`
 
+### `PlatformCandidateView`
+
+- `name`
+- `weight`
+- `pitchQuote`
+
 ### `OverallResultView`
 
 - `score`
 - `verdict`
+- `verdictSubQuote`
 - `summary`
 - `platformCandidates`
 - `marketFit`
+- `strengths`
+- `weaknesses`
+
+### `TypeLensView`
+
+- `lensId`
+- `label`
+- `scoreBand`
+- `reason`
+- `confidence`
+- `degradedByInput`
+- `riskTags`
+
+### `TypeAssessmentView`
+
+- `novelType`
+- `classificationConfidence`
+- `fallbackUsed`
+- `summary`
+- `lenses`
 
 ### `ResultBodyView`
 
@@ -122,6 +160,7 @@
 - `resultTime`
 - `axes`
 - `overall`
+- `typeAssessment`
 
 ### `ResultDetailView`
 
@@ -136,6 +175,7 @@
 
 - `state` 当前与 `resultStatus` 保持同值，取值为 `available / blocked / not_available`
 - `result=null` 时页面只能展示语义态，不展示正文
+- `result.typeAssessment` 允许为 `null`，此时结果页隐藏类型评价模块
 
 ## 6. `HistoryListView`
 
@@ -161,11 +201,7 @@
 
 ## 与正式契约的映射原则
 
+- 任务页字段围绕 `EvaluationTaskDto -> TaskDetailView` 映射
 - 结果页字段围绕 `EvaluationResultResourceDto -> ResultDetailView` 映射
-- 当前正式结果核心语义是 `overall + axes`，前端不得再映射回旧的四项评分结构
-- 历史页和工作台摘要可以生成展示型字段，但不得改变正式结果含义
-
-## 与其他文档的关系
-
-- 前后端职责边界见 `docs/contracts/frontend-backend-boundary.md`
-- 前端最小 API 假设见 `docs/contracts/frontend-minimal-api-assumptions.md`
+- 当前正式结果核心语义是 `overall + optional typeAssessment + axes`
+- 前端不得再映射回旧的四项评分结构
