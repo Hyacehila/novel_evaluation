@@ -1,0 +1,10 @@
+promptId: type-classification-default
+promptVersion: v1
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+owner: prompt-governance
+updatedAt: 2026-04-02T00:00:00Z
+changeSummary: 新增 V2 类型分类阶段，输出 Top-3 候选并由后端按统一阈值选择最终类型。
+rollbackTarget: none
+evalRequirement: uv run --project apps/api pytest apps/api/tests -k "prompt_runtime or scoring_pipeline"

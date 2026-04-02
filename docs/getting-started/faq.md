@@ -12,6 +12,10 @@
 
 补充：runtime key 录入接口只允许本机访问；如果请求带转发头，或并非来自回环地址，API 会返回 `FORBIDDEN`。
 
+## 为什么任务页会先显示“类型识别中”，稍后才出现类型 badge
+
+这是当前评分流水线的正式设计。系统会在 `input_screening` 之后先执行独立的 `type_classification` 请求，并把 `novelType / typeClassificationConfidence / typeFallbackUsed` 写回任务对象；因此任务页可能在任务仍处于 `processing` 时就先显示类型识别结果，而类型 lens 会在最终结果页里展示。
+
 ## 页面打开了，但提交任务后一直没有结果
 
 先检查：
@@ -43,9 +47,22 @@
 
 关闭 API 后删除 `./var/novel-evaluation.sqlite3`，再次启动时会自动重新创建空数据库。
 
-## 为什么历史任务还在，但结果页显示“结果当前不可用”
+## 为什么历史任务还在，但结果页没有类型模块或显示“结果当前不可用”
 
-当前结果结构已经升级为 `overall + axes`。如果本地 SQLite 里仍保存旧版本结果，API 会把它们按 `not_available` 返回，并提示“历史结果结构已过期”或“结果数据已损坏”。这是当前实现的兼容策略，不会自动把旧结果迁移为新结构。
+当前正式结果结构已经升级为 `overall + axes + optional typeAssessment`。
+
+- 若历史结果仍满足当前 schema，但缺少 `typeAssessment`，结果页会继续显示总体判断和 `8` 轴，并隐藏类型模块
+- 若本地 SQLite 里保存的是更老的结果结构或损坏 payload，API 会把它们按 `not_available` 返回，并提示重新提交新任务
+
+## 真实 Playwright E2E 怎么跑
+
+- 默认 `pnpm --dir apps/web test:e2e` 走 deterministic provider
+- 若要跑真实 DeepSeek：
+  - 在当前会话设置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+  - 选择 `NOVEL_EVAL_E2E_PROVIDER_MODE=startup_key` 或 `runtime_key`
+  - 再执行 `pnpm --dir apps/web test:e2e`
+
+两种真实模式都会校验任务创建、任务完成、任务页类型识别和结果页类型模块。
 
 ## 端口冲突怎么办
 
@@ -55,10 +72,3 @@
 - `NOVEL_EVAL_WEB_PORT`
 
 然后重新执行 `.\scripts\run-api.ps1` 和 `.\scripts\run-web.ps1`。
-
-## 其他平台能不能跑
-
-理论上可以，但当前文档和官方验证口径以 `Windows + PowerShell` 为主。若你在 macOS 或 Linux 上使用，建议先参考原始命令和配置说明：
-
-- `../operations/local-installation-and-smoke.md`
-- `../operations/runtime-configuration-and-diagnostics.md`

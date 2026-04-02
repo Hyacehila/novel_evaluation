@@ -3,6 +3,15 @@ export type ResultStatus = "available" | "not_available" | "blocked";
 export type InputComposition = "chapters_outline" | "chapters_only" | "outline_only";
 export type EvaluationMode = "full" | "degraded";
 export type ProviderConfigurationSource = "missing" | "startup_env" | "runtime_memory";
+export type NovelType =
+  | "female_general"
+  | "fantasy_upgrade"
+  | "urban_reality"
+  | "history_military"
+  | "sci_fi_apocalypse"
+  | "suspense_horror"
+  | "game_derivative"
+  | "general_fallback";
 export type ErrorCode = string;
 
 export interface MetaDataDto {
@@ -77,6 +86,9 @@ export interface EvaluationTaskDto {
   rubricVersion: string | null;
   providerId: string | null;
   modelId: string | null;
+  novelType: NovelType | null;
+  typeClassificationConfidence: number | null;
+  typeFallbackUsed: boolean | null;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -141,6 +153,24 @@ export interface OverallResultDto {
   weaknesses: string[];
 }
 
+export interface TypeLensDto {
+  lensId: string;
+  label: string;
+  scoreBand: string;
+  reason: string;
+  confidence: number;
+  degradedByInput: boolean;
+  riskTags: string[];
+}
+
+export interface TypeAssessmentDto {
+  novelType: NovelType;
+  classificationConfidence: number;
+  fallbackUsed: boolean;
+  summary: string;
+  lenses: TypeLensDto[];
+}
+
 export interface EvaluationResultDto {
   taskId: string;
   schemaVersion: string;
@@ -151,6 +181,7 @@ export interface EvaluationResultDto {
   resultTime: string;
   axes: AxisResultDto[];
   overall: OverallResultDto;
+  typeAssessment: TypeAssessmentDto | null;
 }
 
 export interface EvaluationResultResourceDto {

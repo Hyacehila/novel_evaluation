@@ -3,9 +3,11 @@
 import { useTaskQuery, useTaskResultQuery } from "@/api/hooks";
 import { routes } from "@/shared/config/routes";
 import {
+  formatConfidence,
   formatDateTime,
   formatScore,
   getAxisLabel,
+  getNovelTypeLabel,
   getResultStatusLabel,
   getScoreBandLabel,
   getScoreBandTone,
@@ -26,8 +28,8 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
     <div className="page-frame space-y-8">
       <PageIntro
         eyebrow="结果详情页"
-        title="查看正式的 8 轴结构化评价结果。"
-        description="当结果可用时，这里会展示总体评分、总体结论、市场判断与 8 个 rubric 评价轴；结果阻断或不可用时会明确提示原因。"
+        title="查看正式的类型化结构化评测结果。"
+        description="当结果可用时，这里会展示总体评分、类型判断与 4 个 lens、市场判断和 8 个 rubric 评价轴；结果阻断或不可用时会明确提示原因。"
         actions={<Button asLink href={routes.task(taskId)} variant="secondary">返回任务页</Button>}
       />
 
@@ -65,7 +67,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
 
       {taskQuery.data && canReadResult && resultQuery.isLoading ? (
         <Card className="p-8">
-          <p className="text-sm text-[var(--muted)]">正在读取结构化评价结果…</p>
+          <p className="text-sm text-[var(--muted)]">正在读取正式评测结果…</p>
         </Card>
       ) : null}
 
@@ -135,6 +137,34 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
               </dl>
             </Card>
           </div>
+
+          {resultQuery.data.result.typeAssessment ? (
+            <Card className="p-6">
+              <p className="text-xs tracking-[0.12em] text-[var(--muted)]">类型评价</p>
+              <h2 className="section-title mt-3 text-2xl font-semibold">类型判断与 4 个 lens</h2>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <Badge>{getNovelTypeLabel(resultQuery.data.result.typeAssessment.novelType)}</Badge>
+                <Badge tone={resultQuery.data.result.typeAssessment.fallbackUsed ? "warn" : "good"}>
+                  {resultQuery.data.result.typeAssessment.fallbackUsed ? "通用兜底 lens" : "类型 lens 已锁定"}
+                </Badge>
+                <Badge tone="neutral">置信度 {formatConfidence(resultQuery.data.result.typeAssessment.classificationConfidence)}</Badge>
+              </div>
+              <AnalysisCard title="类型总结" content={resultQuery.data.result.typeAssessment.summary} />
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                {resultQuery.data.result.typeAssessment.lenses.map((lens) => (
+                  <TypeLensCard
+                    key={lens.lensId}
+                    label={lens.label}
+                    scoreBand={lens.scoreBand}
+                    confidence={lens.confidence}
+                    reason={lens.reason}
+                    degradedByInput={lens.degradedByInput}
+                    riskTags={lens.riskTags}
+                  />
+                ))}
+              </div>
+            </Card>
+          ) : null}
 
           <Card className="p-6">
             <p className="text-xs tracking-[0.12em] text-[var(--muted)]">分轴结果</p>
@@ -215,6 +245,41 @@ function AxisCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Badge tone={getScoreBandTone(scoreBand)}>{getScoreBandLabel(scoreBand)}</Badge>
+        {degradedByInput ? <Badge tone="warn">输入降级</Badge> : null}
+        {riskTags.map((riskTag) => (
+          <Badge key={riskTag} tone="bad">{riskTag}</Badge>
+        ))}
+      </div>
+      <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{reason}</p>
+    </section>
+  );
+}
+
+function TypeLensCard({
+  label,
+  scoreBand,
+  confidence,
+  reason,
+  degradedByInput,
+  riskTags,
+}: {
+  label: string;
+  scoreBand: string;
+  confidence: number;
+  reason: string;
+  degradedByInput: boolean;
+  riskTags: string[];
+}) {
+  return (
+    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold">{label}</h3>
+          <p className="mt-2 text-sm text-[var(--muted)]">类型置信度：{formatConfidence(confidence)}</p>
+        </div>
+        <Badge tone={getScoreBandTone(scoreBand)}>{getScoreBandLabel(scoreBand)}</Badge>
+      </div>
+      <div className="mt-4 flex flex-wrap gap-2">
         {degradedByInput ? <Badge tone="warn">输入降级</Badge> : null}
         {riskTags.map((riskTag) => (
           <Badge key={riskTag} tone="bad">{riskTag}</Badge>

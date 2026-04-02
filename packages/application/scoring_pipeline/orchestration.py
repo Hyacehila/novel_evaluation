@@ -13,16 +13,21 @@ from packages.application.scoring_pipeline.models import (
     ScoringPipelineResult,
     ScreeningExecutionContext,
     StagePromptBinding,
+    TypeClassificationExecutionContext,
+    TypeLensExecutionContext,
 )
 from packages.application.support.process_logging import log_event
 from packages.application.scoring_pipeline.projection_service import build_final_projection
 from packages.application.scoring_pipeline.rubric_executor import RUBRIC_SLICE_PLAN, execute_rubric
 from packages.application.scoring_pipeline.screening_executor import execute_screening
+from packages.application.scoring_pipeline.type_classification_executor import execute_type_classification
+from packages.application.scoring_pipeline.type_lens_executor import execute_type_lens
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName, Sufficiency
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
+from packages.schemas.stages.type_classification import TypeClassificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +44,17 @@ class ScoringPipeline:
 
     def run(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> ScoringPipelineResult:
         screening = self.run_screening(task=task, submission=submission)
-        return self.run_after_screening(task=task, submission=submission, screening=screening)
+        type_classification = self.run_type_classification(
+            task=task,
+            submission=submission,
+            screening=screening,
+        )
+        return self.run_after_type_classification(
+            task=task,
+            submission=submission,
+            screening=screening,
+            type_classification=type_classification,
+        )
 
     def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
         input_composition = submission.inputComposition.value
@@ -70,8 +85,49 @@ class ScoringPipeline:
         submission: JointSubmissionRequest,
         screening: InputScreeningResult,
     ) -> ScoringPipelineResult:
-        self._ensure_screening_continue_allowed(task_id=task.taskId, screening=screening)
+        type_classification = self.run_type_classification(
+            task=task,
+            submission=submission,
+            screening=screening,
+        )
+        return self.run_after_type_classification(
+            task=task,
+            submission=submission,
+            screening=screening,
+            type_classification=type_classification,
+        )
 
+    def run_type_classification(
+        self,
+        *,
+        task: EvaluationTask,
+        submission: JointSubmissionRequest,
+        screening: InputScreeningResult,
+    ) -> TypeClassificationResult:
+        self._ensure_screening_continue_allowed(task_id=task.taskId, screening=screening)
+        type_classification_binding = self._resolve_binding(
+            stage=StageName.TYPE_CLASSIFICATION,
+            input_composition=screening.inputComposition.value,
+            evaluation_mode=screening.evaluationMode.value,
+        )
+        return execute_type_classification(
+            provider_adapter=self._provider_adapter,
+            context=TypeClassificationExecutionContext(
+                task_id=task.taskId,
+                submission=submission,
+                screening=screening,
+                binding=type_classification_binding,
+            ),
+        )
+
+    def run_after_type_classification(
+        self,
+        *,
+        task: EvaluationTask,
+        submission: JointSubmissionRequest,
+        screening: InputScreeningResult,
+        type_classification: TypeClassificationResult,
+    ) -> ScoringPipelineResult:
         rubric_binding = self._resolve_binding(
             stage=StageName.RUBRIC_EVALUATION,
             input_composition=screening.inputComposition.value,
@@ -84,6 +140,21 @@ class ScoringPipeline:
             binding=rubric_binding,
         )
         rubric = execute_rubric(provider_adapter=self._provider_adapter, context=rubric_context)
+        type_lens_binding = self._resolve_binding(
+            stage=StageName.TYPE_LENS_EVALUATION,
+            input_composition=screening.inputComposition.value,
+            evaluation_mode=screening.evaluationMode.value,
+        )
+        type_lens = execute_type_lens(
+            provider_adapter=self._provider_adapter,
+            context=TypeLensExecutionContext(
+                task_id=task.taskId,
+                submission=submission,
+                screening=screening,
+                type_classification=type_classification,
+                binding=type_lens_binding,
+            ),
+        )
         consistency_started_at = perf_counter()
         consistency = run_consistency_check(context=rubric_context, rubric=rubric)
         consistency_duration_ms = int((perf_counter() - consistency_started_at) * 1000)
@@ -132,13 +203,21 @@ class ScoringPipeline:
                 task_id=task.taskId,
                 submission=submission,
                 screening=screening,
+                type_classification=type_classification,
                 rubric=rubric,
+                type_lens=type_lens,
                 consistency=consistency,
                 binding=aggregation_binding,
             ),
         )
         projection_started_at = perf_counter()
-        projection = build_final_projection(aggregation=aggregation, rubric=rubric, consistency=consistency)
+        projection = build_final_projection(
+            aggregation=aggregation,
+            type_classification=type_classification,
+            rubric=rubric,
+            type_lens=type_lens,
+            consistency=consistency,
+        )
         log_event(
             logger,
             logging.INFO,
@@ -154,7 +233,9 @@ class ScoringPipeline:
         )
         return ScoringPipelineResult(
             screening=screening,
+            typeClassification=type_classification,
             rubric=rubric,
+            typeLens=type_lens,
             consistency=consistency,
             aggregation=aggregation,
             projection=projection,

@@ -5,6 +5,7 @@
 - Prompt 只在后端治理
 - Provider 只在后端治理
 - 文件解析只在后端完成
+- 类型判断与 lens 选择只在后端治理
 - 前端只消费后端校验后的结构化结果
 
 ## 前端负责
@@ -18,6 +19,7 @@
 - 轮询任务状态
 - 读取结果
 - 读取历史
+- 展示任务页类型识别状态和结果页类型评价模块
 
 ## 后端负责
 
@@ -27,6 +29,14 @@
 - 持久化任务与结果
 - 推进用户任务执行
 - 维护状态机
+- 执行：
+  - `input_screening`
+  - `type_classification`
+  - `rubric_evaluation`
+  - `type_lens_evaluation`
+  - `consistency_check`
+  - `aggregation`
+  - `final_projection`
 - 返回错误码与诊断相关字段
 
 ## 结果边界
@@ -35,16 +45,19 @@
 
 - `overall.score / overall.verdict / overall.summary`
 - `overall.platformCandidates / overall.marketFit`
+- `overall.verdictSubQuote / overall.strengths / overall.weaknesses`
+- `typeAssessment.novelType / classificationConfidence / fallbackUsed / summary / lenses`
 - `axes[*].score / scoreBand / summary / reason / degradedByInput / riskTags`
+- 任务级 `novelType / typeClassificationConfidence / typeFallbackUsed`
 - 版本元信息
-- 市场判断
 - provider 状态语义
 
 前端不可展示为正式结果的内容：
 
 - 未经校验的原始模型输出
 - `blocked` 或 `not_available` 场景下的伪结果
-- 旧版结果结构自动脑补出的“兼容结果”
+- 前端自行推断的类型判断
+- 前端自行切换或覆盖的类型 lens
 
 ## Provider 配置边界
 

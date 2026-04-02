@@ -101,6 +101,6 @@ describe("dashboard page", () => {
 
     const html = renderPage();
 
-    expect(html).toContain("当前还没有可展示的结构化评价结果。结果生成后会出现在这个区块。");
+    expect(html).toContain("当前还没有可展示的评测结果摘要。结果生成后会在这里展示总体判断与最新结论。");
   });
 });

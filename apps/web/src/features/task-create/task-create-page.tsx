@@ -95,7 +95,7 @@ export function TaskCreatePage() {
       <PageIntro
         eyebrow="新建评测任务页"
         title="提交正文与大纲，发起小说结构化评测。"
-        description="你可以直接粘贴正文和大纲，或上传稿件文件。系统会根据输入材料生成评测任务，并进入 LLM rubric 结构化评价流程。"
+        description="你可以直接粘贴正文和大纲，或上传稿件文件。系统会根据输入材料生成评测任务，并进入解耦的类型判断、LLM rubric 与类型 lens 结构化评价流程。"
         actions={<Button asLink href={routes.dashboard} variant="secondary">返回工作台</Button>}
       />
 
@@ -248,9 +248,9 @@ export function TaskCreatePage() {
         <div className="space-y-6">
           <Card className="p-6">
             <p className="text-xs tracking-[0.12em] text-[var(--muted)]">提交流程</p>
-            <h2 className="section-title mt-3 text-2xl font-semibold">任务创建后会进入评测流程</h2>
+            <h2 className="section-title mt-3 text-2xl font-semibold">任务创建后会进入 V2 类型化评测流程</h2>
             <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-              创建成功后会进入任务详情页，你可以在其中查看评测进度、结果状态以及后续可读的结构化评价结果。
+              创建成功后会进入任务详情页，你可以先查看评测进度与类型识别，再进入结果页查看总体判断、类型评价与 8 轴结果。
             </p>
           </Card>
           <Card className="p-6">

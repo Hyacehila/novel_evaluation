@@ -1,6 +1,6 @@
 # 网络小说打分器
 
-面向中文网文场景的本地单用户评测工具，用结构化流程输出总体判断、平台候选、市场判断和 `8` 轴评价结果。
+面向中文网文场景的本地单用户评测工具。当前正式结果围绕“通用 `8` 轴 rubric + 解耦的类型判断与类型 lens”展开，输出总体判断、类型评价模块、平台候选、市场判断和 `8` 轴评价结果。
 
 ![结果页截图](output/playwright/readme-result-page.png)
 
@@ -11,6 +11,8 @@
 - 默认存储：`SQLite`，数据写入 `./var/novel-evaluation.sqlite3`
 - Provider 启动语义：API 缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时仍可只读启动，可查看已有数据，但不能创建新分析任务；worker 启动仍要求该 Key
 - 当前上传格式：`TXT / MD / DOCX`
+- 正式评分主线：`input_screening -> type_classification -> rubric_evaluation -> type_lens_evaluation -> consistency_check -> aggregation -> final_projection`
+- 当前正式结果结构：`overall + axes + optional typeAssessment`
 
 ## 非目标
 
@@ -51,7 +53,7 @@ Copy-Item .env.example .env
 2. 填入 `NOVEL_EVAL_DEEPSEEK_API_KEY`
 3. 重新启动 `.\scripts\run-api.ps1`
 
-如果 API 在启动时已经通过环境变量带上 `NOVEL_EVAL_DEEPSEEK_API_KEY`，UI 只展示当前已配置状态，不支持在页面里替换或清空该 Key。
+如果 API 在启动时已经通过环境变量带上 `NOVEL_EVAL_DEEPSEEK_API_KEY`，UI 只展示当前已配置状态，不支持在页面里替换或清空该 Key。若 API 启动时无 key，则可在新建任务页录入一次性 runtime key。
 
 详细说明见 [真实 Provider 配置](docs/getting-started/real-provider.md)。
 
@@ -74,6 +76,7 @@ Copy-Item .env.example .env
 
 - [文档索引](docs/README.md)
 - [系统概览](docs/architecture/system-overview.md)
+- [评分流水线](docs/architecture/scoring-pipeline.md)
 - [运行与持久化模型](docs/architecture/runtime-execution-and-persistence.md)
 - [Schema 真源索引](docs/contracts/canonical-schema-index.md)
 
@@ -84,8 +87,10 @@ Copy-Item .env.example .env
 - 启动时已经配置了 `NOVEL_EVAL_DEEPSEEK_API_KEY`：UI 只展示状态，不支持替换或清空
 - 页面访问不到 API：确认 `.\scripts\run-api.ps1` 正在运行，并检查 `.env` 里的 `NOVEL_EVAL_API_HOST / NOVEL_EVAL_API_PORT`
 - 想清空本地数据：关闭 API 后删除 `./var/novel-evaluation.sqlite3`
-- 想跑真实 Playwright E2E：先配置真实 `DeepSeek` Key，再执行 `pnpm --dir apps/web test:e2e`
-- 升级后旧任务结果显示“结果不可用”：当前结果结构已经升级为 `overall + axes`；旧版持久化结果不会自动迁移，会按 `not_available` 展示并提示重新提交
+- 想跑 Playwright E2E：
+  - 默认 `pnpm --dir apps/web test:e2e` 走 deterministic provider
+  - 真实 DeepSeek 验收时，在当前 PowerShell 会话设置 `NOVEL_EVAL_DEEPSEEK_API_KEY`，并以 `NOVEL_EVAL_E2E_PROVIDER_MODE=startup_key` 或 `runtime_key` 运行 `pnpm --dir apps/web test:e2e`
+- 升级后旧任务结果显示“结果不可用”：当前结果结构已经升级为 `overall + axes + optional typeAssessment`；更老的持久化结果若不满足当前 schema，会按 `not_available` 展示并提示重新提交
 
 更多问题见 [常见问题](docs/getting-started/faq.md)。
 

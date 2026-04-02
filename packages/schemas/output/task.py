@@ -5,8 +5,13 @@ from datetime import datetime
 from pydantic import computed_field, field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import EvaluationMode, InputComposition, ResultStatus, TaskStatus
-from packages.schemas.common.validators import ensure_non_empty_text, validate_input_composition, validate_percentage
+from packages.schemas.common.enums import EvaluationMode, InputComposition, NovelType, ResultStatus, TaskStatus
+from packages.schemas.common.validators import (
+    ensure_non_empty_text,
+    validate_confidence,
+    validate_input_composition,
+    validate_percentage,
+)
 from packages.schemas.output.error import BLOCKED_ERROR_CODES, FAILED_ERROR_CODES, ErrorCode
 
 
@@ -37,6 +42,9 @@ class EvaluationTask(SchemaModel):
     rubricVersion: str | None = None
     providerId: str | None = None
     modelId: str | None = None
+    novelType: NovelType | None = None
+    typeClassificationConfidence: float | None = None
+    typeFallbackUsed: bool | None = None
     createdAt: datetime
     startedAt: datetime | None = None
     completedAt: datetime | None = None
@@ -60,6 +68,13 @@ class EvaluationTask(SchemaModel):
         if value is None:
             return None
         return ensure_non_empty_text(value, "task metadata")
+
+    @field_validator("typeClassificationConfidence")
+    @classmethod
+    def validate_type_classification_confidence(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return validate_confidence(value, "typeClassificationConfidence")
 
     @model_validator(mode="after")
     def validate_task_semantics(self) -> "EvaluationTask":

@@ -34,7 +34,9 @@ test("provider 状态场景可按模式完成主流程", async ({ page, request 
   if (providerMode === "runtime_key") {
     await expect(page.getByText("当前无 API，无法进行分析").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "创建评测任务" })).toBeDisabled();
-    await expect(page.getByLabel("运行时 API Key")).toBeVisible();
+    const runtimeKeyInput = page.getByLabel("运行时 API Key");
+    await expect(runtimeKeyInput).toBeVisible();
+    await expect(runtimeKeyInput).toHaveAttribute("type", "password");
     await submitRuntimeProviderKey(page);
     await expect(page.getByText("运行时内存", { exact: true })).toBeVisible();
     await expect(page.getByLabel("运行时 API Key")).toHaveCount(0);
@@ -52,7 +54,10 @@ test("provider 状态场景可按模式完成主流程", async ({ page, request 
 
   await expect(page).toHaveURL(/\/tasks\/task_/);
   await waitForTaskResult(page);
+  await expect(page.getByRole("heading", { name: "类型判断" })).toBeVisible();
+  await expect(page.getByText("识别置信度", { exact: true })).toBeVisible();
   await page.getByRole("link", { name: "查看结果详情" }).click();
   await expect(page).toHaveURL(/\/tasks\/task_.*\/result/);
   await expect(page.getByRole("heading", { name: "总体结论与市场判断" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "类型判断与 4 个 lens" })).toBeVisible();
 });

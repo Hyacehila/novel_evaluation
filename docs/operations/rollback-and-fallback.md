@@ -2,12 +2,12 @@
 
 ## 文档角色
 
-本文档定义当前仓库在 `Phase 1` 收口阶段的最小回滚、降级与失败退出策略。
+本文档定义当前仓库的最小回滚、降级与失败退出策略。
 
 ## 当前前提
 
 - `packages/schemas/`、`packages/application/`、`packages/provider-adapters/`、`packages/prompt-runtime/`、`apps/api/`、`apps/worker/`、`evals/`、`apps/web/` 都已进入真实实现态
-- 正式主链固定为五段：`input_screening -> rubric_evaluation -> consistency_check -> aggregation -> final_projection`
+- 正式主链固定为七段：`input_screening -> type_classification -> rubric_evaluation -> type_lens_evaluation -> consistency_check -> aggregation -> final_projection`
 - 用户任务真源固定为 SQLite；回归与批处理产物真源固定为 `evals/reports/*.json` 与 `evals/baselines/*.json`
 - 未配置 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时，API 允许只读启动，而不是停机；worker 仍要求启动期 key
 
@@ -15,7 +15,7 @@
 
 - 回滚优先恢复“可解释、可追踪、可消费”的稳定状态
 - 不允许通过删除失败记录来伪装问题不存在
-- 业务阻断与技术失败必须分层处理
+- 业务阻断、类型兜底与技术失败必须分层处理
 - 文档与命令必须一起回滚，不能只退代码不退操作口径
 
 ## 一、Prompt 回滚
@@ -45,7 +45,23 @@
 - 同步回退 `docs/contracts/canonical-schema-index.md`
 - 重新跑 API、worker、web 全部门禁
 
-## 三、Provider 配置与只读降级
+## 三、类型兜底与类型阶段失败
+
+需要区分两类情况：
+
+### 1. 低置信类型判定
+
+- 不属于任务失败
+- 按 `general_fallback` 继续执行后续 lens
+- 任务与结果仍可成功完成
+
+### 2. 类型阶段 provider / schema 失败
+
+- 属于正式阶段失败
+- 不做静默跳过
+- 任务进入 `failed + not_available`
+
+## 四、Provider 配置与只读降级
 
 适用场景：
 
@@ -63,7 +79,7 @@
 - `NOVEL_EVAL_REQUIRE_REAL_PROVIDER` 已弃用，不再控制 API 启动成功
 - 若 provider 输出不满足 contract，统一映射为 `failed + not_available`
 
-## 四、Worker 回滚与绕行
+## 五、Worker 回滚与绕行
 
 适用场景：
 
@@ -76,7 +92,7 @@
 - `worker eval` 与 `worker batch` 都必须继续复用 `packages/application` 的同一条评分主线
 - 如回归链路故障，可先保留 API / web 主链，再单独回退 worker 改动
 
-## 五、结果阻断处理
+## 六、结果阻断处理
 
 适用场景：
 
@@ -92,28 +108,15 @@
 - `GET /api/tasks/{taskId}/result` 不返回伪结果
 - web 任务页和结果页都只展示阻断态
 
-## 六、Evals / Baseline 回退
-
-适用场景：
-
-- Prompt / Schema / Provider 变化后回归退化
-- baseline comparison 结果异常
-
-当前策略：
-
-- 保留旧 `baseline` 与 `report` 文件，不直接覆盖
-- 新 run 生成新 `reportId`
-- 若比较结果异常，优先回退 Prompt/Schema/Provider 版本，再重新生成受控报告
-
 ## 七、文档回退
 
 若以下文档与代码现实冲突，应先回退文档到当前实现：
 
 - `README.md`
-- `docs/contracts/canonical-schema-index.md`
-- `docs/operations/runtime-configuration-and-diagnostics.md`
-- `docs/operations/local-installation-and-smoke.md`
-- `docs/operations/quality-gates-and-regression.md`
+- `docs/architecture/*.md`
+- `docs/contracts/*.md`
+- `docs/getting-started/*.md`
+- `docs/operations/*.md`
 
 ## 八、恢复顺序建议
 

@@ -41,6 +41,8 @@
 
 - `queued/processing` 时每 `2s` 轮询
 - 任务终态后停止轮询
+- 任务页固定读取并展示类型识别区域
+- `processing` 中若后端已写回 `novelType`，页面应立即显示类型 badge、置信度和兜底标记
 - `completed + available` 展示结果入口
 - `completed + blocked`、`completed + not_available` 与 `failed + not_available` 展示语义态
 
@@ -48,6 +50,10 @@
 
 - 先读取 `taskDetail(taskId)`
 - 仅当任务不是 `queued/processing` 时才启用 `taskResult(taskId)`
+- `available` 时展示：
+  - 总体判断
+  - 类型评价模块（若 `typeAssessment` 存在）
+  - `8` 轴 rubric 结果
 - `blocked/not_available` 进入语义态，不展示正文
 - 网络失败可本地派生 `fetch_failed`
 

@@ -1,6 +1,6 @@
 # 面向网络小说双输入 Rubric 的设计吸收矩阵
 
-> 历史说明：本文形成于早期设计收口阶段，仍保留“旧四维骨架层 / 对外四分字段”的方案假设。当前代码实现已经收敛为 `overall + axes` 正式结果，`aggregation` 不再输出旧四维骨架，对外 API 也不再返回四分字段。阅读本文时，请以 `docs/architecture/scoring-pipeline.md`、`docs/architecture/layered-rubric-evaluation-architecture.md` 与 `docs/contracts/json-contracts.md` 作为当前实现真源。
+> 历史说明：本文形成于早期设计收口阶段，仍保留“旧四维骨架层 / 对外四分字段”的方案假设。当前代码实现已经收敛为 `overall + axes + optional typeAssessment` 正式结果，并新增解耦的 `type_classification / type_lens_evaluation` 主线；`aggregation` 不再输出旧四维骨架，对外 API 也不再返回四分字段。阅读本文时，请以 `docs/architecture/scoring-pipeline.md`、`docs/architecture/layered-rubric-evaluation-architecture.md` 与 `docs/contracts/json-contracts.md` 作为当前实现真源。
 
 ## 目标
 

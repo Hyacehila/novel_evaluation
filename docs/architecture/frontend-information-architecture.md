@@ -4,8 +4,6 @@
 
 本文定义当前前端页面结构、核心对象、导航语义与可达性规则，以 `apps/web` 已落地的页面和路由为准。
 
-本文不替代页面规格、状态流或字段契约，但会说明哪些页面已经实现、哪些仍只是未来保留概念。
-
 ## 当前架构基线
 
 - 采用 `工作台主导式` 页面组织
@@ -49,8 +47,6 @@
 - 本地文件状态 `chaptersFile / outlineFile`
 - `deriveDraftSemantics()`
 
-共同表达提交前的本地编辑态以及 `inputComposition / evaluationMode` 派生结果。
-
 ### 2. 正式提交对象
 
 - `JointSubmissionRequest`
@@ -58,7 +54,7 @@
 
 ### 3. 评测任务
 
-`EvaluationTask` 是任务流主对象，用于承载任务状态、输入摘要、运行元信息与结果可读性。
+`EvaluationTask` 是任务流主对象，用于承载任务状态、输入摘要、运行元信息、类型识别元数据与结果可读性。
 
 ### 4. 结果资源与正式结果
 
@@ -71,7 +67,10 @@
 - `DashboardResultSummaryView`
 - `HistoryListView`
 
-历史页列表项直接复用 `DashboardTaskSummaryView`，没有单独的 `HistoryTaskItemView`。
+说明：
+
+- 历史页列表项直接复用 `DashboardTaskSummaryView`
+- V2 当前不在首页或历史页显示类型 badge
 
 ### 6. Provider 状态对象
 
@@ -95,10 +94,6 @@
 - 历史记录页结果按钮 -> `结果详情页`
 - 任务详情页结果入口 -> `结果详情页`
 
-### 非页面入口
-
-- Provider 状态读取与运行时 key 配置通过本地代理接口进入，不提供独立页面
-
 ## 页面可达性规则
 
 ### 工作台首页
@@ -115,10 +110,19 @@
 
 - 只有在存在合法 `taskId` 时可达
 - 读取失败时进入错误态，而不是伪造任务详情
+- 页面固定包含：
+  - 输入摘要与状态 badge
+  - 类型识别区域
+  - 生命周期信息
+  - 运行元信息
 
 ### 结果详情页
 
 - 路由可达，但只有 `resultStatus=available` 才进入正式结果阅读态
+- 正式结果正文固定分为：
+  - 总体判断模块
+  - 类型评价模块（仅当 `typeAssessment` 存在时显示）
+  - `8` 轴 rubric 结果
 - `blocked`、`not_available`、`fetch_failed` 都展示语义态或错误态
 
 ### 历史记录页
@@ -132,8 +136,8 @@
 | --- | --- | --- |
 | `工作台首页` | `DashboardSummaryView` | 展示最近任务、进行中任务、最近结果摘要 |
 | `新建评测任务页` | `TaskCreateFormValues + deriveDraftSemantics()` | 采集输入、校验上传、创建任务 |
-| `任务详情 / 状态页` | `TaskDetailView` | 展示任务状态、输入摘要、运行元信息与结果入口 |
-| `结果详情页` | `ResultDetailView` | 展示 `overall + axes` 正式结果，或展示阻断 / 不可用态 |
+| `任务详情 / 状态页` | `TaskDetailView` | 展示任务状态、输入摘要、类型识别、运行元信息与结果入口 |
+| `结果详情页` | `ResultDetailView` | 展示总体判断、类型评价模块、`8` 轴结果，或展示阻断 / 不可用态 |
 | `历史记录页` | `HistoryListView` | 按任务组织历史记录并支持回访 |
 
 ## 任务完成后的导航规则
@@ -149,18 +153,3 @@
 - 当前仅作为未来扩展概念保留
 - 现有代码未实现页面、路由和 feature
 - 后续若落地，应在历史记录与结果元信息稳定后再接入
-
-## 当前不纳入信息架构的内容
-
-- Prompt 调试入口
-- 模型调试入口
-- 批量任务页
-- 多角色后台管理页
-
-## 与其他文档的关系
-
-- 流程、状态与失败路径见 `docs/architecture/frontend-task-and-state-flow.md`
-- 前后端职责边界见 `docs/contracts/frontend-backend-boundary.md`
-- 页面消费对象见 `docs/contracts/frontend-view-models.md`
-- 页面职责与展示规则见 `docs/planning/frontend-page-specs.md`
-- 术语统一见 `docs/contracts/frontend-terminology.md`

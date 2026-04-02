@@ -24,8 +24,8 @@ export function DashboardPage() {
     <div className="page-frame space-y-8">
       <PageIntro
         eyebrow="工作台首页"
-        title="集中查看评测任务进度与结构化评价结果。"
-        description="这里汇总最近任务、评测进度与结果摘要，帮助你快速回访小说智能打分系统中的核心信息。"
+        title="集中查看评测任务进度、类型识别状态与结构化评测结果。"
+        description="这里汇总最近任务、评测进度与结果摘要，帮助你快速回访总体判断、类型评价与历史任务。"
         actions={
           <>
             <Button asLink href={routes.newTask}>
@@ -178,7 +178,7 @@ export function DashboardPage() {
                     ))
                   ) : (
                     <p className="text-sm leading-7 text-[var(--muted)]">
-                      当前还没有可展示的结构化评价结果。结果生成后会出现在这个区块。
+                      当前还没有可展示的评测结果摘要。结果生成后会在这里展示总体判断与最新结论。
                     </p>
                   )}
                 </div>

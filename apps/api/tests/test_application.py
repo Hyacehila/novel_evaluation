@@ -16,6 +16,7 @@ from packages.schemas.common.enums import (
     EvaluationMode,
     FatalRisk,
     InputComposition,
+    NovelType,
     ResultStatus,
     StageName,
     StageStatus,
@@ -28,6 +29,7 @@ from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutli
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
+from packages.schemas.stages.type_classification import TypeClassificationCandidate, TypeClassificationResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +113,40 @@ def build_screening_result(
         segmentationPlan=None,
         confidence=0.72 if continue_allowed else 0.24,
         continueAllowed=continue_allowed,
+    )
+
+
+def build_type_classification_result(*, task_id: str, fallback_used: bool = False) -> TypeClassificationResult:
+    return TypeClassificationResult(
+        taskId=task_id,
+        schemaVersion="schema-type-v2",
+        promptVersion="prompt-type-v2",
+        rubricVersion="rubric-type-v2",
+        providerId="provider-test",
+        modelId="model-test",
+        inputComposition=InputComposition.CHAPTERS_OUTLINE,
+        evaluationMode=EvaluationMode.DEGRADED,
+        candidates=[
+            TypeClassificationCandidate(
+                novelType=NovelType.URBAN_REALITY,
+                confidence=0.78,
+                reason="当前题材信号最稳定。",
+            ),
+            TypeClassificationCandidate(
+                novelType=NovelType.FANTASY_UPGRADE,
+                confidence=0.54,
+                reason="存在次级升级信号。",
+            ),
+            TypeClassificationCandidate(
+                novelType=NovelType.GENERAL_FALLBACK,
+                confidence=0.33,
+                reason="通用兜底候选。",
+            ),
+        ],
+        novelType=NovelType.GENERAL_FALLBACK if fallback_used else NovelType.URBAN_REALITY,
+        classificationConfidence=0.78,
+        fallbackUsed=fallback_used,
+        summary="类型识别已完成。",
     )
 
 
@@ -383,19 +419,32 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
     submission = build_request()
     task = service.create_task(submission)
     screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+    type_classification = build_type_classification_result(task_id=task.taskId)
 
     class StubPipeline:
         def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
             return screening
 
-        def run_after_screening(
+        def run_type_classification(
             self,
             *,
             task: EvaluationTask,
             submission: JointSubmissionRequest,
             screening: InputScreeningResult,
+        ) -> TypeClassificationResult:
+            assert task.evaluationMode is EvaluationMode.DEGRADED
+            return type_classification
+
+        def run_after_type_classification(
+            self,
+            *,
+            task: EvaluationTask,
+            submission: JointSubmissionRequest,
+            screening: InputScreeningResult,
+            type_classification: TypeClassificationResult,
         ) -> SimpleNamespace:
             assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.novelType is NovelType.URBAN_REALITY
             projection = service._build_final_projection(
                 task,
                 signing_probability=80,
@@ -413,6 +462,9 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
     assert updated.status is TaskStatus.COMPLETED
     assert updated.resultStatus is ResultStatus.AVAILABLE
     assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.novelType is NovelType.URBAN_REALITY
+    assert updated.typeClassificationConfidence == pytest.approx(0.78)
+    assert updated.typeFallbackUsed is False
 
 
 def test_execute_task_persists_screening_evaluation_mode_on_screening_block() -> None:
@@ -430,7 +482,13 @@ def test_execute_task_persists_screening_evaluation_mode_on_screening_block() ->
         def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
             return screening
 
-        def run_after_screening(self, *, task, submission, screening) -> SimpleNamespace:
+        def run_type_classification(
+            self,
+            *,
+            task: EvaluationTask,
+            submission: JointSubmissionRequest,
+            screening: InputScreeningResult,
+        ) -> TypeClassificationResult:
             raise PipelineBlockedError(
                 error_code=ErrorCode.INSUFFICIENT_CHAPTERS_INPUT,
                 message="正文内容不足，当前无法进入正式评分，请补充正文后重试。",
@@ -445,6 +503,8 @@ def test_execute_task_persists_screening_evaluation_mode_on_screening_block() ->
     assert updated.resultStatus is ResultStatus.BLOCKED
     assert updated.errorCode is ErrorCode.INSUFFICIENT_CHAPTERS_INPUT
     assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.novelType is None
+    assert updated.typeFallbackUsed is None
 
 
 def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screening() -> None:
@@ -452,13 +512,25 @@ def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screen
     submission = build_request()
     task = service.create_task(submission)
     screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+    type_classification = build_type_classification_result(task_id=task.taskId)
 
     class StubPipeline:
         def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
             return screening
 
-        def run_after_screening(self, *, task, submission, screening) -> SimpleNamespace:
+        def run_type_classification(
+            self,
+            *,
+            task: EvaluationTask,
+            submission: JointSubmissionRequest,
+            screening: InputScreeningResult,
+        ) -> TypeClassificationResult:
             assert task.evaluationMode is EvaluationMode.DEGRADED
+            return type_classification
+
+        def run_after_type_classification(self, *, task, submission, screening, type_classification) -> SimpleNamespace:
+            assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.novelType is NovelType.URBAN_REALITY
             raise PipelineFailureError(
                 error_code=ErrorCode.PROVIDER_FAILURE,
                 message="provider sanitized failure",
@@ -473,6 +545,8 @@ def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screen
     assert updated.resultStatus is ResultStatus.NOT_AVAILABLE
     assert updated.errorCode is ErrorCode.PROVIDER_FAILURE
     assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.novelType is NovelType.URBAN_REALITY
+    assert updated.typeFallbackUsed is False
 
 
 def test_get_history_limits_items_to_20() -> None:

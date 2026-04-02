@@ -77,7 +77,7 @@ export function HistoryPage() {
       <PageIntro
         eyebrow="历史记录页"
         title="按任务回访历史评测记录与结果状态。"
-        description="你可以按标题、状态和分页条件筛选历史任务，并继续查看可用的结构化评价结果。"
+        description="你可以按标题、状态和分页条件筛选历史任务，并继续查看可用的总体判断、类型评价与分轴结果。"
         actions={<Button asLink href={routes.newTask}>新建评测任务</Button>}
       />
 

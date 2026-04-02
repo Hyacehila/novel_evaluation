@@ -15,8 +15,8 @@ import { Card } from "@/shared/ui/card";
 
 
 const navItems = [
-  { href: routes.dashboard, label: "工作台", description: "查看评测任务与结果摘要" },
-  { href: routes.newTask, label: "新建评测任务", description: "提交正文或大纲发起评测" },
+  { href: routes.dashboard, label: "工作台", description: "查看任务进度、类型识别与结果摘要" },
+  { href: routes.newTask, label: "新建评测任务", description: "提交正文或大纲发起类型化评测" },
   { href: routes.history, label: "历史记录", description: "按标题、状态与分页回访任务" },
 ];
 
@@ -52,7 +52,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-xs tracking-[0.16em] text-[var(--accent-strong)]">阶段一交付</p>
             <h1 className="section-title mt-4 text-3xl font-semibold">小说智能打分系统</h1>
             <p className="mt-4 text-sm leading-7 text-[var(--muted)]">
-              围绕小说正文与大纲输入，查看评测任务进度、结构化评价结果与历史记录回访。
+              围绕小说正文与大纲输入，查看评测任务进度、类型识别、结构化评测结果与历史记录回访。
             </p>
           </div>
           <nav className="mt-6 space-y-3">

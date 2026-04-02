@@ -11,12 +11,14 @@ from packages.schemas.common.enums import (
     EvidenceSourceType,
     FatalRisk,
     InputComposition,
+    NovelType,
     ScoreBand,
     SkeletonDimensionId,
     StageName,
     StageStatus,
     Sufficiency,
 )
+from packages.schemas.common.novel_types import get_novel_type_label, get_type_lens_definitions
 
 from .contracts import (
     ProviderExecutionFailure,
@@ -142,21 +144,37 @@ _SCORE_BAND_TO_PERCENT = {
     ScoreBand.FOUR.value: 90,
 }
 
-_GENRE_KEYWORDS = {
-    "urban": ("都市", "总裁", "豪门", "职场", "公司", "股权", "董事会", "发布会"),
-    "scifi": ("星际", "机甲", "宇宙", "赛博", "舰队", "母星", "虫族", "跃迁", "边境", "太空"),
-    "fantasy": ("修仙", "宗门", "仙门", "灵气", "秘境", "大阵"),
-    "horror": ("规则怪谈", "诡异", "惊悚"),
-    "romance": ("恋爱", "婚约", "感情", "婚礼", "未婚夫"),
+_NOVEL_TYPE_KEYWORDS = {
+    NovelType.FEMALE_GENERAL: ("夫人", "王爷", "侯府", "嫡女", "替嫁", "和离", "先婚后爱", "世子", "婚约", "姨娘"),
+    NovelType.FANTASY_UPGRADE: ("修仙", "宗门", "灵气", "系统", "升级", "面板", "异能", "秘境", "大阵", "炼丹"),
+    NovelType.URBAN_REALITY: ("都市", "职场", "公司", "商战", "神豪", "创业", "经营", "董事会", "地产", "资本"),
+    NovelType.HISTORY_MILITARY: ("历史", "朝堂", "边关", "将军", "军队", "皇帝", "王朝", "战争", "谋臣", "争霸"),
+    NovelType.SCI_FI_APOCALYPSE: ("星际", "机甲", "赛博", "末世", "宇宙", "舰队", "虫族", "基地", "废土", "跃迁"),
+    NovelType.SUSPENSE_HORROR: ("悬疑", "推理", "刑侦", "规则怪谈", "惊悚", "诡异", "凶案", "谜题", "线索", "怪谈"),
+    NovelType.GAME_DERIVATIVE: ("副本", "无限流", "游戏", "电竞", "同人", "诸天", "穿梭", "轮回", "build", "关卡"),
 }
+_FALLBACK_TYPE_ORDER = (
+    NovelType.URBAN_REALITY,
+    NovelType.FANTASY_UPGRADE,
+    NovelType.GAME_DERIVATIVE,
+    NovelType.HISTORY_MILITARY,
+    NovelType.SCI_FI_APOCALYPSE,
+    NovelType.SUSPENSE_HORROR,
+    NovelType.FEMALE_GENERAL,
+    NovelType.GENERAL_FALLBACK,
+)
 
 
 def _build_structured_stage_output(request: ProviderExecutionRequest) -> dict[str, Any]:
     payload = _load_payload(request)
     if request.stage is StageName.INPUT_SCREENING:
         return _build_screening_output(request, payload)
+    if request.stage is StageName.TYPE_CLASSIFICATION:
+        return _build_type_classification_output(request, payload)
     if request.stage is StageName.RUBRIC_EVALUATION:
         return _build_rubric_output(request, payload)
+    if request.stage is StageName.TYPE_LENS_EVALUATION:
+        return _build_type_lens_output(request, payload)
     if request.stage is StageName.AGGREGATION:
         return _build_aggregation_output(request, payload)
     raise ValueError(f"不支持的 structured stage: {request.stage}")
@@ -312,22 +330,19 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
 
 def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[str, Any]) -> dict[str, Any]:
     screening = payload.get("screening") or {}
+    type_classification = payload.get("typeClassification") or {}
     rubric = payload.get("rubric") or {}
+    type_lens = payload.get("typeLens") or {}
     consistency = payload.get("consistency") or {}
     chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
     outline_text = str(payload.get("outline") or "")
-    genre = _infer_genre(f"{chapters_text}\n{outline_text}")
-    platform = {
-        "romance": "女频平台 A",
-        "urban": "都市平台 B",
-        "scifi": "男频平台 C",
-        "fantasy": "幻想平台 D",
-        "horror": "悬疑平台 E",
-    }.get(genre, "综合平台 A")
+    novel_type = _resolve_novel_type(type_classification.get("novelType")) or _infer_novel_type(f"{chapters_text}\n{outline_text}")
+    platform = _platform_for_novel_type(novel_type)
     risk_tags = sorted(set(rubric.get("riskTags", [])))
     if not consistency.get("passed", True):
         risk_tags.append(FatalRisk.FAKE_PAYOFF.value)
     degraded = screening.get("evaluationMode") == EvaluationMode.DEGRADED.value
+    type_summary = str(type_lens.get("summary") or f"当前按 {get_novel_type_label(novel_type)} lens 继续评估。").strip()
     return {
         "taskId": request.taskId,
         "stage": request.stage.value,
@@ -337,14 +352,77 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
         "providerId": request.providerId,
         "modelId": request.modelId,
         "overallVerdictDraft": "建议补全正文后再复核。" if degraded else "建议继续观察并进入样章复核。",
-        "verdictSubQuote": "当前样本量偏少，市场承接判断需等待正文补全后再确认。" if degraded else f"题材气质与 {platform} 的核心读者预期较为贴合，但仍需观察长线兑现能力。",
-        "overallSummaryDraft": "当前结果基于 degraded 材料，整体结论偏保守。" if degraded else "章节主线与市场抓手已形成初步可读的总体判断。",
+        "verdictSubQuote": (
+            "当前样本量偏少，市场承接判断需等待正文补全后再确认。"
+            if degraded
+            else f"作品当前归入{get_novel_type_label(novel_type)}，与 {platform} 的圈层预期更为贴合。"
+        ),
+        "overallSummaryDraft": (
+            f"当前结果基于 degraded 材料，整体结论偏保守；类型评估暂按 {get_novel_type_label(novel_type)} lens 处理。"
+            if degraded
+            else f"章节主线与市场抓手已形成初步可读的总体判断；{type_summary}"
+        ),
         "platformCandidates": [{"name": platform, "weight": 100, "pitchQuote": f"题材卖点与 {platform} 主流读者偏好一致，具备明确承接空间。"}],
-        "marketFitDraft": f"当前题材更贴合 {platform} 的用户预期。",
+        "marketFitDraft": f"当前作品被识别为 {get_novel_type_label(novel_type)}，更贴合 {platform} 的用户预期。",
         "strengthCandidates": ["题材定位清晰", "主线冲突具备继续阅读抓手"],
         "weaknessCandidates": ["正文样本仍不足以完全验证长线兑现" if degraded else "平台承接仍需更多正文样本验证"],
         "riskTags": sorted(set(risk_tags)),
         "overallConfidence": max(0.24, round(float(rubric.get("overallConfidence", 0.8)) - (0.12 if degraded else 0.0), 2)),
+    }
+
+
+def _build_type_classification_output(request: ProviderExecutionRequest, payload: dict[str, Any]) -> dict[str, Any]:
+    chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
+    outline_text = str(payload.get("outline") or "")
+    combined_text = f"{chapters_text}\n{outline_text}"
+    candidates = _rank_novel_types(combined_text)
+    top_label = get_novel_type_label(_resolve_novel_type(candidates[0]["novelType"]) or NovelType.GENERAL_FALLBACK)
+    second_label = get_novel_type_label(_resolve_novel_type(candidates[1]["novelType"]) or NovelType.GENERAL_FALLBACK)
+    return {
+        "taskId": request.taskId,
+        "stage": request.stage.value,
+        "schemaVersion": request.schemaVersion,
+        "promptVersion": request.promptVersion,
+        "rubricVersion": request.rubricVersion,
+        "providerId": request.providerId,
+        "modelId": request.modelId,
+        "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "evaluationMode": payload.get("evaluationMode") or request.evaluationMode.value,
+        "candidates": candidates,
+        "summary": f"当前最高题材信号落在“{top_label}”，次高候选为“{second_label}”。",
+    }
+
+
+def _build_type_lens_output(request: ProviderExecutionRequest, payload: dict[str, Any]) -> dict[str, Any]:
+    chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
+    outline_text = str(payload.get("outline") or "")
+    combined_text = f"{chapters_text}\n{outline_text}"
+    selected_type = _resolve_novel_type((payload.get("selectedType") or {}).get("novelType")) or NovelType.GENERAL_FALLBACK
+    degraded = (payload.get("screening") or {}).get("evaluationMode") == EvaluationMode.DEGRADED.value
+    items = [
+        _build_type_lens_item(
+            novel_type=selected_type,
+            lens_id=definition.lens_id,
+            label=definition.label,
+            combined_text=combined_text,
+            degraded=degraded,
+        )
+        for definition in get_type_lens_definitions(selected_type)
+    ]
+    return {
+        "taskId": request.taskId,
+        "stage": request.stage.value,
+        "schemaVersion": request.schemaVersion,
+        "promptVersion": request.promptVersion,
+        "rubricVersion": request.rubricVersion,
+        "providerId": request.providerId,
+        "modelId": request.modelId,
+        "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "evaluationMode": payload.get("evaluationMode") or request.evaluationMode.value,
+        "novelType": selected_type.value,
+        "summary": f"本次类型评价按“{get_novel_type_label(selected_type)}”lens 执行。",
+        "items": items,
+        "overallConfidence": min(item["confidence"] for item in items),
     }
 
 
@@ -386,8 +464,8 @@ def _score_axis(axis_id: AxisId, *, chapters_text: str, outline_text: str) -> tu
             return ScoreBand.FOUR.value, "题材与设定具备清晰差异化卖点。"
         return ScoreBand.THREE.value, "设定具备基础辨识度，但仍需进一步强化差异化。"
     if axis_id is AxisId.PLATFORM_FIT:
-        genre = _infer_genre(combined)
-        if genre in {"romance", "urban", "scifi", "fantasy", "horror"}:
+        novel_type = _infer_novel_type(combined)
+        if novel_type is not NovelType.GENERAL_FALLBACK:
             return ScoreBand.THREE.value, "题材标签和平台预期大体匹配。"
         return ScoreBand.TWO.value, "平台适配信号仍不充分。"
     if any(token in combined for token in ("付费", "连载", "追读", "爆点", "爽点")):
@@ -395,8 +473,123 @@ def _score_axis(axis_id: AxisId, *, chapters_text: str, outline_text: str) -> tu
     return ScoreBand.THREE.value, "商业化潜力基础尚可，但仍需更多样本验证。"
 
 
-def _infer_genre(text: str) -> str:
-    for genre, keywords in _GENRE_KEYWORDS.items():
-        if any(keyword in text for keyword in keywords):
-            return genre
-    return "general"
+def _rank_novel_types(text: str) -> list[dict[str, Any]]:
+    scores = {
+        novel_type: _count_keywords(text, keywords)
+        for novel_type, keywords in _NOVEL_TYPE_KEYWORDS.items()
+    }
+    ranked = sorted(
+        scores.items(),
+        key=lambda item: (item[1], item[0].value != NovelType.FEMALE_GENERAL.value),
+        reverse=True,
+    )
+    if ranked[0][1] == 0:
+        base_candidates = [
+            NovelType.GENERAL_FALLBACK,
+            NovelType.URBAN_REALITY,
+            NovelType.FANTASY_UPGRADE,
+        ]
+        return [
+            {
+                "novelType": novel_type.value,
+                "confidence": confidence,
+                "reason": "当前样本缺少稳定题材关键词，需保守处理类型判断。",
+            }
+            for novel_type, confidence in zip(base_candidates, (0.46, 0.38, 0.31), strict=True)
+        ]
+    top_types = [novel_type for novel_type, _score in ranked[:3]]
+    while len(top_types) < 3:
+        for fallback_type in _FALLBACK_TYPE_ORDER:
+            if fallback_type not in top_types:
+                top_types.append(fallback_type)
+            if len(top_types) == 3:
+                break
+    top_score = max(scores.values())
+    second_score = scores.get(top_types[1], 0)
+    mixed_signal = top_score > 0 and second_score >= top_score - 1
+    candidates: list[dict[str, Any]] = []
+    for index, novel_type in enumerate(top_types[:3]):
+        raw_score = scores.get(novel_type, 0)
+        confidence = 0.38 + raw_score * 0.09 - index * 0.07
+        if novel_type is NovelType.FEMALE_GENERAL and raw_score >= 2:
+            confidence += 0.06
+        if mixed_signal and index == 0:
+            confidence -= 0.12
+        confidence = round(max(0.18, min(0.92, confidence)), 2)
+        candidates.append(
+            {
+                "novelType": novel_type.value,
+                "confidence": confidence,
+                "reason": f"样本中出现了较多“{get_novel_type_label(novel_type)}”信号。",
+            }
+        )
+    return candidates
+
+
+def _build_type_lens_item(
+    *,
+    novel_type: NovelType,
+    lens_id: str,
+    label: str,
+    combined_text: str,
+    degraded: bool,
+) -> dict[str, Any]:
+    matching_keywords = _count_keywords(combined_text, _NOVEL_TYPE_KEYWORDS.get(novel_type, ()))
+    score_band = ScoreBand.THREE.value if matching_keywords >= 2 else ScoreBand.TWO.value
+    if matching_keywords >= 4:
+        score_band = ScoreBand.FOUR.value
+    confidence = 0.58 if degraded else 0.78
+    if score_band == ScoreBand.FOUR.value:
+        confidence += 0.05
+    return {
+        "lensId": lens_id,
+        "label": label,
+        "scoreBand": score_band,
+        "reason": f"{label} 当前具备可判断的题材兑现信号，但仍需后续连载继续验证。",
+        "evidenceRefs": [
+            {
+                "sourceType": EvidenceSourceType.CHAPTERS.value if combined_text.strip() else EvidenceSourceType.OUTLINE.value,
+                "sourceSpan": {"chapterIndex": 0} if combined_text.strip() else {"outlineRef": "全段"},
+                "excerpt": (combined_text or "deterministic type lens fallback")[:120],
+                "observationType": "narrative_observation",
+                "evidenceNote": "deterministic type lens 输出的稳定证据。",
+                "confidence": round(confidence - 0.04, 2),
+            }
+        ],
+        "confidence": round(confidence, 2),
+        "riskTags": [FatalRisk.INSUFFICIENT_MATERIAL.value] if degraded else [],
+        "degradedByInput": degraded,
+    }
+
+
+def _count_keywords(text: str, keywords: tuple[str, ...]) -> int:
+    return sum(1 for keyword in keywords if keyword in text)
+
+
+def _infer_novel_type(text: str) -> NovelType:
+    return _resolve_novel_type(_rank_novel_types(text)[0]["novelType"]) or NovelType.GENERAL_FALLBACK
+
+
+def _resolve_novel_type(raw_value: Any) -> NovelType | None:
+    if isinstance(raw_value, NovelType):
+        return raw_value
+    if not isinstance(raw_value, str):
+        return None
+    stripped = raw_value.strip()
+    for novel_type in NovelType:
+        if stripped == novel_type.value:
+            return novel_type
+    return None
+
+
+def _platform_for_novel_type(novel_type: NovelType) -> str:
+    return {
+        NovelType.FEMALE_GENERAL: "女频平台 A",
+        NovelType.FANTASY_UPGRADE: "玄幻平台 D",
+        NovelType.URBAN_REALITY: "都市平台 B",
+        NovelType.HISTORY_MILITARY: "历史平台 C",
+        NovelType.SCI_FI_APOCALYPSE: "科幻平台 C",
+        NovelType.SUSPENSE_HORROR: "悬疑平台 E",
+        NovelType.GAME_DERIVATIVE: "游戏平台 F",
+        NovelType.GENERAL_FALLBACK: "综合平台 A",
+    }[novel_type]

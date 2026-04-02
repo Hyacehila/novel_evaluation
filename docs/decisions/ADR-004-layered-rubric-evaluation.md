@@ -1,6 +1,6 @@
 # ADR-004：采用面向网络小说的双输入全 LLM 分阶段 Rubric 评分架构作为正式主线
 
-> 历史说明：本文记录的是当时接受的架构决策背景。当前代码实现已进一步收敛，正式对外结果为 `overall + axes`，旧四维骨架不再作为正式 `aggregation` 输出，对外四分字段也已移除。现状请以 `docs/architecture/layered-rubric-evaluation-architecture.md`、`docs/architecture/scoring-pipeline.md` 与 `docs/contracts/json-contracts.md` 为准。
+> 历史说明：本文记录的是当时接受的架构决策背景。当前代码实现已进一步收敛，正式对外结果为 `overall + axes + optional typeAssessment`，并新增解耦的 `type_classification / type_lens_evaluation` 主线。旧四维骨架不再作为正式 `aggregation` 输出，对外四分字段也已移除。现状请以 `docs/architecture/layered-rubric-evaluation-architecture.md`、`docs/architecture/scoring-pipeline.md` 与 `docs/contracts/json-contracts.md` 为准。
 
 ## 状态
 
