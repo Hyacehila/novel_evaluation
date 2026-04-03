@@ -156,7 +156,7 @@ export function DashboardPage() {
 
               <Card className="p-6">
                 <p className="text-xs tracking-[0.12em] text-[var(--muted)]">最近结果摘要</p>
-                <h2 className="section-title mt-3 text-2xl font-semibold">最近结果</h2>
+                <h2 className="section-title mt-3 text-2xl font-semibold">结构化评价结果</h2>
                 <div className="mt-5 space-y-4">
                   {dashboardQuery.data.recentResults.length > 0 ? (
                     dashboardQuery.data.recentResults.map((result) => (

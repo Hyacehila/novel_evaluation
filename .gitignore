@@ -10,6 +10,7 @@ node_modules/
 dist/
 build/
 coverage/
+playwright-report/
 
 # Python 生态
 **/.venv/
@@ -26,6 +27,7 @@ var/
 apps/**/var/
 apps/web/.playwright/
 apps/web/test-results/
+apps/web/playwright-report/
 apps/web/tsconfig.tsbuildinfo
 apps/web/eslint-report.json
 
@@ -38,10 +40,6 @@ apps/web/eslint-report.json
 !.env.example
 .claude/settings.local.json
 
-# 输出目录中的临时产物
-output/temporary/*
-output/exploratory/*
-
 # Python 构建与覆盖率
 **/build/
 **/dist/
@@ -52,11 +50,9 @@ htmlcov/
 # 评测与本地产物缓存
 .eval-cache/
 evals/**/tmp/
-evals/**/results/
+evals/baselines/*.json
+evals/reports/*.json
+evals/reports/*.records.json
 
-# 保留研究产物与说明文件
-!output/README.md
-!output/playwright/
-!output/playwright/**
-!**/README.md
-!CLAUDE.md
+# 运行输出
+output/**

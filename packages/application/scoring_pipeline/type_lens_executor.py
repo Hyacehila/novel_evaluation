@@ -9,11 +9,11 @@ from packages.application.scoring_pipeline.exceptions import PipelineFailureErro
 from packages.application.scoring_pipeline.models import TypeLensExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
 from packages.application.scoring_pipeline.type_support import build_type_lens_summary
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import EvaluationMode, FatalRisk, ScoreBand, StageName
 from packages.schemas.common.novel_types import get_novel_type_label, get_type_lens_definitions
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.stages.type_lens import TypeLensEvaluationResult
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 

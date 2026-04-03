@@ -27,6 +27,8 @@ _OPENAI_TIMEOUT_ERROR_NAMES = frozenset({"APITimeoutError"})
 _OPENAI_STATUS_ERROR_NAMES = frozenset({"APIStatusError", "RateLimitError"})
 _OPENAI_CONNECTION_ERROR_NAMES = frozenset({"APIConnectionError"})
 _RETRYABLE_PROVIDER_STATUS_CODES = frozenset({408, 429})
+_CONNECT_TIMEOUT_CAP_SECONDS = 10.0
+_WRITE_TIMEOUT_CAP_SECONDS = 30.0
 
 
 class DeepSeekResponseHandlingError(Exception):
@@ -189,7 +191,7 @@ class DeepSeekProviderAdapter:
             return self._client_factory(api_key=self.api_key, base_url=self.base_url)
         from openai import OpenAI
 
-        return OpenAI(api_key=self.api_key, base_url=self.base_url)
+        return OpenAI(api_key=self.api_key, base_url=self.base_url, max_retries=0)
 
     def _create_completion(
         self,
@@ -199,9 +201,22 @@ class DeepSeekProviderAdapter:
         request: ProviderExecutionRequest,
     ) -> Any:
         selected_client = client
-        if request.timeoutMs is not None and hasattr(client, "with_options"):
-            selected_client = client.with_options(timeout=request.timeoutMs / 1000)
+        if hasattr(client, "with_options"):
+            option_kwargs: dict[str, Any] = {"max_retries": 0}
+            if request.timeoutMs is not None:
+                option_kwargs["timeout"] = self._build_timeout(request.timeoutMs)
+            selected_client = client.with_options(**option_kwargs)
         return selected_client.chat.completions.create(**payload)
+
+    def _build_timeout(self, timeout_ms: int) -> httpx.Timeout:
+        total_seconds = max(timeout_ms / 1000, 1.0)
+        return httpx.Timeout(
+            timeout=total_seconds,
+            connect=min(total_seconds, _CONNECT_TIMEOUT_CAP_SECONDS),
+            read=total_seconds,
+            write=min(total_seconds, _WRITE_TIMEOUT_CAP_SECONDS),
+            pool=total_seconds,
+        )
 
     def _build_payload(self, request: ProviderExecutionRequest) -> dict[str, Any]:
         payload: dict[str, Any] = {

@@ -16,7 +16,6 @@ from packages.application.scoring_pipeline.models import (
     TypeClassificationExecutionContext,
     TypeLensExecutionContext,
 )
-from packages.application.support.process_logging import log_event
 from packages.application.scoring_pipeline.projection_service import build_final_projection
 from packages.application.scoring_pipeline.rubric_executor import RUBRIC_SLICE_PLAN, execute_rubric
 from packages.application.scoring_pipeline.screening_executor import execute_screening
@@ -28,6 +27,7 @@ from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
 from packages.schemas.stages.type_classification import TypeClassificationResult
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 

@@ -8,10 +8,10 @@ from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import ScreeningExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import EvaluationMode, FatalRisk, InputComposition, StageName, StageStatus, Sufficiency
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 

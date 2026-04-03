@@ -12,11 +12,11 @@ from packages.application.scoring_pipeline.type_support import (
     build_type_classification_summary,
     select_final_novel_type,
 )
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import NovelType, StageName
 from packages.schemas.common.novel_types import build_type_lens_catalog_payload, get_novel_type_label
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.stages.type_classification import TypeClassificationCandidate, TypeClassificationResult
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 

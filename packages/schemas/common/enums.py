@@ -62,13 +62,6 @@ class AxisId(StrEnum):
     COMMERCIAL_POTENTIAL = "commercialPotential"
 
 
-class SkeletonDimensionId(StrEnum):
-    MARKET_ATTRACTION = "marketAttraction"
-    NARRATIVE_EXECUTION = "narrativeExecution"
-    CHARACTER_MOMENTUM = "characterMomentum"
-    NOVELTY_UTILITY = "noveltyUtility"
-
-
 class FatalRisk(StrEnum):
     AI_MANUAL_TONE = "aiManualTone"
     STALE_FORMULA = "staleFormula"
@@ -106,10 +99,3 @@ class ResultStatus(StrEnum):
     AVAILABLE = "available"
     NOT_AVAILABLE = "not_available"
     BLOCKED = "blocked"
-
-
-class TopLevelScoreField(StrEnum):
-    SIGNING_PROBABILITY = "signingProbability"
-    COMMERCIAL_VALUE = "commercialValue"
-    WRITING_QUALITY = "writingQuality"
-    INNOVATION_SCORE = "innovationScore"

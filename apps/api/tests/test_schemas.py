@@ -11,13 +11,11 @@ from packages.schemas.common.enums import (
     InputComposition,
     ResultStatus,
     ScoreBand,
-    SkeletonDimensionId,
     StageName,
     StageStatus,
     SubmissionSourceType,
     Sufficiency,
     TaskStatus,
-    TopLevelScoreField,
 )
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutline
@@ -161,7 +159,6 @@ def build_rubric_item(axis_id: AxisId) -> RubricEvaluationItem:
         confidence=0.8,
         riskTags=[],
         blockingSignals=[],
-        affectedSkeletonDimensions=[],
         degradedByInput=False,
     )
 
@@ -531,12 +528,10 @@ def test_aggregated_rubric_result_rejects_legacy_aggregation_maps() -> None:
     payload = {
         **build_aggregation_v2_payload(),
         "axisScores": {AxisId.HOOK_RETENTION.value: 80},
-        "skeletonScores": {SkeletonDimensionId.MARKET_ATTRACTION.value: 80},
-        "topLevelScoresDraft": {TopLevelScoreField.SIGNING_PROBABILITY.value: 80},
-        "supportingAxisMap": {TopLevelScoreField.SIGNING_PROBABILITY.value: [AxisId.PLATFORM_FIT.value]},
-        "supportingSkeletonMap": {
-            TopLevelScoreField.SIGNING_PROBABILITY.value: [SkeletonDimensionId.MARKET_ATTRACTION.value]
-        },
+        "skeletonScores": {"marketAttraction": 80},
+        "topLevelScoresDraft": {"signingProbability": 80},
+        "supportingAxisMap": {"signingProbability": [AxisId.PLATFORM_FIT.value]},
+        "supportingSkeletonMap": {"signingProbability": ["marketAttraction"]},
     }
 
     with pytest.raises(ValidationError):

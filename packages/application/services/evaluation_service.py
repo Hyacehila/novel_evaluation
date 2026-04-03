@@ -12,7 +12,6 @@ from packages.application.scoring_pipeline.exceptions import PipelineBlockedErro
 from packages.application.scoring_pipeline.orchestration import ScoringPipeline
 from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.base import MetaData
 from packages.schemas.common.enums import (
     AxisId,
@@ -21,7 +20,6 @@ from packages.schemas.common.enums import (
     InputComposition,
     ResultStatus,
     ScoreBand,
-    SkeletonDimensionId,
     StageName,
     StageStatus,
     Sufficiency,
@@ -41,6 +39,7 @@ from packages.schemas.output.result import (
 from packages.schemas.output.task import EvaluationTask, EvaluationTaskSummary, RecentResultSummary
 from packages.schemas.stages.aggregation import PlatformCandidate
 from packages.schemas.stages.type_classification import TypeClassificationResult
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 

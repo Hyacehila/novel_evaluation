@@ -1,39 +1,27 @@
 # `apps/web`
 
-该目录承载用户交互层，当前已落地为 `Next.js App Router + TypeScript + pnpm` 工程。
+本目录是本地 UI。它消费同源 `/api`，并把后端结果映射成页面视图；`apps/web/src/api/contracts.ts` 只是前端镜像，不是正式契约真源。
 
-## 当前已实现
+页面路由：
 
-- 工作台首页 `/`
-- 新建任务页 `/tasks/new`
-- 任务详情页 `/tasks/{taskId}`
-- 结果详情页 `/tasks/{taskId}/result`
-- 历史记录页 `/history`
-- `TanStack Query` 查询层与轮询策略
-- `React Hook Form + Zod` 提交表单
-- 同源 `/api` 代理到后端 API
+- `/`
+- `/tasks/new`
+- `/tasks/{taskId}`
+- `/tasks/{taskId}/result`
+- `/history`
 
-## 负责
+常用命令：
 
-- 采集标题、正文、大纲或上传文件
-- 调用固定 API 路由创建任务
-- 在 API 启动期缺少 key 时录入一次性 runtime key
-- 轮询任务状态
-- 只在 `available` 时展示正式结果
-- 支持 `q/status/cursor/limit` 的历史回访
-- `test:e2e` 固定要求真实 `DeepSeek API`，覆盖 `startup_key` 与 `runtime_key` 两种 provider 配置路径
+- `pnpm --dir apps/web install`
+- `pnpm --dir apps/web dev -- --hostname 127.0.0.1 --port 3000`
+- `pnpm --dir apps/web test`
+- `pnpm --dir apps/web build`
+- `pnpm --dir apps/web test:e2e`
 
-## 不负责
+E2E 默认使用 deterministic provider；真实 `DeepSeek` 只在 `startup_key` / `runtime_key` 模式下做补充验收。
 
-- 持有正式 Prompt
-- 直连 Provider
-- 替换或清空启动期环境变量提供的 key
-- 解析上传文件正文
-- 在 `blocked / not_available / fetch_failed` 时展示伪结果
+继续阅读：
 
-## 当前使用方式
-
-- 安装：`pnpm --dir apps/web install`
-- 开发：`pnpm --dir apps/web dev -- --port 3000`
-- 校验：`pnpm --dir apps/web lint && pnpm --dir apps/web test && pnpm --dir apps/web build`
-- E2E：在 PowerShell 中先执行 `$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-real-key>"`，再运行 `pnpm --dir apps/web test:e2e`；默认覆盖启动期 key 场景，如需验证页面补录可切到 `runtime_key` 模式
+- [`../../docs/runbook.md`](../../docs/runbook.md)
+- [`../../docs/contracts.md`](../../docs/contracts.md)
+- [`../../docs/architecture.md`](../../docs/architecture.md)

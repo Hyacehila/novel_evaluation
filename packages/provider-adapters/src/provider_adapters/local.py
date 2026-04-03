@@ -13,7 +13,6 @@ from packages.schemas.common.enums import (
     InputComposition,
     NovelType,
     ScoreBand,
-    SkeletonDimensionId,
     StageName,
     StageStatus,
     Sufficiency,
@@ -304,7 +303,6 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
                 "confidence": 0.8 if not degraded_by_input else 0.55,
                 "riskTags": item_risk_tags,
                 "blockingSignals": [],
-                "affectedSkeletonDimensions": [],
                 "degradedByInput": degraded_by_input,
             }
         )

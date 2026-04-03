@@ -8,16 +8,18 @@ from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import AggregationExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import FatalRisk, StageName
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.stages.aggregation import AggregatedRubricResult
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 
 _STAGE_TIMEOUT_MS = 90_000
 _STAGE_MAX_TOKENS = 4_000
 _SCHEMA_VALIDATION_MAX_ATTEMPTS = 2
+
+
 def execute_aggregation(
     *,
     provider_adapter: ProviderExecutionPort,
@@ -92,14 +94,8 @@ def _normalize_aggregation_payload(*, payload: Any, context: AggregationExecutio
     if not isinstance(payload, Mapping):
         return payload
     normalized_payload: dict[str, Any] = dict(payload)
-    overall_verdict = (
-        _normalize_text_value(normalized_payload.get("overallVerdictDraft"))
-        or _normalize_text_value(normalized_payload.get("editorVerdictDraft"))
-    )
-    overall_summary = (
-        _normalize_text_value(normalized_payload.get("overallSummaryDraft"))
-        or _normalize_text_value(normalized_payload.get("detailedAnalysisDraft"))
-    )
+    overall_verdict = _normalize_text_value(normalized_payload.get("overallVerdictDraft"))
+    overall_summary = _normalize_text_value(normalized_payload.get("overallSummaryDraft"))
     market_fit = _normalize_text_value(normalized_payload.get("marketFitDraft"))
     if overall_verdict is None or overall_summary is None or market_fit is None:
         return payload
@@ -163,12 +159,6 @@ def _normalize_text_list(raw_values: Any) -> list[str]:
 
 
 def _normalize_text_value(raw_value: Any) -> str | None:
-    if isinstance(raw_value, Mapping):
-        for key in ("summary", "plot", "character", "pacing", "worldBuilding"):
-            nested = raw_value.get(key)
-            if isinstance(nested, str) and nested.strip():
-                return nested.strip()
-        return None
     if not isinstance(raw_value, str):
         return None
     stripped = raw_value.strip()

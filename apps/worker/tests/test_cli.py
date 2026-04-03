@@ -6,14 +6,14 @@ from pathlib import Path
 import pytest
 
 import worker  # noqa: F401
-from api.dependencies import ApiPromptRuntime
 from provider_adapters import LocalDeterministicProviderAdapter
+from packages.runtime.service_factory import RuntimePromptRuntime
 from worker.bootstrap import WorkerRuntimeContext, WorkerRuntimeMetadata, bootstrap_worker_runtime
 from worker.cli import main
 
 
 def _build_context(*, repo_root: Path, evals_root: Path) -> WorkerRuntimeContext:
-    prompt_runtime = ApiPromptRuntime()
+    prompt_runtime = RuntimePromptRuntime()
     provider_adapter = LocalDeterministicProviderAdapter(
         provider_id="provider-deepseek",
         model_id="deepseek-chat",

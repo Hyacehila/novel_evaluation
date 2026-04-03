@@ -5,6 +5,6 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 owner: prompt-governance
 updatedAt: 2026-03-26T00:00:00Z
-changeSummary: 将 degraded aggregation prompt 重写为谨慎可评的降级聚合规范，强化受限输入下的保守签约判断、风险压制与反馈约束。
+changeSummary: 将 degraded aggregation prompt 收敛到当前 AggregatedRubricResult 字段集合，并强化受限输入保守性。
 rollbackTarget: none
 evalRequirement: uv run --project apps/api pytest apps/api/tests evals/tests

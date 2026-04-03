@@ -8,10 +8,10 @@ from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import RubricExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
-from packages.application.support.process_logging import log_event
-from packages.schemas.common.enums import AxisId, FatalRisk, ScoreBand, SkeletonDimensionId, StageName
+from packages.schemas.common.enums import AxisId, FatalRisk, ScoreBand, StageName
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.stages.rubric import RubricEvaluationSet, RubricEvaluationSlice
+from packages.runtime.logging import log_event
 
 logger = logging.getLogger(__name__)
 
@@ -23,41 +23,6 @@ RUBRIC_SLICE_PLAN: tuple[tuple[AxisId, ...], ...] = (
     (AxisId.NARRATIVE_CONTROL, AxisId.PACING_PAYOFF, AxisId.SETTING_DIFFERENTIATION),
     (AxisId.PLATFORM_FIT, AxisId.COMMERCIAL_POTENTIAL),
 )
-_DEFAULT_SKELETON_DIMENSIONS_BY_AXIS = {
-    AxisId.HOOK_RETENTION.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
-    AxisId.SERIAL_MOMENTUM.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
-    AxisId.CHARACTER_DRIVE.value: SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-    AxisId.NARRATIVE_CONTROL.value: SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    AxisId.PACING_PAYOFF.value: SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    AxisId.SETTING_DIFFERENTIATION.value: SkeletonDimensionId.NOVELTY_UTILITY.value,
-    AxisId.PLATFORM_FIT.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
-    AxisId.COMMERCIAL_POTENTIAL.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
-}
-_SKELETON_DIMENSION_ALIASES = {
-    SkeletonDimensionId.MARKET_ATTRACTION.value: SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "conflict": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "stakes": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "progression": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "arcs": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "genre_conventions": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "audience_expectations": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "longevity": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    "marketability": SkeletonDimensionId.MARKET_ATTRACTION.value,
-    SkeletonDimensionId.NARRATIVE_EXECUTION.value: SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    "clarity": SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    "flow": SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    "pacing": SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    "satisfaction": SkeletonDimensionId.NARRATIVE_EXECUTION.value,
-    SkeletonDimensionId.CHARACTER_MOMENTUM.value: SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-    "protagonist": SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-    "motivation": SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-    "relationships": SkeletonDimensionId.CHARACTER_MOMENTUM.value,
-    SkeletonDimensionId.NOVELTY_UTILITY.value: SkeletonDimensionId.NOVELTY_UTILITY.value,
-    "originality": SkeletonDimensionId.NOVELTY_UTILITY.value,
-    "hook": SkeletonDimensionId.NOVELTY_UTILITY.value,
-    "novelty": SkeletonDimensionId.NOVELTY_UTILITY.value,
-    "differentiation": SkeletonDimensionId.NOVELTY_UTILITY.value,
-}
 _SOURCE_SPAN_KEYS = {
     "chapters": "chapterRef",
     "outline": "outlineRef",
@@ -267,23 +232,22 @@ def _normalize_rubric_payload(*, payload: Any, context: RubricExecutionContext) 
 def _normalize_rubric_item(item: Any) -> Any:
     if not isinstance(item, Mapping):
         return item
-    normalized_item: dict[str, Any] = dict(item)
-    axis_key = _normalize_axis_key(normalized_item.get("axisId"))
-    item_confidence = _normalize_confidence(normalized_item.get("confidence"), fallback=0.5)
-    normalized_item["confidence"] = item_confidence
-    normalized_item["scoreBand"] = _normalize_score_band(normalized_item.get("scoreBand"))
-    normalized_item["evidenceRefs"] = _normalize_evidence_refs(
-        normalized_item.get("evidenceRefs"),
-        item_confidence=item_confidence,
-        fallback_excerpt=normalized_text_value(normalized_item.get("reason")) or "模型未提供明确证据摘录。",
-    )
-    normalized_item["riskTags"] = _normalize_risk_tags(normalized_item.get("riskTags"))
-    normalized_item["blockingSignals"] = _normalize_text_list(normalized_item.get("blockingSignals"))
-    normalized_item["affectedSkeletonDimensions"] = _normalize_skeleton_dimensions(
-        normalized_item.get("affectedSkeletonDimensions"),
-        axis_key=axis_key,
-    )
-    return normalized_item
+    item_confidence = _normalize_confidence(item.get("confidence"), fallback=0.5)
+    return {
+        "evaluationId": normalized_text_value(item.get("evaluationId")) or "eval-missing-id",
+        "axisId": _normalize_axis_key(item.get("axisId")),
+        "scoreBand": _normalize_score_band(item.get("scoreBand")),
+        "reason": normalized_text_value(item.get("reason")) or "模型未提供明确评分理由。",
+        "evidenceRefs": _normalize_evidence_refs(
+            item.get("evidenceRefs"),
+            item_confidence=item_confidence,
+            fallback_excerpt=normalized_text_value(item.get("reason")) or "模型未提供明确证据摘录。",
+        ),
+        "confidence": item_confidence,
+        "riskTags": _normalize_risk_tags(item.get("riskTags")),
+        "blockingSignals": _normalize_text_list(item.get("blockingSignals")),
+        "degradedByInput": bool(item.get("degradedByInput")),
+    }
 
 
 
@@ -368,24 +332,6 @@ def _normalize_evidence_ref(
     )
     normalized_reference.pop("reference", None)
     return normalized_reference
-
-
-
-def _normalize_skeleton_dimensions(raw_dimensions: Any, *, axis_key: str | None) -> list[str]:
-    normalized_dimensions: list[str] = []
-    if isinstance(raw_dimensions, list):
-        for value in raw_dimensions:
-            if not isinstance(value, str):
-                continue
-            normalized_value = _SKELETON_DIMENSION_ALIASES.get(value.strip())
-            if normalized_value and normalized_value not in normalized_dimensions:
-                normalized_dimensions.append(normalized_value)
-    if normalized_dimensions:
-        return normalized_dimensions
-    default_dimension = _DEFAULT_SKELETON_DIMENSIONS_BY_AXIS.get(axis_key or "")
-    return [default_dimension] if default_dimension is not None else []
-
-
 
 def _normalize_axis_summaries(
     *,

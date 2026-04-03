@@ -6,7 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
-from packages.application.support.process_logging import configure_process_logging
+from packages.runtime.logging import configure_process_logging
 
 from .dependencies import recover_processing_tasks
 from .errors import ApiError, api_error_handler, validation_error_handler

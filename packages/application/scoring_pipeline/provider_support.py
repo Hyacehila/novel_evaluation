@@ -10,9 +10,9 @@ from typing import Any
 from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import StagePromptBinding
-from packages.application.support.process_logging import log_event
 from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName
 from packages.schemas.output.error import ErrorCode
+from packages.runtime.logging import log_event
 
 
 _FAILURE_TYPE_TO_ERROR_CODE = {

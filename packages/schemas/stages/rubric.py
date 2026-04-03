@@ -12,7 +12,6 @@ from packages.schemas.common.enums import (
     FatalRisk,
     InputComposition,
     ScoreBand,
-    SkeletonDimensionId,
     StageName,
 )
 from packages.schemas.common.validators import ensure_non_empty_text, validate_confidence
@@ -52,7 +51,6 @@ class RubricEvaluationItem(SchemaModel):
     confidence: float
     riskTags: list[FatalRisk]
     blockingSignals: list[str]
-    affectedSkeletonDimensions: list[SkeletonDimensionId]
     degradedByInput: bool
 
     @field_validator("evaluationId", "reason")

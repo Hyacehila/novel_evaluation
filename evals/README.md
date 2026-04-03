@@ -1,22 +1,8 @@
 # `evals`
 
-该目录承载正式回归与批处理体系。
+本目录承载回归与批处理工件模型，不承接用户主流程。
 
-## 目标
-
-- 为 Prompt/Schema/Provider 变化提供受控回归
-- 输出 `EvalRecord`
-- 汇总 `EvalBaseline`
-- 汇总 `EvalReport`
-
-## 冻结结论
-
-- `EvalReport` 统一为单一正式对象
-- `reportType = execution_summary | baseline_comparison`
-- 用户主任务不经过 `evals`
-- `worker` 只运行 `batch/eval`
-
-## 子目录
+保留内容：
 
 - `datasets/`
 - `cases/`
@@ -24,12 +10,15 @@
 - `reports/`
 - `baselines/`
 
-## 必须触发回归的变化
+触发回归的典型变更：
 
 - `promptVersion`
 - `schemaVersion`
 - `rubricVersion`
 - `providerId`
 - `modelId`
-- 输入/上传边界
-- 状态与错误码语义
+- 输入边界、状态语义、错误语义
+
+继续阅读：
+
+- [`../docs/prompts-and-evals.md`](../docs/prompts-and-evals.md)

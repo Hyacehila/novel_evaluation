@@ -30,7 +30,6 @@ from packages.schemas.common.enums import (
     NovelType,
     ResultStatus,
     ScoreBand,
-    SkeletonDimensionId,
     StageName,
     StageStatus,
     Sufficiency,
@@ -220,7 +219,6 @@ def build_rubric_item(
         confidence=confidence,
         riskTags=risk_tags or [],
         blockingSignals=blocking_signals or [],
-        affectedSkeletonDimensions=[SkeletonDimensionId.MARKET_ATTRACTION],
         degradedByInput=False,
     )
 
@@ -480,7 +478,6 @@ def build_rubric_slice_payload(*, requested_axes: list[AxisId]) -> dict[str, Any
                 "confidence": 0.84,
                 "riskTags": [],
                 "blockingSignals": [],
-                "affectedSkeletonDimensions": [SkeletonDimensionId.MARKET_ATTRACTION.value],
                 "degradedByInput": False,
             }
             for axis_id in requested_axes
@@ -713,7 +710,6 @@ def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
                     "confidence": 0.84,
                     "riskTags": ["staleFormula", "unknownRisk"],
                     "blockingSignals": [" 节奏仍需补强 ", "", 3],
-                    "affectedSkeletonDimensions": [alias_by_axis[axis_id], "ignored_alias"],
                     "degradedByInput": False,
                 }
                 for axis_id in requested_axes
@@ -764,9 +760,6 @@ def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
     assert hook_item.evidenceRefs[0].sourceSpan == {"chapterRef": "第一章"}
     assert narrative_item.evidenceRefs[0].sourceSpan == {"outlineRef": "全段"}
     assert setting_item.evidenceRefs[0].sourceSpan == {"crossInputRef": "chapters: 第一章; outline: 全段"}
-    assert hook_item.affectedSkeletonDimensions == [SkeletonDimensionId.MARKET_ATTRACTION]
-    assert narrative_item.affectedSkeletonDimensions == [SkeletonDimensionId.NARRATIVE_EXECUTION]
-    assert setting_item.affectedSkeletonDimensions == [SkeletonDimensionId.NOVELTY_UTILITY]
     assert hook_item.blockingSignals == ["节奏仍需补强"]
     assert hook_item.riskTags == [FatalRisk.STALE_FORMULA]
     assert result.axisSummaries[AxisId.HOOK_RETENTION].startswith("hookRetention 总结")
@@ -807,7 +800,6 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
                     "confidence": 0.42,
                     "riskTags": ["insufficientMaterial"],
                     "blockingSignals": [],
-                    "affectedSkeletonDimensions": ["conflict"],
                     "degradedByInput": True,
                 }
                 for axis_id in requested_axes
@@ -881,26 +873,14 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
     }
     provider = RecordingProviderAdapter(payloads={StageName.AGGREGATION: raw_payload})
 
-    result = execute_aggregation(
-        provider_adapter=provider,
-        context=build_aggregation_context(screening=screening, rubric=rubric),
-    )
+    with pytest.raises(PipelineFailureError) as exc_info:
+        execute_aggregation(
+            provider_adapter=provider,
+            context=build_aggregation_context(screening=screening, rubric=rubric),
+        )
 
-    assert result.taskId == "task_pipeline_001"
-    assert result.schemaVersion == "schema-test-v1"
-    assert result.promptVersion == "prompt-test-v1"
-    assert result.rubricVersion == "rubric-test-v1"
-    assert result.providerId == "provider-test"
-    assert result.modelId == "model-test"
-    assert result.overallVerdictDraft == "建议补全正文后再复核。"
-    assert result.verdictSubQuote == "降级评估结论保守，材料补全后可重新判断市场承接能力。"
-    assert result.overallSummaryDraft == "聚合基于 degraded 模式，只能形成保守摘要。"
-    assert len(result.platformCandidates) == 1
-    assert result.platformCandidates[0].name == "女频平台 A"
-    assert result.platformCandidates[0].weight == 100
-    assert result.marketFitDraft == "当前材料更适合走保守市场判断。"
-    assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
-    assert result.overallConfidence == pytest.approx(0.44)
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
+    assert "aggregation 阶段输出不满足正式 schema" in exc_info.value.message
 
 
 def test_execute_rubric_retries_once_after_schema_invalid_payload() -> None:

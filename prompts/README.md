@@ -1,23 +1,18 @@
 # `prompts`
 
-该目录承载正式 Prompt 资产真源。
+本目录是正式 Prompt 资产真源，只保留当前评分主线：
 
-## 冻结结论
+- `registry/`
+- `versions/`
+- `scoring/`
 
-- Prompt 正文固定为 `Markdown`
-- 元数据固定为 `YAML`
-- 正式评分资产只在 `prompts/scoring/`
-- `screening/`、`rubric/`、`aggregation/` 都是正式资产目录
+约束：
 
-## 目录结构
+- 正文用 `Markdown`
+- 元数据用 `YAML`
+- `rubric` 和 `aggregation` 只允许输出当前 schema 需要的字段
+- 旧四分字段、旧骨架字段和旧聚合别名不得回流
 
-- `prompts/scoring/`：评分主线正文资产
-- `prompts/registry/`：按 `promptId` 维护 registry 元数据
-- `prompts/versions/`：按 `promptId/promptVersion` 维护版本元数据
-- `prompts/extraction/`、`prompts/calibration/`：保留目录，不属于当前正式主线
+继续阅读：
 
-## 当前原则
-
-- 前端不得持有正式 Prompt
-- `packages/prompt-runtime/` 只负责读取和选择，不反向定义资产
-- `system/`、`templates/` 不得被重新升级为正式主线真源
+- [`../docs/prompts-and-evals.md`](../docs/prompts-and-evals.md)

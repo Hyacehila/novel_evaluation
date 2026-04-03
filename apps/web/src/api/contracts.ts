@@ -1,3 +1,7 @@
+// Derived mirror for the current web app.
+// The formal source of truth remains in `packages/schemas/`; this file only keeps
+// the DTO fields the frontend currently consumes.
+
 export type TaskStatus = "queued" | "processing" | "completed" | "failed";
 export type ResultStatus = "available" | "not_available" | "blocked";
 export type InputComposition = "chapters_outline" | "chapters_only" | "outline_only";

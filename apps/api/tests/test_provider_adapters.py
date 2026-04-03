@@ -132,6 +132,19 @@ class FakeDeepSeekClient:
         return outcome
 
 
+def assert_timeout_option(
+    option_kwargs: dict[str, object],
+    *,
+    expected_total_seconds: float,
+) -> None:
+    timeout = option_kwargs.get("timeout")
+    assert isinstance(timeout, httpx.Timeout)
+    assert timeout.connect == min(expected_total_seconds, 10.0)
+    assert timeout.read == expected_total_seconds
+    assert timeout.write == min(expected_total_seconds, 30.0)
+    assert timeout.pool == expected_total_seconds
+
+
 def test_provider_request_matches_phase_one_contract() -> None:
     request = build_request()
 
@@ -319,7 +332,9 @@ def test_deepseek_adapter_returns_typed_success() -> None:
     assert result.durationMs >= 0
     assert result.rawText == '{"summary": "ok"}'
     assert dict(result.rawJson) == {"summary": "ok"}
-    assert fake_client.options == [{"timeout": 3.0}]
+    assert len(fake_client.options) == 1
+    assert fake_client.options[0]["max_retries"] == 0
+    assert_timeout_option(fake_client.options[0], expected_total_seconds=3.0)
     assert fake_client.calls == [
         {
             "messages": [{"role": "user", "content": "请输出结构化分析"}],
@@ -539,7 +554,9 @@ def test_deepseek_adapter_passes_timeout_and_max_tokens() -> None:
     )
 
     assert isinstance(result, ProviderExecutionSuccess)
-    assert fake_client.options == [{"timeout": 90.0}]
+    assert len(fake_client.options) == 1
+    assert fake_client.options[0]["max_retries"] == 0
+    assert_timeout_option(fake_client.options[0], expected_total_seconds=90.0)
     assert fake_client.calls == [
         {
             "messages": [{"role": "user", "content": "请输出结构化分析"}],
@@ -570,7 +587,27 @@ def test_deepseek_adapter_retries_empty_json_content_once_and_succeeds() -> None
     assert isinstance(result, ProviderExecutionSuccess)
     assert result.providerRequestId == "deepseek-request-002"
     assert len(fake_client.calls) == 2
-    assert fake_client.options == [{"timeout": 3.0}, {"timeout": 3.0}]
+    assert len(fake_client.options) == 2
+    for option_kwargs in fake_client.options:
+        assert option_kwargs["max_retries"] == 0
+        assert_timeout_option(option_kwargs, expected_total_seconds=3.0)
+
+
+def test_deepseek_adapter_disables_sdk_retries_even_without_explicit_timeout() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-chat",
+            timeout_ms=None,
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert fake_client.options == [{"max_retries": 0}]
 
 
 def test_deepseek_adapter_retries_invalid_json_once_then_returns_provider_failure() -> None:
