@@ -6,6 +6,6 @@ rubricVersion: rubric-v1
 inputCompositionScope: *
 evaluationModeScope: degraded
 providerScope: provider-deepseek
-modelScope: deepseek-chat
+modelScope: *
 enabled: true
 notes: degraded 模式 screening 正式资产，用于单侧输入或降级主链。

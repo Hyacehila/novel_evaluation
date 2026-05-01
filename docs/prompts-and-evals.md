@@ -37,6 +37,7 @@
 
 ## 当前 Prompt 口径
 
+- registry 只绑定 `providerScope: provider-deepseek`，`modelScope` 保持 `*`，同一套 Prompt 可跟随 `NOVEL_EVAL_DEEPSEEK_MODEL_ID` 在 V4 Pro / V4 Flash 之间切换。
 - `rubric` Prompt 只允许输出当前 `RubricEvaluationSlice` 需要的字段：
   `requestedAxes`、`items`、`axisSummaries`、`missingRequiredAxes`、`riskTags`、`overallConfidence`
 - `aggregation` Prompt 只允许输出当前 `AggregatedRubricResult` 需要的字段：
@@ -52,6 +53,7 @@
 - `evals/baselines/`：baseline 输出目录
 
 `apps/worker` 通过共享 runtime 运行 `eval` / `batch`，不会分叉出第二套评分主线。
+`--dry-run` 只预览 suite/source 和 runtime 元数据，不要求真实 key；实际执行仍必须配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`。
 
 ## 常用命令
 
@@ -73,4 +75,5 @@ uv run --project apps/worker worker batch --source .\path\to\batch.json --report
 
 - 空壳/禁用目录回流
 - 旧 docs 子目录回流
-- 现行 `docs/` 与 `prompts/` 出现旧字段或旧语义
+- 现行文档、根文档与 `prompts/` 出现旧字段或旧语义
+- 正式 Markdown 文档中的本地链接失效

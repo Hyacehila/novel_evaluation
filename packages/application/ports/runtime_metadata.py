@@ -91,7 +91,7 @@ class StaticPromptRuntime:
 @dataclass(frozen=True, slots=True)
 class StaticProviderMetadata:
     provider_id: str = "provider-deepseek"
-    model_id: str = "deepseek-chat"
+    model_id: str = "deepseek-v4-pro"
 
 
 @runtime_checkable
@@ -102,7 +102,7 @@ class ProviderRuntimeExecutionPort(ProviderRuntimePort, ProviderExecutionPort, P
 @dataclass(frozen=True, slots=True)
 class StaticProviderRuntime:
     provider_id: str = "provider-deepseek"
-    model_id: str = "deepseek-chat"
+    model_id: str = "deepseek-v4-pro"
 
     def get_status(self) -> ProviderStatus:
         return ProviderStatus(

@@ -15,7 +15,7 @@ describe("api mappers", () => {
         promptVersion: "v2",
         rubricVersion: "rubric-v2",
         providerId: "provider-deepseek",
-        modelId: "deepseek-chat",
+        modelId: "deepseek-v4-pro",
         resultTime: "2026-03-28T10:00:00Z",
         axes: [
           {
@@ -164,7 +164,7 @@ describe("api mappers", () => {
   it("maps missing provider status with blocking message", () => {
     const view = mapProviderStatus({
       providerId: "provider-deepseek",
-      modelId: "deepseek-chat",
+      modelId: "deepseek-v4-pro",
       configured: false,
       configurationSource: "missing",
       canAnalyze: false,

@@ -30,6 +30,7 @@ from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
 from packages.schemas.stages.type_classification import TypeClassificationCandidate, TypeClassificationResult
+from tests.result_helpers import build_projection
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,17 +240,14 @@ def test_start_task_moves_to_processing() -> None:
     assert updated.startedAt is not None
 
 
-def test_complete_task_with_result_moves_to_available() -> None:
+def test_complete_task_with_projection_moves_to_available() -> None:
     service = build_service()
     task = service.create_task(build_request())
     service.start_task(task.taskId)
 
-    updated = service.complete_task_with_result(
+    updated = service.complete_task_with_projection(
         task.taskId,
-        signing_probability=80,
-        commercial_value=78,
-        writing_quality=76,
-        innovation_score=74,
+        projection=build_projection(task, score=80),
     )
 
     assert updated.status is TaskStatus.COMPLETED
@@ -268,7 +266,7 @@ def test_complete_task_with_result_moves_to_available() -> None:
     assert result_resource.result.overall.weaknesses == ["长线兑现仍需继续观察"]
 
 
-def test_complete_task_with_result_keeps_task_runtime_metadata_in_result() -> None:
+def test_complete_task_with_projection_keeps_task_runtime_metadata_in_result() -> None:
     service = build_service(
         prompt_runtime=StubPromptRuntime(
             resolved_prompt=StubResolvedPrompt(
@@ -285,12 +283,9 @@ def test_complete_task_with_result_keeps_task_runtime_metadata_in_result() -> No
     task = service.create_task(build_request())
     service.start_task(task.taskId)
 
-    service.complete_task_with_result(
+    service.complete_task_with_projection(
         task.taskId,
-        signing_probability=80,
-        commercial_value=78,
-        writing_quality=76,
-        innovation_score=74,
+        projection=build_projection(task, score=80),
     )
 
     result = service.get_result(task.taskId).result
@@ -303,26 +298,10 @@ def test_complete_task_with_result_keeps_task_runtime_metadata_in_result() -> No
     assert result.modelId == "model-result"
 
 
-def test_complete_task_with_result_resolves_missing_runtime_metadata_from_collaborators() -> None:
+def test_complete_task_with_projection_uses_projection_runtime_metadata() -> None:
     repository = InMemoryTaskRepository()
     service = build_service(
         task_repository=repository,
-        prompt_runtime=StubPromptRuntime(
-            resolved_prompt=StubResolvedPrompt(
-                promptVersion="prompt-fallback-v2",
-                schemaVersion="schema-fallback-v2",
-                rubricVersion="rubric-fallback-v2",
-            ),
-            expected_stage=StageName.INPUT_SCREENING.value,
-            expected_input_composition=InputComposition.CHAPTERS_OUTLINE.value,
-            expected_evaluation_mode=EvaluationMode.FULL.value,
-            expected_provider_id="provider-fallback",
-            expected_model_id="model-fallback",
-        ),
-        provider_adapter=StubProviderAdapter(
-            provider_id="provider-fallback",
-            model_id="model-fallback",
-        ),
     )
     task = EvaluationTask(
         taskId="legacy_task",
@@ -340,22 +319,33 @@ def test_complete_task_with_result_resolves_missing_runtime_metadata_from_collab
     )
     repository.create_task(task)
 
-    service.complete_task_with_result(
+    service.complete_task_with_projection(
         task.taskId,
-        signing_probability=80,
-        commercial_value=78,
-        writing_quality=76,
-        innovation_score=74,
+        projection=build_projection(
+            task,
+            score=80,
+            schema_version="schema-projection-v2",
+            prompt_version="prompt-projection-v2",
+            rubric_version="rubric-projection-v2",
+            provider_id="provider-projection",
+            model_id="model-projection",
+        ),
     )
 
+    updated = service.get_task(task.taskId)
     result = service.get_result(task.taskId).result
 
+    assert updated.schemaVersion == "schema-projection-v2"
+    assert updated.promptVersion == "prompt-projection-v2"
+    assert updated.rubricVersion == "rubric-projection-v2"
+    assert updated.providerId == "provider-projection"
+    assert updated.modelId == "model-projection"
     assert result is not None
-    assert result.schemaVersion == "schema-fallback-v2"
-    assert result.promptVersion == "prompt-fallback-v2"
-    assert result.rubricVersion == "rubric-fallback-v2"
-    assert result.providerId == "provider-fallback"
-    assert result.modelId == "model-fallback"
+    assert result.schemaVersion == "schema-projection-v2"
+    assert result.promptVersion == "prompt-projection-v2"
+    assert result.rubricVersion == "rubric-projection-v2"
+    assert result.providerId == "provider-projection"
+    assert result.modelId == "model-projection"
 
 
 def test_get_dashboard_uses_overall_result_summary() -> None:
@@ -363,12 +353,9 @@ def test_get_dashboard_uses_overall_result_summary() -> None:
     task = service.create_task(build_request())
     service.start_task(task.taskId)
 
-    service.complete_task_with_result(
+    service.complete_task_with_projection(
         task.taskId,
-        signing_probability=80,
-        commercial_value=78,
-        writing_quality=76,
-        innovation_score=74,
+        projection=build_projection(task, score=80),
     )
 
     dashboard = service.get_dashboard()
@@ -445,14 +432,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
         ) -> SimpleNamespace:
             assert task.evaluationMode is EvaluationMode.DEGRADED
             assert task.novelType is NovelType.URBAN_REALITY
-            projection = service._build_final_projection(
-                task,
-                signing_probability=80,
-                commercial_value=78,
-                writing_quality=76,
-                innovation_score=74,
-            )
-            return SimpleNamespace(projection=projection)
+            return SimpleNamespace(projection=build_projection(task, score=80))
 
     service._scoring_pipeline = StubPipeline()
 

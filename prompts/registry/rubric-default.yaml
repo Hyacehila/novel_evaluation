@@ -6,6 +6,6 @@ rubricVersion: rubric-v1
 inputCompositionScope: chapters_outline
 evaluationModeScope: full
 providerScope: provider-deepseek
-modelScope: deepseek-chat
+modelScope: *
 enabled: true
 notes: full 模式 rubric 正式资产。

@@ -7,6 +7,7 @@ import json
 import pytest
 from docx import Document
 from fastapi.testclient import TestClient
+from provider_adapters import LocalDeterministicProviderAdapter, ProviderFailureType, build_provider_failure
 
 from api import dependencies as api_dependencies
 from api.app import create_app
@@ -28,9 +29,9 @@ def configure_fake_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         api_dependencies,
         "build_configured_provider_adapter",
-        lambda *, api_key: api_dependencies._get_provider_adapters_module().LocalDeterministicProviderAdapter(
+        lambda *, api_key: LocalDeterministicProviderAdapter(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             structured_stage_outputs=True,
         ),
     )
@@ -119,7 +120,7 @@ def test_post_tasks_creates_task() -> None:
     assert payload["data"]["promptVersion"] == "v1"
     assert payload["data"]["rubricVersion"] == "rubric-v1"
     assert payload["data"]["providerId"] == "provider-deepseek"
-    assert payload["data"]["modelId"] == "deepseek-chat"
+    assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
 def test_post_tasks_accepts_multipart_chapters_file_without_auto_split() -> None:
@@ -340,7 +341,7 @@ def test_get_task_returns_existing_task() -> None:
     assert payload["data"]["promptVersion"] == "v1"
     assert payload["data"]["rubricVersion"] == "rubric-v1"
     assert payload["data"]["providerId"] == "provider-deepseek"
-    assert payload["data"]["modelId"] == "deepseek-chat"
+    assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
 def test_get_task_returns_404_for_missing_task() -> None:
@@ -393,7 +394,7 @@ def test_get_provider_status_returns_startup_env_state() -> None:
     assert payload["success"] is True
     assert payload["data"] == {
         "providerId": "provider-deepseek",
-        "modelId": "deepseek-chat",
+        "modelId": "deepseek-v4-pro",
         "configured": True,
         "configurationSource": "startup_env",
         "canAnalyze": True,
@@ -405,20 +406,18 @@ def test_get_provider_status_returns_startup_env_state() -> None:
 def test_post_tasks_masks_provider_failure_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
 
-    provider_adapters_module = api_dependencies._get_provider_adapters_module()
-
     class RawFailureProviderAdapter:
         provider_id = "provider-deepseek"
-        model_id = "deepseek-chat"
+        model_id = "deepseek-v4-pro"
 
         def execute(self, request):
-            return provider_adapters_module.build_provider_failure(
+            return build_provider_failure(
                 provider_id=self.provider_id,
                 model_id=self.model_id,
                 request_id=request.requestId,
                 provider_request_id="req-secret-001",
                 duration_ms=1,
-                failure_type=provider_adapters_module.ProviderFailureType.PROVIDER_FAILURE,
+                failure_type=ProviderFailureType.PROVIDER_FAILURE,
                 message="raw upstream api key sk-secret exposed in provider failure",
             )
 
@@ -461,7 +460,7 @@ def test_post_tasks_masks_screening_block_message_in_task_response(monkeypatch: 
 
     class ScreeningBlockedProviderAdapter:
         provider_id = "provider-deepseek"
-        model_id = "deepseek-chat"
+        model_id = "deepseek-v4-pro"
 
         def execute(self, request):
             if request.stage.value != "input_screening":
@@ -525,7 +524,7 @@ def test_post_tasks_masks_outline_screening_block_message_in_task_response(monke
 
     class OutlineBlockedProviderAdapter:
         provider_id = "provider-deepseek"
-        model_id = "deepseek-chat"
+        model_id = "deepseek-v4-pro"
 
         def execute(self, request):
             if request.stage.value != "input_screening":
@@ -584,7 +583,7 @@ def test_post_tasks_masks_joint_unrateable_screening_block_message_in_task_respo
 
     class JointUnrateableProviderAdapter:
         provider_id = "provider-deepseek"
-        model_id = "deepseek-chat"
+        model_id = "deepseek-v4-pro"
 
         def execute(self, request):
             if request.stage.value != "input_screening":
@@ -644,7 +643,7 @@ def test_get_provider_status_returns_missing_state_without_key(monkeypatch: pyte
     assert payload["success"] is True
     assert payload["data"] == {
         "providerId": "provider-deepseek",
-        "modelId": "deepseek-chat",
+        "modelId": "deepseek-v4-pro",
         "configured": False,
         "configurationSource": "missing",
         "canAnalyze": False,
@@ -663,7 +662,7 @@ def test_runtime_key_configuration_enables_analysis(monkeypatch: pytest.MonkeyPa
     assert status_response.status_code == 200
     assert status_response.json()["data"] == {
         "providerId": "provider-deepseek",
-        "modelId": "deepseek-chat",
+        "modelId": "deepseek-v4-pro",
         "configured": True,
         "configurationSource": "runtime_memory",
         "canAnalyze": True,
@@ -760,7 +759,7 @@ def test_runtime_key_reset_clears_runtime_configuration_when_enabled(monkeypatch
     assert reset_response.status_code == 200
     assert reset_response.json()["data"] == {
         "providerId": "provider-deepseek",
-        "modelId": "deepseek-chat",
+        "modelId": "deepseek-v4-pro",
         "configured": False,
         "configurationSource": "missing",
         "canAnalyze": False,
@@ -836,7 +835,7 @@ def test_post_tasks_allows_creation_after_runtime_key_configuration(monkeypatch:
     payload = response.json()
     assert payload["success"] is True
     assert payload["data"]["providerId"] == "provider-deepseek"
-    assert payload["data"]["modelId"] == "deepseek-chat"
+    assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
 def test_post_tasks_keeps_degraded_input_semantics() -> None:
@@ -862,7 +861,7 @@ def test_post_tasks_keeps_degraded_input_semantics() -> None:
     assert payload["data"]["promptVersion"] == "v1"
     assert payload["data"]["rubricVersion"] == "rubric-v1"
     assert payload["data"]["providerId"] == "provider-deepseek"
-    assert payload["data"]["modelId"] == "deepseek-chat"
+    assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
 def test_get_dashboard_and_history_return_success() -> None:

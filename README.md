@@ -12,6 +12,7 @@
 - 默认存储：`SQLite`，默认路径 `var/novel-evaluation.sqlite3`
 - 上传格式：`TXT / MD / DOCX`
 - Playwright 默认基线：deterministic provider；真实 `DeepSeek` 只作为可选验收路径
+- 真实模型默认：`deepseek-v4-pro`，思考模式 `enabled`，`reasoning_effort=high`
 
 ## 快速开始
 
@@ -28,11 +29,14 @@
 1. 启动前通过 `.env` 或环境变量设置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
 2. API 启动时不带 key，然后在 `/tasks/new` 页录入一次性 runtime key
 
+默认真实模型可在 `.env` 里通过 `NOVEL_EVAL_DEEPSEEK_MODEL_ID` 调整，当前支持直接改为 `deepseek-v4-flash` 走降本路径；`NOVEL_EVAL_DEEPSEEK_THINKING` 与 `NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT` 控制 V4 思考模式。
+
 ## 文档入口
 
 - 使用者：[`docs/runbook.md`](docs/runbook.md)
 - 维护者总览：[`docs/architecture.md`](docs/architecture.md)
 - 契约说明：[`docs/contracts.md`](docs/contracts.md)
+- 主链请求与 Prompt：[`docs/request-flow.md`](docs/request-flow.md)
 - Prompt 与评测：[`docs/prompts-and-evals.md`](docs/prompts-and-evals.md)
 - 总导航：[`docs/README.md`](docs/README.md)
 

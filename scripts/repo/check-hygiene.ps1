@@ -48,7 +48,25 @@ $legacyTerms = @(
     "detailedAnalysisDraft",
     "affectedSkeletonDimensions",
     "SkeletonDimensionId",
-    "TopLevelScoreField"
+    "TopLevelScoreField",
+    "deepseek-chat",
+    "deepseek-reasoner"
+)
+
+$legacyReferenceTerms = @(
+    "apps/api/contracts",
+    "docs/architecture/",
+    "docs/contracts/",
+    "docs/decisions/",
+    "docs/getting-started/",
+    "docs/operations/",
+    "docs/planning/",
+    "docs/product/",
+    "docs/prompting/",
+    "docs/research/",
+    "packages/domain/",
+    "packages/shared/",
+    "packages/sdk/"
 )
 
 foreach ($relativePath in $bannedDirectories) {
@@ -74,21 +92,85 @@ $scanRoots = @(
     (Join-Path $repoRoot "docs"),
     (Join-Path $repoRoot "prompts")
 )
+$rootScanFiles = @(
+    "README.md",
+    "CONTRIBUTING.md",
+    "CLAUDE.md",
+    ".env.example"
+) | ForEach-Object {
+    Join-Path $repoRoot $_
+} | Where-Object {
+    Test-Path $_
+} | ForEach-Object {
+    Get-Item $_
+}
 $scanExtensions = @(".md", ".yaml", ".yml", ".txt")
-$filesToScan = foreach ($scanRoot in $scanRoots) {
+$filesToScan = @(
+    foreach ($scanRoot in $scanRoots) {
     if (-not (Test-Path $scanRoot)) {
         continue
     }
     Get-ChildItem -LiteralPath $scanRoot -Recurse -File | Where-Object {
         $scanExtensions -contains $_.Extension.ToLowerInvariant()
     }
-}
+    }
+    $rootScanFiles
+) | Sort-Object FullName -Unique
 
 foreach ($term in $legacyTerms) {
     $matches = $filesToScan | Select-String -SimpleMatch $term
     foreach ($match in $matches) {
         $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $match.Path)
         $errors.Add("Legacy term '$term' found in ${relativeFile}:$($match.LineNumber)")
+    }
+}
+
+foreach ($term in $legacyReferenceTerms) {
+    $matches = $filesToScan | Select-String -SimpleMatch $term
+    foreach ($match in $matches) {
+        $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $match.Path)
+        $errors.Add("Legacy reference '$term' found in ${relativeFile}:$($match.LineNumber)")
+    }
+}
+
+$markdownFiles = $filesToScan | Where-Object {
+    $_.Extension.ToLowerInvariant() -eq ".md"
+}
+$repoRootWithSeparator = $repoRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+$markdownLinkPattern = [regex]'!?\[[^\]]*\]\(([^)]+)\)'
+foreach ($file in $markdownFiles) {
+    $lines = @(Get-Content -LiteralPath $file.FullName)
+    for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
+        foreach ($match in $markdownLinkPattern.Matches($lines[$lineIndex])) {
+            $rawTarget = $match.Groups[1].Value.Trim()
+            if (-not $rawTarget) {
+                continue
+            }
+            if ($rawTarget.StartsWith("#") -or $rawTarget -match "^[a-zA-Z][a-zA-Z0-9+.-]*:") {
+                continue
+            }
+            $targetWithoutAnchor = ($rawTarget -split "#", 2)[0]
+            $targetPath = ($targetWithoutAnchor -split "\?", 2)[0].Trim()
+            if (-not $targetPath) {
+                continue
+            }
+            $targetPath = [System.Uri]::UnescapeDataString($targetPath)
+            $resolvedTarget = if ([System.IO.Path]::IsPathRooted($targetPath)) {
+                [System.IO.Path]::GetFullPath($targetPath)
+            }
+            else {
+                [System.IO.Path]::GetFullPath((Join-Path $file.DirectoryName $targetPath))
+            }
+            if ($resolvedTarget -ne $repoRoot -and -not $resolvedTarget.StartsWith($repoRootWithSeparator)) {
+                $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName)
+                $errors.Add("Local Markdown link points outside repository: ${relativeFile}:$($lineIndex + 1) -> $rawTarget")
+                continue
+            }
+            if (-not (Test-Path $resolvedTarget)) {
+                $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName)
+                $errors.Add("Broken local Markdown link: ${relativeFile}:$($lineIndex + 1) -> $rawTarget")
+            }
+        }
     }
 }
 

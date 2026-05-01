@@ -27,37 +27,54 @@ PROMPT_RUNTIME_PACKAGE_DIR = REPO_ROOT / "packages" / "prompt-runtime" / "src" /
 PROVIDER_ADAPTERS_PACKAGE_DIR = REPO_ROOT / "packages" / "provider-adapters" / "src" / "provider_adapters"
 PROMPT_RUNTIME_MODULE_NAME = "packages.runtime._prompt_runtime_runtime"
 PROVIDER_ADAPTERS_MODULE_NAME = "packages.runtime._provider_adapters_runtime"
+logger = logging.getLogger(__name__)
+_REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
+_DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
+_DEEPSEEK_MODEL_ID_ENV = "NOVEL_EVAL_DEEPSEEK_MODEL_ID"
+_DEFAULT_DEEPSEEK_MODEL_ID = "deepseek-v4-pro"
+_ALLOWED_DEEPSEEK_MODEL_IDS = frozenset({"deepseek-v4-flash", "deepseek-v4-pro"})
+_ALLOW_E2E_PROVIDER_RESET_ENV = "NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET"
+_E2E_PROVIDER_MODE_ENV = "NOVEL_EVAL_E2E_PROVIDER_MODE"
+_PROVIDER_ID = "provider-deepseek"
+_DETERMINISTIC_PROVIDER_MODE = "deterministic"
+
+
+def _read_deepseek_model_id() -> str:
+    raw_value = os.getenv(_DEEPSEEK_MODEL_ID_ENV)
+    if raw_value is None:
+        return _DEFAULT_DEEPSEEK_MODEL_ID
+    normalized = raw_value.strip()
+    if not normalized:
+        return _DEFAULT_DEEPSEEK_MODEL_ID
+    if normalized not in _ALLOWED_DEEPSEEK_MODEL_IDS:
+        allowed = ", ".join(sorted(_ALLOWED_DEEPSEEK_MODEL_IDS))
+        raise RuntimeError(f"{_DEEPSEEK_MODEL_ID_ENV} 只支持：{allowed}。")
+    return normalized
+
+
+_MODEL_ID = _read_deepseek_model_id()
 PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
     {
         (
             InputComposition.CHAPTERS_OUTLINE.value,
             EvaluationMode.FULL.value,
-            "provider-deepseek",
-            "deepseek-chat",
+            _PROVIDER_ID,
+            _MODEL_ID,
         ),
         (
             InputComposition.CHAPTERS_ONLY.value,
             EvaluationMode.DEGRADED.value,
-            "provider-deepseek",
-            "deepseek-chat",
+            _PROVIDER_ID,
+            _MODEL_ID,
         ),
         (
             InputComposition.OUTLINE_ONLY.value,
             EvaluationMode.DEGRADED.value,
-            "provider-deepseek",
-            "deepseek-chat",
+            _PROVIDER_ID,
+            _MODEL_ID,
         ),
     }
 )
-
-logger = logging.getLogger(__name__)
-_REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
-_DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
-_ALLOW_E2E_PROVIDER_RESET_ENV = "NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET"
-_E2E_PROVIDER_MODE_ENV = "NOVEL_EVAL_E2E_PROVIDER_MODE"
-_PROVIDER_ID = "provider-deepseek"
-_MODEL_ID = "deepseek-chat"
-_DETERMINISTIC_PROVIDER_MODE = "deterministic"
 
 
 def _load_package(*, module_name: str, package_dir: Path) -> ModuleType:
@@ -264,7 +281,7 @@ def build_configured_provider_adapter(*, api_key: str) -> ProviderExecutionPort:
             model_id=_MODEL_ID,
             structured_stage_outputs=True,
         )
-    return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key)
+    return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key, model_id=_MODEL_ID)
 
 
 def get_startup_provider_adapter() -> ProviderExecutionPort:

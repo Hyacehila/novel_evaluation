@@ -11,9 +11,10 @@
 
 1. [`architecture.md`](architecture.md)：看保留模块、依赖方向和端到端数据流。
 2. [`contracts.md`](contracts.md)：看代码真源、API 资源、状态语义和结果契约。
-3. [`prompts-and-evals.md`](prompts-and-evals.md)：看 Prompt 资产、选择规则、evals 和仓库卫生检查。
+3. [`request-flow.md`](request-flow.md)：看一次 `POST /api/tasks` 后主链里每一次请求、Prompt 和评分分工。
+4. [`prompts-and-evals.md`](prompts-and-evals.md)：看 Prompt 资产、选择规则、evals 和仓库卫生检查。
 
 ## 目录约定
 
 - `docs/assets/` 只存放被正式文档引用的静态资源。
-- 其余正式文档固定为 `README.md`、`runbook.md`、`architecture.md`、`contracts.md`、`prompts-and-evals.md`。
+- 其余正式文档固定为 `README.md`、`runbook.md`、`architecture.md`、`contracts.md`、`request-flow.md`、`prompts-and-evals.md`。

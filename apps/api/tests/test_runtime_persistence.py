@@ -6,6 +6,7 @@ from pathlib import Path
 import sqlite3
 
 from fastapi.testclient import TestClient
+from provider_adapters import LocalDeterministicProviderAdapter
 
 from api import dependencies as api_dependencies
 from api.app import create_app
@@ -17,6 +18,7 @@ from packages.schemas.common.enums import ResultStatus, SubmissionSourceType, Ta
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.manuscript import ManuscriptChapter, ManuscriptOutline
 from packages.schemas.output.error import ErrorCode
+from tests.result_helpers import build_projection
 
 
 
@@ -24,9 +26,9 @@ def configure_fake_provider(monkeypatch) -> None:
     monkeypatch.setattr(
         api_dependencies,
         "build_configured_provider_adapter",
-        lambda *, api_key: api_dependencies._get_provider_adapters_module().LocalDeterministicProviderAdapter(
+        lambda *, api_key: LocalDeterministicProviderAdapter(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             structured_stage_outputs=True,
         ),
     )
@@ -67,13 +69,7 @@ def test_sqlite_repository_persists_completed_result_across_instances(tmp_path: 
 
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     reopened_repository = SQLiteTaskRepository(db_path=db_path)
     persisted_task = reopened_repository.get_task(task.taskId)
@@ -145,13 +141,7 @@ def test_sqlite_repository_returns_not_available_for_legacy_persisted_result_jso
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     legacy_payload = {
         "taskId": task.taskId,
@@ -215,13 +205,7 @@ def test_api_result_endpoint_returns_not_available_for_legacy_persisted_result_a
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     legacy_payload = {
         "taskId": task.taskId,
@@ -289,13 +273,7 @@ def test_sqlite_repository_returns_not_available_when_result_payload_is_corrupte
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     with sqlite3.connect(db_path) as connection:
         connection.execute(
@@ -324,13 +302,7 @@ def test_sqlite_repository_returns_not_available_when_legacy_result_payload_miss
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     legacy_payload = {
         "taskId": task.taskId,
@@ -385,13 +357,7 @@ def test_sqlite_repository_returns_not_available_when_legacy_result_payload_uses
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     legacy_payload = {
         "taskId": task.taskId,
@@ -447,13 +413,7 @@ def test_sqlite_repository_returns_not_available_when_current_result_payload_is_
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     persisted_result = repository.get_result(task.taskId)
     assert persisted_result is not None
@@ -487,13 +447,7 @@ def test_api_dashboard_skips_corrupted_result_payload_after_restart(tmp_path: Pa
     )
     task = service.create_task(build_request())
     service.start_task(task.taskId)
-    service.complete_task_with_result(
-        task.taskId,
-        signing_probability=81,
-        commercial_value=79,
-        writing_quality=77,
-        innovation_score=75,
-    )
+    service.complete_task_with_projection(task.taskId, projection=build_projection(task, score=81))
 
     with sqlite3.connect(db_path) as connection:
         connection.execute(

@@ -50,7 +50,7 @@ function buildTaskQueryData(): TaskQueryData {
     promptVersion: "v2",
     rubricVersion: "rubric-v2",
     providerId: "provider-deepseek",
-    modelId: "deepseek-chat",
+    modelId: "deepseek-v4-pro",
     createdAt: "2026-03-28T10:00:00Z",
     startedAt: "2026-03-28T10:00:03Z",
     completedAt: "2026-03-28T10:00:08Z",
@@ -98,7 +98,7 @@ function buildAvailableResultBody(): NonNullable<TaskResultQueryData["result"]> 
     promptVersion: "v2",
     rubricVersion: "rubric-v2",
     providerId: "provider-deepseek",
-    modelId: "deepseek-chat",
+    modelId: "deepseek-v4-pro",
     resultTime: "2026-03-28T10:00:08Z",
     axes: [
       {

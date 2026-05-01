@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
-    context = bootstrap_worker_runtime(command_name=args.command)
+    context = bootstrap_worker_runtime(command_name=args.command, dry_run=bool(getattr(args, "dry_run", False)))
     handler = args.handler
     return handler(args, context)
 

@@ -6,6 +6,6 @@ rubricVersion: rubric-v1
 inputCompositionScope: chapters_outline
 evaluationModeScope: full
 providerScope: provider-deepseek
-modelScope: deepseek-chat
+modelScope: *
 enabled: true
 notes: 类型分类正式资产，负责输出 Top-3 候选并遵守固定兜底策略。

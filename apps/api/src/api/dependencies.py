@@ -8,9 +8,7 @@ from packages.runtime import service_factory as runtime_service_factory
 
 PRIMARY_PROMPT_RUNTIME_SCOPES = runtime_service_factory.PRIMARY_PROMPT_RUNTIME_SCOPES
 ApiPromptRuntime = runtime_service_factory.RuntimePromptRuntime
-_get_provider_adapters_module = runtime_service_factory._get_provider_adapters_module
 get_task_repository = runtime_service_factory.get_task_repository
-resolve_prompts_root = runtime_service_factory.resolve_prompts_root
 
 
 def build_configured_provider_adapter(*, api_key: str):
@@ -48,13 +46,6 @@ def get_provider_adapter():
     return get_provider_runtime_state()
 
 
-def get_startup_provider_adapter():
-    api_key = runtime_service_factory.os.getenv(runtime_service_factory._DEEPSEEK_API_KEY_ENV)
-    if api_key is None or not api_key.strip():
-        raise RuntimeError("worker 启动前必须设置 NOVEL_EVAL_DEEPSEEK_API_KEY。")
-    return build_configured_provider_adapter(api_key=api_key.strip())
-
-
 @lru_cache(maxsize=1)
 def get_evaluation_service() -> EvaluationService:
     return EvaluationService(
@@ -72,13 +63,10 @@ __all__ = [
     "PRIMARY_PROMPT_RUNTIME_SCOPES",
     "ApiPromptRuntime",
     "ApiProviderRuntimeState",
-    "_get_provider_adapters_module",
     "build_configured_provider_adapter",
     "get_evaluation_service",
     "get_provider_adapter",
     "get_provider_runtime_state",
-    "get_startup_provider_adapter",
     "get_task_repository",
     "recover_processing_tasks",
-    "resolve_prompts_root",
 ]

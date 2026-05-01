@@ -145,6 +145,17 @@ def assert_timeout_option(
     assert timeout.pool == expected_total_seconds
 
 
+def expected_deepseek_payload(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "messages": [{"role": "user", "content": "请输出结构化分析"}],
+        "model": "deepseek-v4-pro",
+        "extra_body": {"thinking": {"type": "enabled"}},
+        "reasoning_effort": "high",
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_provider_request_matches_phase_one_contract() -> None:
     request = build_request()
 
@@ -322,11 +333,11 @@ def test_deepseek_adapter_returns_typed_success() -> None:
     )
     adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
 
-    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
     assert isinstance(result, ProviderExecutionSuccess)
     assert result.providerId == "provider-deepseek"
-    assert result.modelId == "deepseek-chat"
+    assert result.modelId == "deepseek-v4-pro"
     assert result.requestId == "req_20260326_001"
     assert result.providerRequestId == "deepseek-request-001"
     assert result.durationMs >= 0
@@ -336,11 +347,7 @@ def test_deepseek_adapter_returns_typed_success() -> None:
     assert fake_client.options[0]["max_retries"] == 0
     assert_timeout_option(fake_client.options[0], expected_total_seconds=3.0)
     assert fake_client.calls == [
-        {
-            "messages": [{"role": "user", "content": "请输出结构化分析"}],
-            "model": "deepseek-chat",
-            "response_format": {"type": "json_object"},
-        }
+        expected_deepseek_payload(response_format={"type": "json_object"}),
     ]
 
 
@@ -398,7 +405,7 @@ def test_deepseek_adapter_maps_failure_modes() -> None:
         )
         adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
 
-        result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+        result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
         assert isinstance(result, ProviderExecutionFailure)
         assert result.failureType is failure_type
@@ -416,7 +423,7 @@ def test_deepseek_adapter_rejects_mismatched_provider_identity() -> None:
     assert isinstance(result, ProviderExecutionFailure)
     assert result.failureType is ProviderFailureType.CONTRACT_INVALID
     assert result.providerId == "provider-deepseek"
-    assert result.modelId == "deepseek-chat"
+    assert result.modelId == "deepseek-v4-pro"
     assert result.retryable is False
     assert result.providerRequestId is None
 
@@ -429,11 +436,69 @@ def test_deepseek_adapter_reads_api_key_from_environment(monkeypatch: pytest.Mon
     assert adapter.api_key == "env-key"
 
 
+def test_deepseek_adapter_can_disable_v4_thinking(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_THINKING", "disabled")
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-v4-pro",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert fake_client.calls == [
+        {
+            "messages": [{"role": "user", "content": "请输出结构化分析"}],
+            "model": "deepseek-v4-pro",
+            "response_format": {"type": "json_object"},
+            "extra_body": {"thinking": {"type": "disabled"}},
+        }
+    ]
+
+
+def test_deepseek_adapter_rejects_invalid_v4_thinking_options(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_THINKING", "maybe")
+
+    with pytest.raises(ValueError, match="NOVEL_EVAL_DEEPSEEK_THINKING"):
+        DeepSeekProviderAdapter(api_key="test-key")
+
+
+def test_deepseek_adapter_supports_v4_flash_model() -> None:
+    fake_client = FakeDeepSeekClient(response=FakeDeepSeekResponse(parsed={"summary": "ok"}))
+    adapter = DeepSeekProviderAdapter(api_key="test-key", model_id="deepseek-v4-flash", client=fake_client)
+
+    result = adapter.execute(
+        build_request(
+            provider_id="provider-deepseek",
+            model_id="deepseek-v4-flash",
+            response_format="json_object",
+        )
+    )
+
+    assert isinstance(result, ProviderExecutionSuccess)
+    assert result.modelId == "deepseek-v4-flash"
+    assert fake_client.calls == [
+        expected_deepseek_payload(
+            model="deepseek-v4-flash",
+            response_format={"type": "json_object"},
+        ),
+    ]
+
+
+def test_deepseek_adapter_rejects_legacy_model_alias() -> None:
+    with pytest.raises(ValueError, match="DeepSeek model_id"):
+        DeepSeekProviderAdapter(api_key="test-key", model_id="deepseek-chat")
+
+
 def test_deepseek_adapter_without_api_key_maps_to_dependency_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
     adapter = DeepSeekProviderAdapter(client=FakeDeepSeekClient(response=FakeDeepSeekResponse()))
 
-    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
     assert isinstance(result, ProviderExecutionFailure)
     assert result.failureType is ProviderFailureType.DEPENDENCY_UNAVAILABLE
@@ -460,7 +525,7 @@ def test_deepseek_adapter_returns_deeply_frozen_raw_json() -> None:
         ),
     )
 
-    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
     assert isinstance(result, ProviderExecutionSuccess)
     with pytest.raises(TypeError):
@@ -476,7 +541,7 @@ def test_deepseek_adapter_reraises_unknown_exceptions() -> None:
     )
 
     with pytest.raises(RuntimeError, match="unexpected"):
-        adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+        adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
 
 def test_deepseek_adapter_rejects_response_format_with_extra_fields() -> None:
@@ -485,7 +550,7 @@ def test_deepseek_adapter_rejects_response_format_with_extra_fields() -> None:
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format={"type": "json_object", "schema": "ignored"},
         )
     )
@@ -503,18 +568,14 @@ def test_deepseek_adapter_supports_string_response_format() -> None:
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format="json_object",
         )
     )
 
     assert isinstance(result, ProviderExecutionSuccess)
     assert fake_client.calls == [
-        {
-            "messages": [{"role": "user", "content": "请输出结构化分析"}],
-            "model": "deepseek-chat",
-            "response_format": {"type": "json_object"},
-        }
+        expected_deepseek_payload(response_format={"type": "json_object"}),
     ]
 
 
@@ -525,17 +586,14 @@ def test_deepseek_adapter_omits_response_format_when_not_provided() -> None:
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format=None,
         )
     )
 
     assert isinstance(result, ProviderExecutionSuccess)
     assert fake_client.calls == [
-        {
-            "messages": [{"role": "user", "content": "请输出结构化分析"}],
-            "model": "deepseek-chat",
-        }
+        expected_deepseek_payload(),
     ]
 
 
@@ -546,7 +604,7 @@ def test_deepseek_adapter_passes_timeout_and_max_tokens() -> None:
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             timeout_ms=90_000,
             max_tokens=1_500,
             response_format="json_object",
@@ -558,12 +616,7 @@ def test_deepseek_adapter_passes_timeout_and_max_tokens() -> None:
     assert fake_client.options[0]["max_retries"] == 0
     assert_timeout_option(fake_client.options[0], expected_total_seconds=90.0)
     assert fake_client.calls == [
-        {
-            "messages": [{"role": "user", "content": "请输出结构化分析"}],
-            "max_tokens": 1500,
-            "model": "deepseek-chat",
-            "response_format": {"type": "json_object"},
-        }
+        expected_deepseek_payload(max_tokens=1500, response_format={"type": "json_object"}),
     ]
 
 
@@ -579,7 +632,7 @@ def test_deepseek_adapter_retries_empty_json_content_once_and_succeeds() -> None
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format="json_object",
         )
     )
@@ -600,7 +653,7 @@ def test_deepseek_adapter_disables_sdk_retries_even_without_explicit_timeout() -
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             timeout_ms=None,
             response_format="json_object",
         )
@@ -622,7 +675,7 @@ def test_deepseek_adapter_retries_invalid_json_once_then_returns_provider_failur
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format="json_object",
         )
     )
@@ -647,7 +700,7 @@ def test_deepseek_adapter_retries_non_json_once_then_returns_provider_failure() 
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format="json_object",
         )
     )
@@ -667,7 +720,7 @@ def test_deepseek_adapter_accepts_text_response_format_with_plain_text() -> None
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format="text",
         )
     )
@@ -676,11 +729,7 @@ def test_deepseek_adapter_accepts_text_response_format_with_plain_text() -> None
     assert result.rawText == "纯文本响应"
     assert result.rawJson == "纯文本响应"
     assert fake_client.calls == [
-        {
-            "messages": [{"role": "user", "content": "请输出结构化分析"}],
-            "model": "deepseek-chat",
-            "response_format": {"type": "text"},
-        }
+        expected_deepseek_payload(response_format={"type": "text"}),
     ]
 
 
@@ -693,7 +742,7 @@ def test_deepseek_adapter_rejects_non_object_json_for_json_object_response_forma
     result = adapter.execute(
         build_request(
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
             response_format={"type": "json_object"},
         )
     )
@@ -712,7 +761,7 @@ def test_deepseek_adapter_maps_openai_status_subclass_exceptions() -> None:
     )("unauthorized")
     adapter = DeepSeekProviderAdapter(api_key="test-key", client=FakeDeepSeekClient(error=authentication_error))
 
-    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-chat"))
+    result = adapter.execute(build_request(provider_id="provider-deepseek", model_id="deepseek-v4-pro"))
 
     assert isinstance(result, ProviderExecutionFailure)
     assert result.failureType is ProviderFailureType.PROVIDER_FAILURE

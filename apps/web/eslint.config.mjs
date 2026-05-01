@@ -13,6 +13,11 @@ export default tseslint.config(
   {
     ignores: [".next", "coverage", "node_modules", "next-env.d.ts"],
   },
+  {
+    plugins: {
+      "@next/next": nextPlugin,
+    },
+  },
   js.configs.recommended,
   {
     files: ["**/*.{js,mjs,cjs}"],
@@ -32,7 +37,6 @@ export default tseslint.config(
   {
     files: ["app/**/*.{ts,tsx}", "src/**/*.{ts,tsx}"],
     plugins: {
-      "@next/next": nextPlugin,
       "react-hooks": reactHooks,
     },
     languageOptions: {

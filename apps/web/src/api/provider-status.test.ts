@@ -34,7 +34,7 @@ describe("provider status client", () => {
       success: true,
       data: {
         providerId: "provider-deepseek",
-        modelId: "deepseek-chat",
+        modelId: "deepseek-v4-pro",
         configured: false,
         configurationSource: "missing",
         canAnalyze: false,
@@ -56,7 +56,7 @@ describe("provider status client", () => {
       success: true,
       data: {
         providerId: "provider-deepseek",
-        modelId: "deepseek-chat",
+        modelId: "deepseek-v4-pro",
         configured: true,
         configurationSource: "startup_env",
         canAnalyze: true,
@@ -78,7 +78,7 @@ describe("provider status client", () => {
       success: true,
       data: {
         providerId: "provider-deepseek",
-        modelId: "deepseek-chat",
+        modelId: "deepseek-v4-pro",
         configured: true,
         configurationSource: "runtime_memory",
         canAnalyze: true,

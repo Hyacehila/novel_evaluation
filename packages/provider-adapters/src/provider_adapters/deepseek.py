@@ -21,7 +21,15 @@ from .contracts import (
 
 _DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
 _DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+_DEFAULT_DEEPSEEK_MODEL_ID = "deepseek-v4-pro"
+_DEFAULT_DEEPSEEK_THINKING = "enabled"
+_DEFAULT_DEEPSEEK_REASONING_EFFORT = "high"
+_DEEPSEEK_THINKING_ENV = "NOVEL_EVAL_DEEPSEEK_THINKING"
+_DEEPSEEK_REASONING_EFFORT_ENV = "NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT"
+_ALLOWED_DEEPSEEK_MODEL_IDS = frozenset({"deepseek-v4-flash", "deepseek-v4-pro"})
 _ALLOWED_DEEPSEEK_BASE_PATHS = frozenset({"", "/v1"})
+_ALLOWED_DEEPSEEK_THINKING_VALUES = frozenset({"enabled", "disabled"})
+_ALLOWED_DEEPSEEK_REASONING_EFFORTS = frozenset({"high", "max"})
 _OPENAI_EXCEPTION_MODULE_ROOT = "openai"
 _OPENAI_TIMEOUT_ERROR_NAMES = frozenset({"APITimeoutError"})
 _OPENAI_STATUS_ERROR_NAMES = frozenset({"APIStatusError", "RateLimitError"})
@@ -67,13 +75,32 @@ class DeepSeekClientProtocol(Protocol):
 class DeepSeekProviderAdapter:
     api_key: str | None = field(default=None, repr=False)
     provider_id: str = "provider-deepseek"
-    model_id: str = "deepseek-chat"
+    model_id: str = _DEFAULT_DEEPSEEK_MODEL_ID
+    thinking: str | None = None
+    reasoning_effort: str | None = None
     base_url: str = _DEEPSEEK_BASE_URL
     client: DeepSeekClientProtocol | None = None
     _client_factory: Any | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "api_key", self.api_key or os.getenv(_DEEPSEEK_API_KEY_ENV))
+        object.__setattr__(self, "model_id", self._validate_model_id(self.model_id))
+        thinking = self._resolve_option(
+            configured_value=self.thinking,
+            environment_variable=_DEEPSEEK_THINKING_ENV,
+            default_value=_DEFAULT_DEEPSEEK_THINKING,
+            allowed_values=_ALLOWED_DEEPSEEK_THINKING_VALUES,
+        )
+        object.__setattr__(self, "thinking", thinking)
+        reasoning_effort = None
+        if thinking == "enabled":
+            reasoning_effort = self._resolve_option(
+                configured_value=self.reasoning_effort,
+                environment_variable=_DEEPSEEK_REASONING_EFFORT_ENV,
+                default_value=_DEFAULT_DEEPSEEK_REASONING_EFFORT,
+                allowed_values=_ALLOWED_DEEPSEEK_REASONING_EFFORTS,
+            )
+        object.__setattr__(self, "reasoning_effort", reasoning_effort)
         self._validate_base_url()
 
     def execute(self, request: ProviderExecutionRequest) -> ProviderExecutionResult:
@@ -227,7 +254,33 @@ class DeepSeekProviderAdapter:
             payload["max_tokens"] = request.maxTokens
         if request.responseFormat is not None:
             payload["response_format"] = self._normalize_response_format(request.responseFormat)
+        if self.thinking is not None:
+            payload["extra_body"] = {"thinking": {"type": self.thinking}}
+        if self.reasoning_effort is not None:
+            payload["reasoning_effort"] = self.reasoning_effort
         return payload
+
+    def _resolve_option(
+        self,
+        *,
+        configured_value: str | None,
+        environment_variable: str,
+        default_value: str,
+        allowed_values: frozenset[str],
+    ) -> str:
+        raw_value = configured_value if configured_value is not None else os.getenv(environment_variable)
+        normalized = default_value if raw_value is None or not raw_value.strip() else raw_value.strip().lower()
+        if normalized not in allowed_values:
+            allowed = ", ".join(sorted(allowed_values))
+            raise ValueError(f"{environment_variable} 只支持：{allowed}。")
+        return normalized
+
+    def _validate_model_id(self, model_id: str) -> str:
+        normalized = model_id.strip()
+        if normalized not in _ALLOWED_DEEPSEEK_MODEL_IDS:
+            allowed = ", ".join(sorted(_ALLOWED_DEEPSEEK_MODEL_IDS))
+            raise ValueError(f"DeepSeek model_id 只支持：{allowed}。")
+        return normalized
 
     def _normalize_response_format(self, response_format: str | dict[str, Any]) -> dict[str, str]:
         if isinstance(response_format, str):

@@ -2,122 +2,85 @@
 
 ## 项目简介
 
-本项目是一个面向小说文本评审场景的智能打分系统仓库，核心能力是使用 `LLM as Judge` 对用户提交的小说开篇、章节、大纲或相关文本进行结构化评价。
+本项目是面向中文网文场景的本地单用户评测工具。核心能力是对用户提交的正文、章节和大纲进行多阶段结构化评价，并输出当前正式结果形态：`overall + axes + optional typeAssessment`。
 
-当前仓库处于**结构构建与工程初始化阶段**，目标是先完成目录边界、文档治理、Prompt 治理、评测体系和后端基础工程的搭建，而不是立即进入业务开发。
+当前仓库已经进入实现与回归并行维护阶段。后续开发应围绕现有 API、schema、Prompt、worker 和前端页面继续扩展，不再恢复历史规划目录或旧四分结果结构。
 
-## 当前阶段定位
+## 当前范围
 
-- 当前重点是结构建设、初始化与协作规则固化
-- 当前不应将研究产物误当作正式源码
-- 当前后端 Agent 逻辑的实现基线确定为 Python
-- Python 环境与依赖管理统一使用 `uv`
-- Python 版本基线为 `3.13`
+- 官方运行口径：`Windows + PowerShell`
+- API：`apps/api` 提供 HTTP 边界，并在进程内执行用户任务
+- Web：`apps/web` 提供本地 UI、轮询、历史与结果展示
+- Worker：`apps/worker` 只负责 `eval` / `batch`
+- 默认存储：`SQLite`，默认路径 `var/novel-evaluation.sqlite3`
+- 默认 E2E 基线：deterministic provider；真实 `DeepSeek` 是可选验收路径，默认模型为 `deepseek-v4-pro`
 
 ## 仓库结构
 
 ### `apps/`
 
-用于放置可运行的应用入口。
-
-- `apps/web/`：用户交互层与结果展示层
-- `apps/api/`：后端接口与 Agent 服务入口
-- `apps/worker/`：异步任务、批处理、回归执行入口
+- `apps/api/`：FastAPI 路由、上传解析、错误 envelope 和依赖注入
+- `apps/web/`：Next.js App Router 前端和同源 `/api` 代理
+- `apps/worker/`：eval / batch CLI
 
 ### `packages/`
 
-用于放置可复用的核心能力。
+- `packages/application/`：任务用例、状态推进和评分流水线编排
+- `packages/runtime/`：API/worker 共享 runtime 装配、SQLite 持久化和日志
+- `packages/schemas/`：输入、阶段、输出、evals 的正式结构契约
+- `packages/prompt-runtime/`：Prompt registry/version/body 选择与加载
+- `packages/provider-adapters/`：DeepSeek 与 deterministic provider 适配器
 
-- `packages/domain/`：领域模型与评分对象
-- `packages/application/`：评分流程编排
-- `packages/provider-adapters/`：模型供应商适配
-- `packages/schemas/`：正式结构契约
-- `packages/prompt-runtime/`：Prompt 运行时治理能力
-- `packages/shared/`：配置、日志、错误与工具
-- `packages/sdk/`：稳定客户端接口与共享类型
+### 资产与文档
 
-### `prompts/`
-
-用于放置正式 Prompt 资产。
-
-- Prompt 只允许在后端控制范围内治理和使用
-- Prompt 必须版本化、可追踪、可回滚
-- Prompt 不能由前端直接持有和拼接
-
-### `evals/`
-
-用于放置评测样本、用例、基线与报告。
-
-### `docs/`
-
-用于放置规划、架构、契约、决策、研究与运维文档。
-
-### `output/`
-
-用于放置抓取、分析、快照和临时产物。
-
-- `output/playwright/` 永久视为研究/抓取产物区
-- 该目录不纳入正式源码实现边界
-
-### `scripts/`
-
-用于放置仓库维护、结构检查和评测辅助脚本。
+- `prompts/`：正式 Prompt 资产，只保留当前评分主线
+- `evals/`：回归样本、suite、runner、report/baseline 写入模型
+- `docs/`：当前正式文档入口，不再保留历史分层目录
+- `scripts/`：安装、启动和仓库卫生检查脚本
+- `output/`、`var/`：本地运行产物，不纳入正式源码边界
 
 ## 项目规则
 
 ### Prompt 治理
 
-- 正式 Prompt 仅允许由后端治理
-- Prompt 资产应放在 `prompts/`
-- Prompt 的使用必须与 Schema 和 Evals 共同考虑
+- 正式 Prompt 仅从 `prompts/registry`、`prompts/versions`、`prompts/scoring` 加载
+- Prompt 版本必须与 schema/rubric 版本一致
+- Prompt 不由前端持有或拼接
 
 ### JSON 契约
 
-- 模型输出必须以严格 JSON 为目标
-- 正式结构应以 `packages/schemas/` 为唯一真源
-- API、Worker、Evals 都必须遵守同一套结构约束
+- `packages/schemas` 是正式字段真源
+- `apps/web/src/api/contracts.ts` 只是前端消费镜像
+- API、worker、evals 都必须遵守同一套结构约束
 
 ### 正式评分主线
 
-- 正式评分主线采用全 `LLM` 分阶段 `rubric` 机制
-- 正式流程固定为：输入预检查 → `LLM rubric` 分点评价 → 轻量一致性整理 → 新模型聚合输出 → 正式结果投影
-- 正式方案固定为单主线全 `LLM` 分阶段 `rubric` 流程，不引入额外介入环节或并行评分路径
+正式流程固定为：
 
-### 研究产物边界
+`input_screening -> type_classification -> rubric_evaluation -> type_lens_evaluation -> consistency_check -> aggregation -> final_projection`
 
-- `output/playwright/*` 仅作研究用途
-- 正式业务逻辑不得直接依赖研究产物文件
-- 如需吸收研究结论，应转写到 `docs/` 或正式结构文档中
+- `consistency_check` 与 `final_projection` 是规则/投影阶段，不发模型请求
+- 当前公开结果不再保留旧四分字段、旧骨架字段或旧聚合别名
+- 历史旧结果只能在读取期降级为 `not_available`
 
-### Python 与执行约定
+### Worker 约定
 
-- 后端 Agent 逻辑采用 Python 实现
-- Python 项目统一使用 `uv`
-- 运行 Python 命令统一使用 `uv run`
-- Python 版本基线为 `3.13`
-- 后端 Python 工程默认放在 `apps/api/`
+- `worker eval --dry-run` 和 `worker batch --dry-run` 不要求真实 key
+- 不带 `--dry-run` 的真实执行必须配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`
+- worker 不承接用户页面任务，不依赖 `apps/api` 内部装配
 
 ## 协作原则
 
-- 先结构、再契约、后实现
-- 新增目录时优先补充 `README.md` 或其它说明型占位文件
-- 生成物、缓存和虚拟环境不纳入版本控制
-- 如果后续在子目录新增 `CLAUDE.md`，其作用域遵循 Claude Code 的层级规则
-
-## 当前不应做的事情
-
-- 不要将仓库整体误写成单一技术栈项目
-- 不要在没有正式契约和评测边界前直接扩张业务代码
-- 不要把 `output/` 中的研究产物迁入 `apps/` 或 `packages/`
+- 代码真源优先于解释文档；文档必须跟随当前实现更新
+- 新增公开行为时同步更新 README、`docs/runbook.md` 或 `docs/contracts.md`
+- 不引入第二套任务状态、错误码、结果 DTO 或 Prompt 选择规则
+- 不恢复被 `scripts/repo/check-hygiene.ps1` 禁止的历史目录
 
 ## 推荐阅读顺序
 
 1. `README.md`
-2. `docs/architecture/layered-rubric-evaluation-architecture.md`
-3. `docs/contracts/rubric-stage-contracts.md`
-4. `docs/planning/layered-rubric-implementation-plan.md`
-5. `docs/planning/rubric-design-absorption-matrix.md`
-6. `docs/decisions/ADR-004-layered-rubric-evaluation.md`
-7. `docs/architecture/scoring-pipeline.md`
-8. `docs/contracts/json-contracts.md`
-9. `docs/decisions/ADR-001-repo-structure.md`
+2. `docs/runbook.md`
+3. `docs/architecture.md`
+4. `docs/contracts.md`
+5. `docs/request-flow.md`
+6. `docs/prompts-and-evals.md`

@@ -881,7 +881,7 @@ def test_file_prompt_runtime_resolves_repository_prompt_assets(
         input_composition="chapters_outline",
         evaluation_mode=evaluation_mode,
         provider_id="provider-deepseek",
-        model_id="deepseek-chat",
+        model_id="deepseek-v4-pro",
     )
 
     body_path = REPO_PROMPTS_ROOT / "scoring" / stage_directory / prompt_id / "v1.md"

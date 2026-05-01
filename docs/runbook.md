@@ -5,7 +5,7 @@
 - 默认联调与 Playwright 回归基线是 deterministic provider。
 - 真实 `DeepSeek` 只作为可选验收路径，不是首次启动前提。
 - API 缺少 `NOVEL_EVAL_DEEPSEEK_API_KEY` 时可以只读启动；此时可查看历史与结果，但不能创建新任务。
-- worker 启动仍要求 `NOVEL_EVAL_DEEPSEEK_API_KEY`，因为它只服务 `eval` / `batch` 执行。
+- worker 的真实 `eval` / `batch` 执行仍要求 `NOVEL_EVAL_DEEPSEEK_API_KEY`；`--dry-run` 只做路径与 runtime 预览，不要求 key。
 
 ## 前置依赖
 
@@ -34,6 +34,16 @@ Copy-Item .env.example .env
 ```
 
 ## Provider 模式
+
+默认模型为 `deepseek-v4-pro`。DeepSeek V4 的 OpenAI ChatCompletions `base_url` 仍是 `https://api.deepseek.com`，项目会显式传入 `extra_body.thinking.type` 与 `reasoning_effort`，避免依赖上游默认值。
+
+可通过 `.env` 或当前 PowerShell 会话调整：
+
+```powershell
+$env:NOVEL_EVAL_DEEPSEEK_MODEL_ID = "deepseek-v4-pro"      # 可改 deepseek-v4-flash
+$env:NOVEL_EVAL_DEEPSEEK_THINKING = "enabled"              # enabled / disabled
+$env:NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT = "high"         # high / max，仅 thinking=enabled 时使用
+```
 
 ### 1. 只读模式
 
@@ -97,7 +107,8 @@ pnpm --dir apps/web test:e2e
 - 前端单测：`pnpm --dir apps/web test`
 - 前端构建：`pnpm --dir apps/web build`
 - 浏览器流转：`pnpm --dir apps/web test:e2e`
-- worker 干跑：`uv run --project apps/worker worker eval --suite smoke --dry-run`
+- worker 干跑：`uv run --project apps/worker worker eval --suite smoke --dry-run`，无需配置真实 key
+- worker 真实执行：先配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`，再运行不带 `--dry-run` 的 `eval` / `batch`
 
 ## 故障排查
 

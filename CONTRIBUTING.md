@@ -20,8 +20,8 @@
 
 如果你要跑维护者命令、回归或批处理，请阅读：
 
-- `docs/operations/local-installation-and-smoke.md`
-- `docs/operations/quality-gates-and-regression.md`
+- `docs/runbook.md`
+- `docs/prompts-and-evals.md`
 
 ## 提交 PR 前的最小检查
 
@@ -52,9 +52,9 @@ pnpm --dir apps/web test:e2e
 
 文档入口建议：
 
-- 用户入口：`docs/getting-started/`
-- 维护者入口：`docs/operations/`
-- 深度真源：`docs/architecture/`、`docs/contracts/`、`docs/decisions/`
+- 用户入口：`docs/runbook.md`
+- 维护者入口：`docs/architecture.md`、`docs/contracts.md`、`docs/request-flow.md`
+- Prompt 与回归入口：`docs/prompts-and-evals.md`
 
 ## 变更原则
 

@@ -16,7 +16,7 @@ def _build_context(*, repo_root: Path, evals_root: Path) -> WorkerRuntimeContext
     prompt_runtime = RuntimePromptRuntime()
     provider_adapter = LocalDeterministicProviderAdapter(
         provider_id="provider-deepseek",
-        model_id="deepseek-chat",
+        model_id="deepseek-v4-pro",
         structured_stage_outputs=True,
     )
     return WorkerRuntimeContext(
@@ -31,7 +31,7 @@ def _build_context(*, repo_root: Path, evals_root: Path) -> WorkerRuntimeContext
             prompt_version="v1",
             rubric_version="rubric-v1",
             provider_id="provider-deepseek",
-            model_id="deepseek-chat",
+            model_id="deepseek-v4-pro",
         ),
     )
 
@@ -152,7 +152,7 @@ def test_batch_dry_run_reports_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path
             }
         ],
     )
-    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name: context)
+    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name, dry_run=False: context)
 
     exit_code = main(["batch", "--dry-run", "--source", str(source_path)])
 
@@ -164,7 +164,7 @@ def test_batch_dry_run_reports_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path
 
 def test_eval_dry_run_reports_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     context, evals_root = _build_eval_fixture(tmp_path)
-    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name: context)
+    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name, dry_run=False: context)
 
     exit_code = main(["eval", "--dry-run", "--suite", str(evals_root / "cases" / "smoke.json")])
 
@@ -174,13 +174,43 @@ def test_eval_dry_run_reports_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path:
     assert "real_execution_enabled=True" in captured.out
 
 
+def test_eval_dry_run_cli_allows_missing_startup_provider_key(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+
+    exit_code = main(["eval", "--dry-run", "--suite", "smoke"])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "status=dry_run" in captured.out
+    assert "real_execution_enabled=False" in captured.out
+
+
+def test_batch_dry_run_cli_allows_missing_startup_provider_key(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    source_path = tmp_path / "missing.json"
+
+    exit_code = main(["batch", "--dry-run", "--source", str(source_path)])
+
+    assert exit_code == 0
+    captured = capsys.readouterr()
+    assert "status=dry_run" in captured.out
+    assert "real_execution_enabled=False" in captured.out
+
+
 def test_eval_executes_suite_and_writes_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     context, evals_root = _build_eval_fixture(tmp_path)
-    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name: context)
+    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name, dry_run=False: context)
 
     exit_code = main(
         [
@@ -226,7 +256,7 @@ def test_batch_executes_source_and_writes_summary(
             },
         ],
     )
-    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name: context)
+    monkeypatch.setattr("worker.cli.bootstrap_worker_runtime", lambda command_name, dry_run=False: context)
 
     exit_code = main(["batch", "--source", str(source_path), "--report-id", "batch_smoke"])
 
@@ -241,7 +271,17 @@ def test_bootstrap_worker_runtime_requires_startup_provider_key(monkeypatch: pyt
     monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
 
     with pytest.raises(RuntimeError, match="NOVEL_EVAL_DEEPSEEK_API_KEY"):
-        bootstrap_worker_runtime(command_name="eval")
+        bootstrap_worker_runtime(command_name="eval", dry_run=False)
+
+
+def test_bootstrap_worker_runtime_dry_run_allows_missing_startup_provider_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+
+    context = bootstrap_worker_runtime(command_name="eval", dry_run=True)
+
+    assert context.runtime_metadata.provider_id == "provider-deepseek"
+    assert context.runtime_metadata.model_id == "deepseek-v4-pro"
+    assert context.real_execution_enabled is False
 
 
 def test_bootstrap_worker_runtime_uses_startup_key(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -250,5 +290,5 @@ def test_bootstrap_worker_runtime_uses_startup_key(monkeypatch: pytest.MonkeyPat
     context = bootstrap_worker_runtime(command_name="eval")
 
     assert context.runtime_metadata.provider_id == "provider-deepseek"
-    assert context.runtime_metadata.model_id == "deepseek-chat"
+    assert context.runtime_metadata.model_id == "deepseek-v4-pro"
     assert hasattr(context.provider_adapter, "execute")
