@@ -5,7 +5,7 @@
 export type TaskStatus = "queued" | "processing" | "completed" | "failed";
 export type ResultStatus = "available" | "not_available" | "blocked";
 export type InputComposition = "chapters_outline" | "chapters_only" | "outline_only";
-export type EvaluationMode = "full" | "degraded";
+export type AnalysisMode = "long_opening_outline" | "completed_fulltext";
 export type ProviderConfigurationSource = "missing" | "startup_env" | "runtime_memory";
 export type NovelType =
   | "female_general"
@@ -55,6 +55,7 @@ export interface ManuscriptOutlinePayload {
 
 export interface CreateTaskJsonPayload {
   title: string;
+  analysisMode: AnalysisMode;
   chapters?: ManuscriptChapterPayload[];
   outline?: ManuscriptOutlinePayload;
   sourceType: "direct_input";
@@ -73,14 +74,23 @@ export interface ProviderStatusDto {
   canConfigureFromUi: boolean;
 }
 
+export interface ProviderAuthSmokeDto {
+  providerId: string;
+  modelId: string;
+  configurationSource: ProviderConfigurationSource;
+  ok: boolean;
+  durationMs: number;
+  providerRequestId: string | null;
+}
+
 export interface EvaluationTaskDto {
   taskId: string;
   title: string;
   inputSummary: string;
+  analysisMode: AnalysisMode;
   inputComposition: InputComposition;
   hasChapters: boolean;
   hasOutline: boolean;
-  evaluationMode: EvaluationMode;
   status: TaskStatus;
   resultStatus: ResultStatus;
   errorCode: ErrorCode | null;
@@ -104,6 +114,7 @@ export interface EvaluationTaskSummaryDto {
   taskId: string;
   title: string;
   inputSummary: string;
+  analysisMode: AnalysisMode;
   inputComposition: InputComposition;
   status: TaskStatus;
   resultStatus: ResultStatus;
@@ -136,7 +147,6 @@ export interface AxisResultDto {
   score: number;
   summary: string;
   reason: string;
-  degradedByInput: boolean;
   riskTags: string[];
 }
 
@@ -163,7 +173,6 @@ export interface TypeLensDto {
   scoreBand: string;
   reason: string;
   confidence: number;
-  degradedByInput: boolean;
   riskTags: string[];
 }
 

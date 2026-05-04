@@ -76,6 +76,7 @@ class InMemoryTaskRepository(TaskRepository):
                 taskId=task.taskId,
                 title=task.title,
                 inputSummary=task.inputSummary,
+                analysisMode=task.analysisMode,
                 inputComposition=task.inputComposition,
                 status=task.status,
                 resultStatus=task.resultStatus,

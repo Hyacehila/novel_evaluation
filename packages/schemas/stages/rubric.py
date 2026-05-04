@@ -6,6 +6,7 @@ from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
 from packages.schemas.common.enums import (
+    AnalysisMode,
     AxisId,
     EvaluationMode,
     EvidenceSourceType,
@@ -51,7 +52,6 @@ class RubricEvaluationItem(SchemaModel):
     confidence: float
     riskTags: list[FatalRisk]
     blockingSignals: list[str]
-    degradedByInput: bool
 
     @field_validator("evaluationId", "reason")
     @classmethod
@@ -84,6 +84,7 @@ class _RubricEvaluationBase(SchemaModel):
     providerId: str
     modelId: str
     inputComposition: InputComposition
+    analysisMode: AnalysisMode
     evaluationMode: EvaluationMode
     items: list[RubricEvaluationItem]
     axisSummaries: dict[AxisId, str]

@@ -8,7 +8,7 @@ from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import ScreeningExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
-from packages.schemas.common.enums import EvaluationMode, FatalRisk, InputComposition, StageName, StageStatus, Sufficiency
+from packages.schemas.common.enums import EvaluationMode, FatalRisk, InputComposition, StageName, Sufficiency
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.error import ErrorCode
 from packages.runtime.logging import log_event
@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 _STAGE_TIMEOUT_MS = 90_000
 _STAGE_MAX_TOKENS = 1_500
-_LOW_CONFIDENCE_FAIL_FAST_THRESHOLD = 0.4
 
 
 def execute_screening(
@@ -31,6 +30,7 @@ def execute_screening(
         task_id=context.task_id,
         stage=StageName.INPUT_SCREENING,
         input_composition=InputComposition(context.input_composition),
+        analysis_mode=context.analysis_mode,
         evaluation_mode=context.evaluation_mode_hint,
         timeout_ms=_STAGE_TIMEOUT_MS,
         max_tokens=_STAGE_MAX_TOKENS,
@@ -39,6 +39,7 @@ def execute_screening(
             "taskId": context.task_id,
             "title": context.submission.title,
             "inputComposition": context.input_composition,
+            "analysisMode": context.analysis_mode.value,
             "evaluationModeHint": context.evaluation_mode_hint.value,
             "chapters": [chapter.content for chapter in context.submission.chapters or []],
             "outline": context.submission.outline.content if context.submission.outline is not None else None,
@@ -82,6 +83,7 @@ def _normalize_screening_payload(*, payload: Any, context: ScreeningExecutionCon
             "providerId": context.binding.provider_id,
             "modelId": context.binding.model_id,
             "inputComposition": context.submission.inputComposition.value,
+            "analysisMode": context.submission.analysisMode.value,
             "hasChapters": context.submission.hasChapters,
             "hasOutline": context.submission.hasOutline,
             "riskTags": _normalize_risk_tags(normalized_payload.get("riskTags")),
@@ -98,16 +100,6 @@ def _normalize_screening_payload(*, payload: Any, context: ScreeningExecutionCon
         present=context.submission.hasOutline,
     )
     normalized_payload["evaluationMode"] = _resolve_evaluation_mode(normalized_payload)
-    if _should_fail_fast_for_joint_input(normalized_payload):
-        normalized_payload.update(
-            {
-                "rateable": False,
-                "status": StageStatus.UNRATEABLE.value,
-                "continueAllowed": False,
-                "rejectionReasons": normalized_payload["rejectionReasons"]
-                or ["正文与大纲仍停留在梗概或设定层，缺少可评的叙事动作与冲突，无法进入正式评分。"],
-            }
-        )
     return normalized_payload
 
 
@@ -121,31 +113,7 @@ def _normalize_sufficiency(raw_value: Any, *, present: bool) -> str:
 
 
 def _resolve_evaluation_mode(payload: Mapping[str, Any]) -> str:
-    input_composition = payload.get("inputComposition")
-    chapters_sufficiency = payload.get("chaptersSufficiency")
-    outline_sufficiency = payload.get("outlineSufficiency")
-    if input_composition != InputComposition.CHAPTERS_OUTLINE.value:
-        return EvaluationMode.DEGRADED.value
-    if (
-        chapters_sufficiency == Sufficiency.SUFFICIENT.value
-        and outline_sufficiency == Sufficiency.SUFFICIENT.value
-    ):
-        return EvaluationMode.FULL.value
-    return EvaluationMode.DEGRADED.value
-
-
-def _should_fail_fast_for_joint_input(payload: Mapping[str, Any]) -> bool:
-    if payload.get("inputComposition") != InputComposition.CHAPTERS_OUTLINE.value:
-        return False
-    if payload.get("evaluationMode") != EvaluationMode.DEGRADED.value:
-        return False
-    risk_tags = set(payload.get("riskTags") or [])
-    if FatalRisk.NON_NARRATIVE_SUBMISSION.value not in risk_tags and FatalRisk.INSUFFICIENT_MATERIAL.value not in risk_tags:
-        return False
-    if payload.get("chaptersSufficiency") == Sufficiency.SUFFICIENT.value:
-        return False
-    confidence = payload.get("confidence")
-    return isinstance(confidence, int | float) and confidence <= _LOW_CONFIDENCE_FAIL_FAST_THRESHOLD
+    return EvaluationMode.FULL.value
 
 
 def _normalize_risk_tags(raw_risk_tags: Any) -> list[str]:

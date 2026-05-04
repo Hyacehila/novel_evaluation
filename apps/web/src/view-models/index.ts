@@ -1,6 +1,6 @@
 import type {
+  AnalysisMode,
   ErrorCode,
-  EvaluationMode,
   InputComposition,
   NovelType,
   ProviderConfigurationSource,
@@ -13,6 +13,7 @@ export interface DashboardTaskSummaryView {
   taskId: string;
   title: string;
   inputSummary: string;
+  analysisMode: AnalysisMode;
   inputComposition: InputComposition;
   status: TaskStatus;
   resultStatus: ResultStatus;
@@ -38,10 +39,10 @@ export interface TaskDetailView {
   taskId: string;
   title: string;
   inputSummary: string;
+  analysisMode: AnalysisMode;
   inputComposition: InputComposition;
   hasChapters: boolean;
   hasOutline: boolean;
-  evaluationMode: EvaluationMode;
   status: TaskStatus;
   resultStatus: ResultStatus;
   errorCode: ErrorCode | null;
@@ -67,7 +68,6 @@ export interface AxisResultView {
   score: number;
   summary: string;
   reason: string;
-  degradedByInput: boolean;
   riskTags: string[];
 }
 
@@ -94,7 +94,6 @@ export interface TypeLensView {
   scoreBand: string;
   reason: string;
   confidence: number;
-  degradedByInput: boolean;
   riskTags: string[];
 }
 

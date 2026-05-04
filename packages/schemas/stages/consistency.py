@@ -6,7 +6,7 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import AxisId, EvaluationMode, InputComposition, StageName
+from packages.schemas.common.enums import AnalysisMode, AxisId, EvaluationMode, InputComposition, StageName
 from packages.schemas.common.validators import ensure_non_empty_text, validate_confidence
 
 
@@ -52,6 +52,7 @@ class ConsistencyCheckResult(SchemaModel):
     providerId: str
     modelId: str
     inputComposition: InputComposition
+    analysisMode: AnalysisMode
     evaluationMode: EvaluationMode
     passed: bool
     conflicts: list[ConsistencyConflict]

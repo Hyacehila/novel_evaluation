@@ -30,7 +30,6 @@ def build_projection(
                 score=score,
                 summary=f"{axis_id.value} 维度总结",
                 reason=f"{axis_id.value} 维度理由",
-                degradedByInput=False,
                 riskTags=[],
             )
             for axis_id in AxisId

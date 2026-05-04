@@ -3,9 +3,10 @@
 import { useTaskQuery } from "@/api/hooks";
 import { routes } from "@/shared/config/routes";
 import {
+  getAnalysisModeLabel,
+  describeTaskFailure,
   formatConfidence,
   formatDateTime,
-  getEvaluationModeLabel,
   getInputCompositionLabel,
   getNovelTypeLabel,
   getResultStatusLabel,
@@ -62,6 +63,9 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
                 <p className="text-xs tracking-[0.12em] text-[var(--muted)]">任务 ID</p>
                 <h2 className="section-title mt-3 break-all text-2xl font-semibold">{taskQuery.data.taskId}</h2>
                 <p className="mt-4 text-sm leading-7 text-[var(--muted)]">{taskQuery.data.inputSummary}</p>
+                <p className="mt-3 text-sm leading-7 text-[var(--muted)]">
+                  分析模式：{getAnalysisModeLabel(taskQuery.data.analysisMode)}
+                </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge tone={statusTone(taskQuery.data.status)}>{getTaskStatusLabel(taskQuery.data.status)}</Badge>
@@ -87,8 +91,8 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
                 value: getInputCompositionLabel(taskQuery.data.inputComposition),
               },
               {
-                label: "评测模式",
-                value: getEvaluationModeLabel(taskQuery.data.evaluationMode),
+                label: "分析模式",
+                value: getAnalysisModeLabel(taskQuery.data.analysisMode),
               },
               {
                 label: "创建时间",
@@ -164,7 +168,7 @@ export function TaskDetailPage({ taskId }: { taskId: string }) {
           {taskQuery.data.status === "failed" ? (
             <ErrorState
               title="任务执行失败"
-              description={taskQuery.data.errorMessage ?? "评测流程出现技术故障，当前结果不可用。"}
+              description={describeTaskFailure(taskQuery.data.errorCode, taskQuery.data.errorMessage)}
               action={<Button asLink href={routes.newTask}>重新提交新任务</Button>}
             />
           ) : null}
@@ -184,7 +188,7 @@ function MetadataRow({
   raw?: boolean;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-[var(--line)] bg-white/60 p-4">
+    <div className="flex items-start justify-between gap-4 rounded-[10px] border border-[var(--line)] bg-white p-4">
       <dt className="text-[var(--muted)]">{label}</dt>
       <dd className="break-all">{raw ? value ?? "未设置" : formatDateTime(value)}</dd>
     </div>

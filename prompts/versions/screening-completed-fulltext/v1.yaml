@@ -1,0 +1,10 @@
+promptId: screening-completed-fulltext
+promptVersion: v1
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+owner: codex
+updatedAt: 2026-05-03T00:00:00Z
+changeSummary: 新增已完结中短篇全文输入预检查 prompt。
+rollbackTarget: screening-default/v1
+evalRequirement: deterministic-e2e-and-real-deepseek-smoke

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from packages.schemas.common.enums import AxisId, EvaluationMode, NovelType, ScoreBand
+from packages.schemas.common.enums import AxisId, NovelType, ScoreBand
 from packages.schemas.output.result import (
     AxisEvaluationResult,
     FinalEvaluationProjection,
@@ -39,7 +39,6 @@ def build_final_projection(
             score=_SCORE_BAND_TO_SCORE[item_by_axis[axis_id].scoreBand],
             summary=rubric.axisSummaries[axis_id],
             reason=item_by_axis[axis_id].reason,
-            degradedByInput=item_by_axis[axis_id].degradedByInput,
             riskTags=list(item_by_axis[axis_id].riskTags),
         )
         for axis_id in AxisId
@@ -93,8 +92,6 @@ def _build_overall_score(
     lens_base = round(sum(lens_scores) / len(lens_scores))
     type_weight = 0.15 if type_classification.novelType is NovelType.GENERAL_FALLBACK else 0.25
     base_score = round(universal_base * (1 - type_weight) + lens_base * type_weight)
-    if rubric.evaluationMode is EvaluationMode.DEGRADED:
-        base_score -= 8
     if consistency.duplicatedPenaltiesDetected:
         base_score -= 3
     if any(conflict.conflictType is ConflictType.WEAK_EVIDENCE for conflict in consistency.conflicts):

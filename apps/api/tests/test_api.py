@@ -18,7 +18,7 @@ from api.dependencies import (
     get_provider_runtime_state,
     get_task_repository,
 )
-from packages.schemas.common.enums import EvaluationMode, InputComposition, ResultStatus, TaskStatus
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, ResultStatus, TaskStatus
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
 
@@ -58,6 +58,7 @@ def build_json_submission_body(*, chapter_content: str = "chapter", outline_cont
     return json.dumps(
         {
             "title": "payload-size-test",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "c1", "content": chapter_content}],
             "outline": {"content": outline_content},
             "sourceType": "direct_input",
@@ -82,6 +83,7 @@ def seed_task(
         taskId=task_id,
         title=title,
         inputSummary="已提交 1 章正文和 1 份大纲",
+        analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         hasChapters=True,
         hasOutline=True,
@@ -105,6 +107,7 @@ def test_post_tasks_creates_task() -> None:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -123,47 +126,54 @@ def test_post_tasks_creates_task() -> None:
     assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
-def test_post_tasks_accepts_multipart_chapters_file_without_auto_split() -> None:
+def test_post_tasks_rejects_multipart_chapters_file_without_outline_for_long_opening_mode() -> None:
     client = create_client()
 
     response = client.post(
         "/api/tasks",
-        data={"title": "上传正文", "sourceType": "file_upload"},
+        data={
+            "title": "上传正文",
+            "sourceType": "file_upload",
+            "analysisMode": "long_opening_outline",
+        },
         files={"chaptersFile": ("chapter.txt", "第一章\n内容\n\n第二章\n内容", "text/plain")},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 422
     payload = response.json()
-    assert payload["success"] is True
-    assert payload["data"]["status"] == "queued"
-    assert payload["data"]["resultStatus"] == "not_available"
-    assert payload["data"]["inputComposition"] == "chapters_only"
-    assert payload["data"]["evaluationMode"] == "degraded"
-    assert payload["data"]["inputSummary"] == "仅提交 1 章正文"
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_post_tasks_accepts_multipart_outline_file() -> None:
+def test_post_tasks_rejects_multipart_outline_file_without_chapters_for_completed_mode() -> None:
     client = create_client()
 
     response = client.post(
         "/api/tasks",
-        data={"title": "上传大纲", "sourceType": "file_upload"},
+        data={
+            "title": "上传大纲",
+            "sourceType": "file_upload",
+            "analysisMode": "completed_fulltext",
+        },
         files={"outlineFile": ("outline.md", "# 大纲\n主要剧情", "text/markdown")},
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 422
     payload = response.json()
-    assert payload["success"] is True
-    assert payload["data"]["inputComposition"] == "outline_only"
-    assert payload["data"]["evaluationMode"] == "degraded"
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_post_tasks_accepts_multipart_docx_and_outline_file() -> None:
+def test_post_tasks_accepts_multipart_docx_and_outline_file_for_long_opening_mode() -> None:
     client = create_client()
 
     response = client.post(
         "/api/tasks",
-        data={"title": "组合上传", "sourceType": "file_upload"},
+        data={
+            "title": "组合上传",
+            "sourceType": "file_upload",
+            "analysisMode": "long_opening_outline",
+        },
         files={
             "chaptersFile": (
                 "chapter.docx",
@@ -178,7 +188,7 @@ def test_post_tasks_accepts_multipart_docx_and_outline_file() -> None:
     payload = response.json()
     assert payload["success"] is True
     assert payload["data"]["inputComposition"] == "chapters_outline"
-    assert payload["data"]["evaluationMode"] == "full"
+    assert payload["data"]["analysisMode"] == "long_opening_outline"
 
 
 def test_post_tasks_rejects_invalid_payload() -> None:
@@ -219,7 +229,7 @@ def test_post_tasks_rejects_invalid_source_type_in_multipart() -> None:
 
     response = client.post(
         "/api/tasks",
-        data={"title": "非法来源", "sourceType": "invalid"},
+        data={"title": "非法来源", "sourceType": "invalid", "analysisMode": "long_opening_outline"},
         files={"chaptersFile": ("chapter.txt", "正文内容", "text/plain")},
     )
 
@@ -234,7 +244,11 @@ def test_post_tasks_rejects_unsupported_upload_format() -> None:
 
     response = client.post(
         "/api/tasks",
-        data={"title": "非法格式", "sourceType": "file_upload"},
+        data={
+            "title": "非法格式",
+            "sourceType": "file_upload",
+            "analysisMode": "long_opening_outline",
+        },
         files={"chaptersFile": ("chapter.pdf", b"%PDF-1.7", "application/pdf")},
     )
 
@@ -251,7 +265,11 @@ def test_post_tasks_rejects_upload_too_large(monkeypatch) -> None:
 
     response = client.post(
         "/api/tasks",
-        data={"title": "超大文件", "sourceType": "file_upload"},
+        data={
+            "title": "超大文件",
+            "sourceType": "file_upload",
+            "analysisMode": "long_opening_outline",
+        },
         files={"chaptersFile": ("chapter.txt", b"12345", "text/plain")},
     )
 
@@ -302,7 +320,11 @@ def test_post_tasks_rejects_invalid_docx_upload() -> None:
 
     response = client.post(
         "/api/tasks",
-        data={"title": "损坏文档", "sourceType": "file_upload"},
+        data={
+            "title": "损坏文档",
+            "sourceType": "file_upload",
+            "analysisMode": "long_opening_outline",
+        },
         files={
             "chaptersFile": (
                 "broken.docx",
@@ -325,6 +347,7 @@ def test_get_task_returns_existing_task() -> None:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -361,6 +384,7 @@ def test_get_result_returns_available_after_in_process_execution() -> None:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -402,6 +426,69 @@ def test_get_provider_status_returns_startup_env_state() -> None:
     }
 
 
+def test_provider_auth_smoke_succeeds_with_configured_provider() -> None:
+    client = create_client()
+
+    response = client.post("/api/provider-status/smoke-test")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["success"] is True
+    assert payload["data"]["providerId"] == "provider-deepseek"
+    assert payload["data"]["modelId"] == "deepseek-v4-pro"
+    assert payload["data"]["configurationSource"] == "startup_env"
+    assert payload["data"]["ok"] is True
+    assert payload["data"]["durationMs"] >= 0
+
+
+def test_provider_auth_smoke_requires_configured_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
+    client = create_client()
+
+    response = client.post("/api/provider-status/smoke-test")
+
+    assert response.status_code == 409
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.PROVIDER_NOT_CONFIGURED.value
+
+
+def test_provider_auth_smoke_masks_upstream_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
+
+    class SmokeFailureProviderAdapter:
+        provider_id = "provider-deepseek"
+        model_id = "deepseek-v4-pro"
+
+        def execute(self, request):
+            return build_provider_failure(
+                provider_id=self.provider_id,
+                model_id=self.model_id,
+                request_id=request.requestId,
+                provider_request_id="upstream-secret-request",
+                duration_ms=1,
+                failure_type=ProviderFailureType.PROVIDER_FAILURE,
+                message="raw upstream smoke error with sk-secret",
+                retryable=False,
+            )
+
+    monkeypatch.setattr(
+        api_dependencies,
+        "build_configured_provider_adapter",
+        lambda *, api_key: SmokeFailureProviderAdapter(),
+    )
+    client = create_client()
+
+    response = client.post("/api/provider-status/smoke-test")
+
+    assert response.status_code == 502
+    payload = response.json()
+    assert payload["success"] is False
+    assert payload["error"]["code"] == ErrorCode.PROVIDER_FAILURE.value
+    assert "sk-secret" not in payload["error"]["message"]
+    assert "upstream-secret-request" not in payload["error"]["message"]
+
+
 
 def test_post_tasks_masks_provider_failure_message_in_task_response(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("NOVEL_EVAL_DEEPSEEK_API_KEY", "test-key")
@@ -432,6 +519,7 @@ def test_post_tasks_masks_provider_failure_message_in_task_response(monkeypatch:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -467,9 +555,10 @@ def test_post_tasks_masks_screening_block_message_in_task_response(monkeypatch: 
                 raise AssertionError(f"unexpected stage: {request.stage.value}")
             return RawSuccess(
                 {
+                    "analysisMode": "long_opening_outline",
                     "inputComposition": "chapters_outline",
-                    "evaluationMode": "degraded",
-                    "chaptersSufficiency": "insufficient",
+                    "evaluationMode": "full",
+                    "chaptersSufficiency": "sufficient",
                     "outlineSufficiency": "sufficient",
                     "rateable": False,
                     "status": "unrateable",
@@ -491,6 +580,7 @@ def test_post_tasks_masks_screening_block_message_in_task_response(monkeypatch: 
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -503,8 +593,8 @@ def test_post_tasks_masks_screening_block_message_in_task_response(monkeypatch: 
     payload = task_response.json()
     assert payload["data"]["status"] == "completed"
     assert payload["data"]["resultStatus"] == "blocked"
-    assert payload["data"]["errorCode"] == ErrorCode.INSUFFICIENT_CHAPTERS_INPUT.value
-    assert payload["data"]["errorMessage"] == "正文内容不足，当前无法进入正式评分，请补充正文后重试。"
+    assert payload["data"]["errorCode"] == ErrorCode.JOINT_INPUT_UNRATEABLE.value
+    assert payload["data"]["errorMessage"] == "输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。"
     assert "raw upstream" not in payload["data"]["errorMessage"]
     assert "sk-secret" not in payload["data"]["errorMessage"]
 
@@ -531,10 +621,11 @@ def test_post_tasks_masks_outline_screening_block_message_in_task_response(monke
                 raise AssertionError(f"unexpected stage: {request.stage.value}")
             return RawSuccess(
                 {
-                    "inputComposition": "outline_only",
-                    "evaluationMode": "degraded",
-                    "chaptersSufficiency": "missing",
-                    "outlineSufficiency": "insufficient",
+                    "analysisMode": "long_opening_outline",
+                    "inputComposition": "chapters_outline",
+                    "evaluationMode": "full",
+                    "chaptersSufficiency": "sufficient",
+                    "outlineSufficiency": "sufficient",
                     "rateable": False,
                     "status": "unrateable",
                     "rejectionReasons": ["outline upstream provider reason sk-secret should not leak"],
@@ -555,6 +646,8 @@ def test_post_tasks_masks_outline_screening_block_message_in_task_response(monke
         "/api/tasks",
         json={
             "title": "仅大纲阻断",
+            "analysisMode": "long_opening_outline",
+            "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
         },
@@ -566,8 +659,8 @@ def test_post_tasks_masks_outline_screening_block_message_in_task_response(monke
     payload = task_response.json()
     assert payload["data"]["status"] == "completed"
     assert payload["data"]["resultStatus"] == "blocked"
-    assert payload["data"]["errorCode"] == ErrorCode.INSUFFICIENT_OUTLINE_INPUT.value
-    assert payload["data"]["errorMessage"] == "大纲内容不足，当前无法进入正式评分，请补充大纲后重试。"
+    assert payload["data"]["errorCode"] == ErrorCode.JOINT_INPUT_UNRATEABLE.value
+    assert payload["data"]["errorMessage"] == "输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。"
     assert "upstream" not in payload["data"]["errorMessage"]
     assert "sk-secret" not in payload["data"]["errorMessage"]
 
@@ -590,8 +683,9 @@ def test_post_tasks_masks_joint_unrateable_screening_block_message_in_task_respo
                 raise AssertionError(f"unexpected stage: {request.stage.value}")
             return RawSuccess(
                 {
+                    "analysisMode": "long_opening_outline",
                     "inputComposition": "chapters_outline",
-                    "evaluationMode": "degraded",
+                    "evaluationMode": "full",
                     "chaptersSufficiency": "sufficient",
                     "outlineSufficiency": "sufficient",
                     "rateable": False,
@@ -614,6 +708,7 @@ def test_post_tasks_masks_joint_unrateable_screening_block_message_in_task_respo
         "/api/tasks",
         json={
             "title": "联合不可评阻断",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -801,6 +896,7 @@ def test_post_tasks_rejects_when_provider_not_configured(monkeypatch: pytest.Mon
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -825,6 +921,7 @@ def test_post_tasks_allows_creation_after_runtime_key_configuration(monkeypatch:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -838,7 +935,7 @@ def test_post_tasks_allows_creation_after_runtime_key_configuration(monkeypatch:
     assert payload["data"]["modelId"] == "deepseek-v4-pro"
 
 
-def test_post_tasks_keeps_degraded_input_semantics() -> None:
+def test_post_tasks_rejects_submission_without_analysis_mode() -> None:
     client = create_client()
 
     response = client.post(
@@ -850,18 +947,10 @@ def test_post_tasks_keeps_degraded_input_semantics() -> None:
         },
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 422
     payload = response.json()
-    assert payload["success"] is True
-    assert payload["data"]["status"] == "queued"
-    assert payload["data"]["resultStatus"] == "not_available"
-    assert payload["data"]["evaluationMode"] == "degraded"
-    assert payload["data"]["inputComposition"] == "outline_only"
-    assert payload["data"]["schemaVersion"] == "1.0.0"
-    assert payload["data"]["promptVersion"] == "v1"
-    assert payload["data"]["rubricVersion"] == "rubric-v1"
-    assert payload["data"]["providerId"] == "provider-deepseek"
-    assert payload["data"]["modelId"] == "deepseek-v4-pro"
+    assert payload["success"] is False
+    assert payload["error"]["code"] == "VALIDATION_ERROR"
 
 
 def test_get_dashboard_and_history_return_success() -> None:
@@ -870,6 +959,7 @@ def test_get_dashboard_and_history_return_success() -> None:
         "/api/tasks",
         json={
             "title": "测试稿件",
+            "analysisMode": "long_opening_outline",
             "chapters": [{"title": "第一章", "content": "第一章内容"}],
             "outline": {"content": "大纲内容"},
             "sourceType": "direct_input",
@@ -980,12 +1070,12 @@ def test_get_history_rejects_limit_above_maximum() -> None:
 
 def test_api_prompt_runtime_uses_file_runtime_for_primary_scope() -> None:
     runtime = ApiPromptRuntime()
-    input_composition, evaluation_mode, provider_id, model_id = next(iter(PRIMARY_PROMPT_RUNTIME_SCOPES))
+    input_composition, analysis_mode, provider_id, model_id = next(iter(PRIMARY_PROMPT_RUNTIME_SCOPES))
 
     resolved = runtime.resolve(
         stage="rubric_evaluation",
         input_composition=input_composition,
-        evaluation_mode=evaluation_mode,
+        analysis_mode=analysis_mode,
         provider_id=provider_id,
         model_id=model_id,
     )
@@ -993,17 +1083,16 @@ def test_api_prompt_runtime_uses_file_runtime_for_primary_scope() -> None:
     assert resolved.promptVersion == "v1"
 
 
-def test_api_prompt_runtime_uses_fallback_for_non_primary_scope() -> None:
+def test_api_prompt_runtime_selects_explicit_mode_prompts_for_primary_scopes() -> None:
     runtime = ApiPromptRuntime()
 
-    resolved = runtime.resolve(
-        stage="rubric_evaluation",
-        input_composition="outline_only",
-        evaluation_mode="degraded",
-        provider_id="provider-other",
-        model_id="model-other",
-    )
+    for input_composition, analysis_mode, provider_id, model_id in PRIMARY_PROMPT_RUNTIME_SCOPES:
+        resolved = runtime.resolve(
+            stage="rubric_evaluation",
+            input_composition=input_composition,
+            analysis_mode=analysis_mode,
+            provider_id=provider_id,
+            model_id=model_id,
+        )
 
-    assert resolved.promptVersion == "v1"
-    assert resolved.schemaVersion == "1.0.0"
-    assert resolved.rubricVersion == "rubric-v1"
+        assert resolved.promptId in {"rubric-default", "rubric-completed-fulltext"}

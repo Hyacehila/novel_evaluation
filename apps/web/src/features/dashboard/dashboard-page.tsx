@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useDashboardQuery } from "@/api/hooks";
 import { routes } from "@/shared/config/routes";
 import {
+  getAnalysisModeLabel,
   formatDateTime,
   formatScore,
   getInputCompositionLabel,
@@ -90,10 +91,10 @@ export function DashboardPage() {
               <div className="mt-6 space-y-4">
                 {dashboardQuery.data.recentTasks.length > 0 ? (
                   dashboardQuery.data.recentTasks.map((task) => (
-                    <Link
+                      <Link
                       key={task.taskId}
                       href={routes.task(task.taskId)}
-                      className="block rounded-[22px] border border-[var(--line)] bg-white/60 p-5 transition hover:-translate-y-0.5"
+                      className="block rounded-[12px] border border-[var(--line)] bg-white p-5 transition hover:border-[var(--accent)]"
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
@@ -107,6 +108,7 @@ export function DashboardPage() {
                       </div>
                       <div className="mt-4 flex flex-wrap gap-4 text-sm text-[var(--muted)]">
                         <span>{getInputCompositionLabel(task.inputComposition)}</span>
+                        <span>{getAnalysisModeLabel(task.analysisMode)}</span>
                         <span>{formatDateTime(task.createdAt)}</span>
                       </div>
                     </Link>
@@ -135,12 +137,13 @@ export function DashboardPage() {
                       <Link
                         key={task.taskId}
                         href={routes.task(task.taskId)}
-                        className="block rounded-[22px] border border-[var(--line)] bg-[rgba(255,255,255,0.6)] p-4"
+                        className="block rounded-[12px] border border-[var(--line)] bg-white p-4"
                       >
                         <div className="flex items-center justify-between gap-4">
                           <div>
                             <p className="font-semibold">{task.title}</p>
                             <p className="mt-1 text-sm text-[var(--muted)]">{getTaskStatusLabel(task.status)}</p>
+                            <p className="mt-1 text-sm text-[var(--muted)]">{getAnalysisModeLabel(task.analysisMode)}</p>
                           </div>
                           <Badge tone={statusTone(task.status)}>{getTaskStatusLabel(task.status)}</Badge>
                         </div>
@@ -164,7 +167,7 @@ export function DashboardPage() {
                         key={result.taskId}
                         href={routes.result(result.taskId)}
                         prefetch={false}
-                        className="block rounded-[22px] border border-[var(--line)] bg-white/60 p-4 transition hover:-translate-y-0.5"
+                        className="block rounded-[12px] border border-[var(--line)] bg-white p-4 transition hover:border-[var(--accent)]"
                       >
                         <div className="flex items-center justify-between gap-4">
                           <div>

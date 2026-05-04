@@ -47,6 +47,7 @@ def build_submission_from_dataset(*, evals_root: Path, dataset_ref: str) -> Join
     outline_content = _resolve_content(evals_root=evals_root, inline_value=entry.outlineContent, ref_value=entry.outlineRef)
     return JointSubmissionRequest(
         title=entry.title,
+        analysisMode=entry.analysisMode,
         chapters=[ManuscriptChapter(title=entry.title, content=chapters_content)] if chapters_content is not None else None,
         outline=ManuscriptOutline(content=outline_content) if outline_content is not None else None,
         sourceType=SubmissionSourceType.HISTORY_DERIVED,

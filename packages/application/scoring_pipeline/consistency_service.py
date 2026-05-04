@@ -8,7 +8,7 @@ from packages.application.scoring_pipeline.consistency_rules import (
     CONSISTENCY_THRESHOLDS,
 )
 from packages.application.scoring_pipeline.models import RubricExecutionContext
-from packages.schemas.common.enums import AxisId, EvaluationMode, FatalRisk, InputComposition
+from packages.schemas.common.enums import AxisId, FatalRisk, InputComposition
 from packages.schemas.stages.consistency import (
     ConflictSeverity,
     ConflictType,
@@ -56,9 +56,6 @@ def run_consistency_check(*, context: RubricExecutionContext, rubric) -> Consist
     outline_text = context.submission.outline.content if context.submission.outline is not None else ""
     conflicts: list[ConsistencyConflict] = []
     normalization_notes: list[str] = []
-
-    if context.screening.evaluationMode is EvaluationMode.DEGRADED:
-        normalization_notes.append("当前输入以 degraded 模式执行，部分长线判断置信度已下调。")
 
     cross_input_assessment = _assess_cross_input_genre_signal(
         chapters_text=chapters_text,
@@ -117,6 +114,7 @@ def run_consistency_check(*, context: RubricExecutionContext, rubric) -> Consist
         providerId=context.binding.provider_id,
         modelId=context.binding.model_id,
         inputComposition=context.screening.inputComposition,
+        analysisMode=context.screening.analysisMode,
         evaluationMode=context.screening.evaluationMode,
         passed=passed,
         conflicts=conflicts,

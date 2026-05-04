@@ -1,8 +1,9 @@
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
 
 export const providerMode = process.env.NOVEL_EVAL_E2E_PROVIDER_MODE ?? "deterministic";
+export const realProviderScope = process.env.NOVEL_EVAL_E2E_REAL_SCOPE ?? "";
 const runtimeApiKey = process.env.NOVEL_EVAL_DEEPSEEK_API_KEY ?? "";
-const e2eApiOrigin = process.env.NOVEL_EVAL_E2E_API_ORIGIN ?? "http://127.0.0.1:18000";
+export const e2eApiOrigin = process.env.NOVEL_EVAL_E2E_API_ORIGIN ?? "http://127.0.0.1:18000";
 
 export async function resetRuntimeProviderKey(request: APIRequestContext) {
   if (providerMode !== "runtime_key") {

@@ -54,6 +54,7 @@ def test_parse_upload_bytes_extracts_only_docx_body_paragraphs() -> None:
 def test_build_upload_request_maps_chapters_file_to_single_chapter() -> None:
     request = build_upload_request(
         title="上传稿件",
+        analysis_mode="completed_fulltext",
         source_type="file_upload",
         chapters_text="第一章\n内容\n\n第二章\n内容",
         outline_text=None,
@@ -63,6 +64,20 @@ def test_build_upload_request_maps_chapters_file_to_single_chapter() -> None:
     assert request.chapters is not None
     assert len(request.chapters) == 1
     assert request.chapters[0].content == "第一章\n内容\n\n第二章\n内容"
+
+
+def test_build_upload_request_accepts_long_opening_outline_submission() -> None:
+    request = build_upload_request(
+        title="长篇开篇",
+        analysis_mode="long_opening_outline",
+        source_type="file_upload",
+        chapters_text="第一章\n内容",
+        outline_text="后续大纲",
+    )
+
+    assert request.inputComposition is InputComposition.CHAPTERS_OUTLINE
+    assert request.hasChapters is True
+    assert request.hasOutline is True
 
 
 def test_parse_upload_bytes_rejects_oversized_content() -> None:

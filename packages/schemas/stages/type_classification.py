@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import EvaluationMode, InputComposition, NovelType, StageName
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, NovelType, StageName
 from packages.schemas.common.validators import ensure_non_empty_text, validate_confidence
 
 
@@ -34,6 +34,7 @@ class TypeClassificationResult(SchemaModel):
     providerId: str
     modelId: str
     inputComposition: InputComposition
+    analysisMode: AnalysisMode
     evaluationMode: EvaluationMode
     candidates: list[TypeClassificationCandidate]
     novelType: NovelType

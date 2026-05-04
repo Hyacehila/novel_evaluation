@@ -19,9 +19,13 @@ class InputComposition(StrEnum):
     OUTLINE_ONLY = "outline_only"
 
 
+class AnalysisMode(StrEnum):
+    LONG_OPENING_OUTLINE = "long_opening_outline"
+    COMPLETED_FULLTEXT = "completed_fulltext"
+
+
 class EvaluationMode(StrEnum):
     FULL = "full"
-    DEGRADED = "degraded"
 
 
 class Sufficiency(StrEnum):

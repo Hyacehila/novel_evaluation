@@ -4,7 +4,7 @@ status: candidate
 schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 inputCompositionScope: chapters_outline
-evaluationModeScope: full
+analysisModeScope: long_opening_outline
 providerScope: provider-deepseek
 modelScope: *
 enabled: true

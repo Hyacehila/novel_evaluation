@@ -38,10 +38,10 @@ function buildTaskQueryData(): TaskQueryData {
     taskId: "task_available",
     title: "测试稿件",
     inputSummary: "正文 + 大纲",
+    analysisMode: "long_opening_outline",
     inputComposition: "chapters_outline",
     hasChapters: true,
     hasOutline: true,
-    evaluationMode: "full",
     status: "completed",
     resultStatus: "available",
     errorCode: null,
@@ -51,6 +51,9 @@ function buildTaskQueryData(): TaskQueryData {
     rubricVersion: "rubric-v2",
     providerId: "provider-deepseek",
     modelId: "deepseek-v4-pro",
+    novelType: "fantasy_upgrade",
+    typeClassificationConfidence: 0.82,
+    typeFallbackUsed: false,
     createdAt: "2026-03-28T10:00:00Z",
     startedAt: "2026-03-28T10:00:03Z",
     completedAt: "2026-03-28T10:00:08Z",
@@ -107,7 +110,6 @@ function buildAvailableResultBody(): NonNullable<TaskResultQueryData["result"]> 
         score: 75,
         summary: "开篇冲突建立较快，留读动力明确。",
         reason: "主角在首章就被卷入宗门危机，读者能快速感知目标与压力。",
-        degradedByInput: false,
         riskTags: [],
       },
       {
@@ -116,7 +118,6 @@ function buildAvailableResultBody(): NonNullable<TaskResultQueryData["result"]> 
         score: 55,
         summary: "角色目标已经出现，但情绪牵引还不够稳定。",
         reason: "主角动机明确，不过人物关系张力还需要更持续的兑现。",
-        degradedByInput: true,
         riskTags: [],
       },
     ],
@@ -133,6 +134,7 @@ function buildAvailableResultBody(): NonNullable<TaskResultQueryData["result"]> 
       strengths: ["开篇抓力稳定"],
       weaknesses: ["长线兑现待验证"],
     },
+    typeAssessment: null,
   };
 }
 
@@ -196,7 +198,6 @@ describe("result detail page", () => {
     expect(html).toContain("勉强成立");
     expect(html).toContain("开篇冲突建立较快，留读动力明确。");
     expect(html).toContain("主角在首章就被卷入宗门危机");
-    expect(html).toContain("输入降级");
   });
 
   it("keeps blocked results out of the formal result body", () => {

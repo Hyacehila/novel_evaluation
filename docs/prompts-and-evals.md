@@ -11,15 +11,15 @@
 当前正式 Prompt ID：
 
 - `screening-default`
-- `screening-degraded`
 - `type-classification-default`
-- `type-classification-degraded`
 - `rubric-default`
-- `rubric-degraded`
 - `type-lens-default`
-- `type-lens-degraded`
 - `aggregation-default`
-- `aggregation-degraded`
+- `screening-completed-fulltext`
+- `type-classification-completed-fulltext`
+- `rubric-completed-fulltext`
+- `type-lens-completed-fulltext`
+- `aggregation-completed-fulltext`
 
 ## 选择规则
 
@@ -27,7 +27,7 @@
 
 1. `stage`
 2. `inputCompositionScope`
-3. `evaluationModeScope`
+3. `analysisModeScope`
 4. `providerScope`
 5. `modelScope`
 6. `status` 优先 `active`，其次 `candidate`
@@ -38,8 +38,10 @@
 ## 当前 Prompt 口径
 
 - registry 只绑定 `providerScope: provider-deepseek`，`modelScope` 保持 `*`，同一套 Prompt 可跟随 `NOVEL_EVAL_DEEPSEEK_MODEL_ID` 在 V4 Pro / V4 Flash 之间切换。
+- 正式评分主线只允许按 `analysisMode` 选择 `long_opening_outline` 或 `completed_fulltext`，不再存在材料不足时切换到替代 Prompt 的路径。
 - `rubric` Prompt 只允许输出当前 `RubricEvaluationSlice` 需要的字段：
   `requestedAxes`、`items`、`axisSummaries`、`missingRequiredAxes`、`riskTags`、`overallConfidence`
+- 如果 rubric 阶段收到 `schemaRepair`，说明上一轮真实 provider 输出未通过 schema；Prompt 必须按其中列出的错误补齐字段，并重新输出严格 JSON。
 - `aggregation` Prompt 只允许输出当前 `AggregatedRubricResult` 需要的字段：
   `overallVerdictDraft`、`verdictSubQuote`、`overallSummaryDraft`、`platformCandidates`、`marketFitDraft`、`strengthCandidates`、`weaknessCandidates`、`riskTags`、`overallConfidence`
 - 当前 Prompt 与文档禁止再出现旧四分字段、旧骨架字段和旧聚合别名
@@ -75,5 +77,5 @@ uv run --project apps/worker worker batch --source .\path\to\batch.json --report
 
 - 空壳/禁用目录回流
 - 旧 docs 子目录回流
-- 现行文档、根文档与 `prompts/` 出现旧字段或旧语义
+- 现行文档、根文档与 `prompts/` 出现旧字段、旧语义或疑似真实 API key
 - 正式 Markdown 文档中的本地链接失效

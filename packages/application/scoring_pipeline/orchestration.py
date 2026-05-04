@@ -22,7 +22,7 @@ from packages.application.scoring_pipeline.screening_executor import execute_scr
 from packages.application.scoring_pipeline.type_classification_executor import execute_type_classification
 from packages.application.scoring_pipeline.type_lens_executor import execute_type_lens
 from packages.schemas.input.screening import InputScreeningResult
-from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName, Sufficiency
+from packages.schemas.common.enums import EvaluationMode, StageName, Sufficiency
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.output.task import EvaluationTask
@@ -58,13 +58,10 @@ class ScoringPipeline:
 
     def run_screening(self, *, task: EvaluationTask, submission: JointSubmissionRequest) -> InputScreeningResult:
         input_composition = submission.inputComposition.value
-        evaluation_mode_hint = (
-            EvaluationMode.FULL if submission.inputComposition is InputComposition.CHAPTERS_OUTLINE else EvaluationMode.DEGRADED
-        )
         screening_binding = self._resolve_binding(
             stage=StageName.INPUT_SCREENING,
             input_composition=input_composition,
-            evaluation_mode=evaluation_mode_hint.value,
+            analysis_mode=submission.analysisMode.value,
         )
         screening = execute_screening(
             provider_adapter=self._provider_adapter,
@@ -72,7 +69,8 @@ class ScoringPipeline:
                 task_id=task.taskId,
                 submission=submission,
                 input_composition=input_composition,
-                evaluation_mode_hint=evaluation_mode_hint,
+                analysis_mode=submission.analysisMode,
+                evaluation_mode_hint=EvaluationMode.FULL,
                 binding=screening_binding,
             ),
         )
@@ -108,7 +106,7 @@ class ScoringPipeline:
         type_classification_binding = self._resolve_binding(
             stage=StageName.TYPE_CLASSIFICATION,
             input_composition=screening.inputComposition.value,
-            evaluation_mode=screening.evaluationMode.value,
+            analysis_mode=screening.analysisMode.value,
         )
         return execute_type_classification(
             provider_adapter=self._provider_adapter,
@@ -131,7 +129,7 @@ class ScoringPipeline:
         rubric_binding = self._resolve_binding(
             stage=StageName.RUBRIC_EVALUATION,
             input_composition=screening.inputComposition.value,
-            evaluation_mode=screening.evaluationMode.value,
+            analysis_mode=screening.analysisMode.value,
         )
         rubric_context = RubricExecutionContext(
             task_id=task.taskId,
@@ -143,7 +141,7 @@ class ScoringPipeline:
         type_lens_binding = self._resolve_binding(
             stage=StageName.TYPE_LENS_EVALUATION,
             input_composition=screening.inputComposition.value,
-            evaluation_mode=screening.evaluationMode.value,
+            analysis_mode=screening.analysisMode.value,
         )
         type_lens = execute_type_lens(
             provider_adapter=self._provider_adapter,
@@ -195,7 +193,7 @@ class ScoringPipeline:
         aggregation_binding = self._resolve_binding(
             stage=StageName.AGGREGATION,
             input_composition=screening.inputComposition.value,
-            evaluation_mode=screening.evaluationMode.value,
+            analysis_mode=screening.analysisMode.value,
         )
         aggregation = execute_aggregation(
             provider_adapter=self._provider_adapter,
@@ -270,12 +268,12 @@ class ScoringPipeline:
         *,
         stage: StageName,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
     ) -> StagePromptBinding:
         resolved_prompt = self._prompt_runtime.resolve(
             stage=stage.value,
             input_composition=input_composition,
-            evaluation_mode=evaluation_mode,
+            analysis_mode=analysis_mode,
             provider_id=self._provider_adapter.provider_id,
             model_id=self._provider_adapter.model_id,
         )

@@ -26,7 +26,7 @@ type TaskQueryResult = ReturnType<typeof useTaskQuery>;
 type TaskQueryData = NonNullable<TaskQueryResult["data"]>;
 
 function renderPage() {
-  return renderToStaticMarkup(createElement(TaskDetailPage, { taskId: "task_degraded" }));
+  return renderToStaticMarkup(createElement(TaskDetailPage, { taskId: "task_long_opening" }));
 }
 
 function buildSuccessQueryResult<TData>(data: TData): QueryObserverSuccessResult<TData, Error> {
@@ -66,15 +66,15 @@ describe("task detail page", () => {
     vi.resetAllMocks();
   });
 
-  it("renders degraded evaluation mode for joint input after formal screening downgrade", () => {
+  it("renders analysis mode for joint input after formal screening", () => {
     const data: TaskQueryData = {
-      taskId: "task_degraded",
-      title: "联合输入降级任务",
+      taskId: "task_long_opening",
+      title: "联合输入任务",
       inputSummary: "已提交 1 章正文和 1 份大纲",
+      analysisMode: "long_opening_outline",
       inputComposition: "chapters_outline",
       hasChapters: true,
       hasOutline: true,
-      evaluationMode: "degraded",
       status: "completed",
       resultStatus: "available",
       errorCode: null,
@@ -84,6 +84,9 @@ describe("task detail page", () => {
       rubricVersion: "rubric-v2",
       providerId: "provider-deepseek",
       modelId: "deepseek-v4-pro",
+      novelType: "fantasy_upgrade",
+      typeClassificationConfidence: 0.82,
+      typeFallbackUsed: false,
       createdAt: "2026-03-28T10:00:00Z",
       startedAt: "2026-03-28T10:00:03Z",
       completedAt: "2026-03-28T10:00:08Z",
@@ -95,7 +98,7 @@ describe("task detail page", () => {
     const html = renderPage();
 
     expect(html).toContain("正文 + 大纲");
-    expect(html).toContain("降级评测");
-    expect(html).not.toContain("完整评测");
+    expect(html).toContain("长篇开篇 + 大纲");
+    expect(html).not.toContain("已完结全文");
   });
 });

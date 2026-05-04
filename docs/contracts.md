@@ -49,7 +49,32 @@
 
 - `blocked` 表示业务阻断，任务本身结束，但结果不满足正式展示条件。
 - `failed` 表示技术失败。
-- `completed + not_available` 主要用于读取期兼容降级，例如旧结果结构或损坏结果。
+- `completed + not_available` 用于任务已结束但当前没有可展示结果的状态，例如执行中断后的恢复标记。
+
+## 输入与分析模式
+
+`POST /api/tasks` 的输入必须包含显式 `analysisMode`：
+
+| analysisMode | 所需输入 | 禁止输入 | 说明 |
+| --- | --- | --- | --- |
+| `long_opening_outline` | `chapters` 和 `outline` | 无 | 长篇开篇正文 + 大纲评估 |
+| `completed_fulltext` | `chapters` | `outline` | 已完成全文评估 |
+
+校验规则：
+
+- `long_opening_outline` 缺正文返回 `422`。
+- `long_opening_outline` 缺大纲返回 `422`。
+- `completed_fulltext` 缺正文返回 `422`。
+- `completed_fulltext` 携带大纲返回 `422`。
+
+`POST /api/provider-status/smoke-test` 是本机可访问的真实 provider auth smoke：
+
+- 不创建任务，不写入结果库。
+- provider 未配置返回 `409 PROVIDER_NOT_CONFIGURED`。
+- 真实 provider 调用失败返回 `502/503/504`，错误码使用 `PROVIDER_FAILURE`、`DEPENDENCY_UNAVAILABLE`、`TIMEOUT` 或 `CONTRACT_INVALID`。
+- 成功返回 `providerId`、`modelId`、`configurationSource`、`ok=true`、`durationMs`，不返回模型正文或 API key。
+
+这些规则在 API schema 层阻断，不进入主链。系统不再根据材料缺口选择替代评分模式或替代 Prompt。
 
 ## 正式结果结构
 
@@ -73,7 +98,7 @@
 固定输出：
 
 - 输入组成 `inputComposition`
-- 评分模式 `evaluationMode`
+- 显式分析模式 `analysisMode`
 - 正文/大纲充分性
 - `continueAllowed`
 - 阻断原因与 `riskTags`
@@ -93,7 +118,7 @@
 固定输出：
 
 - 全部 `8` 个轴
-- 每轴 `scoreBand / reason / evidenceRefs / confidence / riskTags / degradedByInput`
+- 每轴 `scoreBand / reason / evidenceRefs / confidence / riskTags`
 - `axisSummaries`
 - `missingRequiredAxes`
 - `overallConfidence`
@@ -105,7 +130,7 @@
 固定输出：
 
 - 与 `novelType` 对应的固定 `4` 个 lens
-- 每个 lens 的 `scoreBand / reason / evidenceRefs / confidence / degradedByInput`
+- 每个 lens 的 `scoreBand / reason / evidenceRefs / confidence`
 
 ### `aggregation`
 
@@ -139,10 +164,10 @@
 
 这些字段由共享 runtime 与 prompt runtime 决定，不由前端生成。
 
-## 历史兼容
+## 历史数据
 
-- 旧持久化结果如果包含旧字段集合，会在读取期降级为 `not_available`。
-- 损坏 JSON 同样降级为 `not_available`。
-- 历史任务条目仍然可见；只是旧结果不再伪装成当前 8 轴结构。
+- 当前本地 SQLite 在本次重构后应清空重建。
+- 旧持久化结果和损坏 JSON 不再做读取期兼容转换。
+- 历史任务条目仍按当前任务 schema 读取；结果只接受当前 `EvaluationResult` 结构。
 
-这条兼容规则由 `packages/runtime/persistence.py` 负责，而不是通过保留旧 Prompt 或旧文档来维持。
+这条规则由 `packages/runtime/persistence.py` 的当前 schema 校验负责，而不是通过保留旧 Prompt 或旧文档来维持。

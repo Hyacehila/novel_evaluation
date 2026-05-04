@@ -26,3 +26,17 @@ class ProviderStatus(SchemaModel):
     @classmethod
     def validate_identifier(cls, value: str) -> str:
         return ensure_non_empty_text(value, "provider_status.identifier")
+
+
+class ProviderAuthSmokeResult(SchemaModel):
+    providerId: str
+    modelId: str
+    configurationSource: ProviderConfigurationSource
+    ok: bool
+    durationMs: int
+    providerRequestId: str | None = None
+
+    @field_validator("providerId", "modelId")
+    @classmethod
+    def validate_identifier(cls, value: str) -> str:
+        return ensure_non_empty_text(value, "provider_auth_smoke.identifier")

@@ -1,0 +1,10 @@
+promptId: type-lens-completed-fulltext
+promptVersion: v1
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+owner: codex
+updatedAt: 2026-05-03T00:00:00Z
+changeSummary: 新增已完结中短篇全文类型 lens prompt。
+rollbackTarget: type-lens-default/v1
+evalRequirement: deterministic-e2e-and-real-deepseek-smoke

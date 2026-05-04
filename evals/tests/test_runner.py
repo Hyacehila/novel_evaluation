@@ -34,7 +34,7 @@ def runner_fixture(tmp_path: Path) -> tuple[MinimalEvalRunner, Path]:
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: long_opening_outline",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -64,6 +64,7 @@ def runner_fixture(tmp_path: Path) -> tuple[MinimalEvalRunner, Path]:
         {
             "caseId": "case_001",
             "title": "样本 1",
+            "analysisMode": "long_opening_outline",
             "inputComposition": "chapters_outline",
             "chaptersRef": "datasets/fixtures/case_001-chapters.md",
             "outlineRef": "datasets/fixtures/case_001-outline.md",
@@ -77,6 +78,7 @@ def runner_fixture(tmp_path: Path) -> tuple[MinimalEvalRunner, Path]:
         {
             "caseId": "case_002",
             "title": "样本 2",
+            "analysisMode": "long_opening_outline",
             "inputComposition": "chapters_outline",
             "chaptersRef": "datasets/fixtures/case_002-chapters.md",
             "outlineRef": "datasets/fixtures/case_002-outline.md",

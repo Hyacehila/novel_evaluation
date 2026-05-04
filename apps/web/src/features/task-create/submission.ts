@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import type { CreateTaskJsonPayload, EvaluationMode, InputComposition } from "@/api/contracts";
+import type { AnalysisMode, CreateTaskJsonPayload, InputComposition } from "@/api/contracts";
 
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -8,6 +8,7 @@ const allowedExtensions = new Set(["txt", "md", "docx"]);
 
 export const taskCreateFormSchema = z.object({
   mode: z.enum(["direct_input", "file_upload"]),
+  analysisMode: z.enum(["long_opening_outline", "completed_fulltext"]),
   title: z.string().trim().min(1, "请输入任务标题"),
   chaptersText: z.string(),
   outlineText: z.string(),
@@ -40,44 +41,58 @@ export class SubmissionValidationError extends Error {
 
 export function deriveDraftSemantics({
   mode,
+  analysisMode,
   chaptersText,
   outlineText,
   chaptersFile,
   outlineFile,
 }: {
   mode: TaskCreateFormValues["mode"];
+  analysisMode: AnalysisMode;
   chaptersText: string;
   outlineText: string;
   chaptersFile: File | null;
   outlineFile: File | null;
 }): {
   inputComposition: InputComposition | null;
-  evaluationMode: EvaluationMode | null;
+  isReady: boolean;
 } {
   const hasChapters = mode === "direct_input" ? chaptersText.trim().length > 0 : Boolean(chaptersFile);
-  const hasOutline = mode === "direct_input" ? outlineText.trim().length > 0 : Boolean(outlineFile);
+  const hasOutline = analysisMode === "completed_fulltext"
+    ? false
+    : mode === "direct_input"
+      ? outlineText.trim().length > 0
+      : Boolean(outlineFile);
+
+  if (analysisMode === "completed_fulltext") {
+    return {
+      inputComposition: hasChapters ? "chapters_only" : null,
+      isReady: hasChapters,
+    };
+  }
 
   if (hasChapters && hasOutline) {
     return {
       inputComposition: "chapters_outline",
-      evaluationMode: "full",
+      isReady: true,
     };
   }
   if (hasChapters) {
     return {
       inputComposition: "chapters_only",
-      evaluationMode: "degraded",
+      isReady: false,
     };
   }
   if (hasOutline) {
     return {
       inputComposition: "outline_only",
-      evaluationMode: "degraded",
+      isReady: false,
     };
   }
+
   return {
     inputComposition: null,
-    evaluationMode: null,
+    isReady: false,
   };
 }
 
@@ -96,18 +111,42 @@ export function buildCreateTaskRequest({
   return buildMultipartRequest(values, chaptersFile, outlineFile);
 }
 
+export function countTrimmedCharacters(value: string) {
+  return value.trim().length;
+}
+
+export function formatUploadSize(bytes: number) {
+  if (bytes < 1024 * 1024) {
+    return `${Math.max(1, Math.ceil(bytes / 1024))} KiB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
+}
+
 function buildDirectInputRequest(values: TaskCreateFormValues): CreateTaskSubmissionRequest {
   const chaptersText = values.chaptersText.trim();
   const outlineText = values.outlineText.trim();
 
-  if (!chaptersText && !outlineText) {
-    throw new SubmissionValidationError("chaptersText", "正文或大纲至少填写一侧");
+  if (values.analysisMode === "long_opening_outline") {
+    if (!chaptersText) {
+      throw new SubmissionValidationError("chaptersText", "长篇模式需要正文和大纲");
+    }
+    if (!outlineText) {
+      throw new SubmissionValidationError("outlineText", "长篇模式需要正文和大纲");
+    }
+  } else {
+    if (!chaptersText) {
+      throw new SubmissionValidationError("chaptersText", "全文模式需要正文");
+    }
+    if (outlineText) {
+      throw new SubmissionValidationError("outlineText", "全文模式不接受大纲");
+    }
   }
 
   return {
     kind: "json",
     payload: {
       title: values.title.trim(),
+      analysisMode: values.analysisMode,
       sourceType: "direct_input",
       chapters: chaptersText
         ? [
@@ -117,7 +156,7 @@ function buildDirectInputRequest(values: TaskCreateFormValues): CreateTaskSubmis
             },
           ]
         : undefined,
-      outline: outlineText
+      outline: values.analysisMode === "long_opening_outline" && outlineText
         ? {
             content: outlineText,
           }
@@ -131,8 +170,20 @@ function buildMultipartRequest(
   chaptersFile: File | null,
   outlineFile: File | null
 ): CreateTaskSubmissionRequest {
-  if (!chaptersFile && !outlineFile) {
-    throw new SubmissionValidationError("chaptersFile", "至少上传正文文件或大纲文件中的一项");
+  if (values.analysisMode === "long_opening_outline") {
+    if (!chaptersFile || !outlineFile) {
+      throw new SubmissionValidationError(
+        !chaptersFile ? "chaptersFile" : "outlineFile",
+        "长篇模式需要正文文件和大纲文件"
+      );
+    }
+  } else {
+    if (!chaptersFile) {
+      throw new SubmissionValidationError("chaptersFile", "全文模式需要正文文件");
+    }
+    if (outlineFile) {
+      throw new SubmissionValidationError("outlineFile", "全文模式不接受大纲文件");
+    }
   }
 
   if (chaptersFile) {
@@ -145,6 +196,7 @@ function buildMultipartRequest(
   const formData = new FormData();
   formData.set("title", values.title.trim());
   formData.set("sourceType", "file_upload");
+  formData.set("analysisMode", values.analysisMode);
   if (chaptersFile) {
     formData.set("chaptersFile", chaptersFile);
   }

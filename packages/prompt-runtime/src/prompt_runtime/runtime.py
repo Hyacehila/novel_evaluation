@@ -32,7 +32,7 @@ _REQUIRED_REGISTRY_FIELDS = (
     "schemaVersion",
     "rubricVersion",
     "inputCompositionScope",
-    "evaluationModeScope",
+    "analysisModeScope",
     "providerScope",
     "modelScope",
     "enabled",
@@ -78,14 +78,14 @@ class FilePromptRuntime:
         *,
         stage: PromptStage,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> ResolvedPrompt:
         registry_record = self._select_registry_record(
             stage=stage,
             input_composition=input_composition,
-            evaluation_mode=evaluation_mode,
+            analysis_mode=analysis_mode,
             provider_id=provider_id,
             model_id=model_id,
         )
@@ -108,7 +108,7 @@ class FilePromptRuntime:
         *,
         stage: PromptStage,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> PromptRegistryRecord:
@@ -134,9 +134,9 @@ class FilePromptRuntime:
         )
         narrowed_candidates = self._narrow_by_scope(
             narrowed_candidates,
-            scope_field="evaluationModeScope",
-            request_value=evaluation_mode,
-            label="evaluationModeScope",
+            scope_field="analysisModeScope",
+            request_value=analysis_mode,
+            label="analysisModeScope",
         )
         narrowed_candidates = self._narrow_by_scope(
             narrowed_candidates,
@@ -153,7 +153,7 @@ class FilePromptRuntime:
         narrowed_candidates = _prefer_more_specific_registry_records(
             narrowed_candidates,
             input_composition=input_composition,
-            evaluation_mode=evaluation_mode,
+            analysis_mode=analysis_mode,
             provider_id=provider_id,
             model_id=model_id,
         )
@@ -290,7 +290,7 @@ def _prefer_more_specific_registry_records(
     records: list[PromptRegistryRecord],
     *,
     input_composition: str,
-    evaluation_mode: str,
+    analysis_mode: str,
     provider_id: str,
     model_id: str,
 ) -> list[PromptRegistryRecord]:
@@ -298,7 +298,7 @@ def _prefer_more_specific_registry_records(
         return records
     scope_values = (
         ("inputCompositionScope", input_composition),
-        ("evaluationModeScope", evaluation_mode),
+        ("analysisModeScope", analysis_mode),
         ("providerScope", provider_id),
         ("modelScope", model_id),
     )

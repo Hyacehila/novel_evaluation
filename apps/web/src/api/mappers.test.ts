@@ -24,7 +24,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "开篇抓力稳定。",
             reason: "冲突出现及时。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -33,7 +32,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "连载目标明确。",
             reason: "阶段目标清晰。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -42,7 +40,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "角色驱动成立。",
             reason: "动机清楚。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -51,7 +48,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "叙事控制稳定。",
             reason: "信息组织清晰。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -60,7 +56,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "节奏兑现合理。",
             reason: "推进与回收对应。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -69,7 +64,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "设定有辨识度。",
             reason: "题材标签稳定。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -78,7 +72,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "平台适配度较稳。",
             reason: "受众预期匹配。",
-            degradedByInput: false,
             riskTags: [],
           },
           {
@@ -87,7 +80,6 @@ describe("api mappers", () => {
             score: 75,
             summary: "商业潜力可观察。",
             reason: "具备追读空间。",
-            degradedByInput: false,
             riskTags: [],
           },
         ],
@@ -104,6 +96,7 @@ describe("api mappers", () => {
           strengths: ["情感抓手清晰"],
           weaknesses: ["长线兑现仍需观察"],
         },
+        typeAssessment: null,
       },
       message: null,
     });
@@ -143,7 +136,19 @@ describe("api mappers", () => {
 
   it("maps dashboard summary recent results with overall fields", () => {
     const view = mapDashboardSummary({
-      recentTasks: [],
+      recentTasks: [
+        {
+          taskId: "task_long",
+          title: "长篇稿件",
+          inputSummary: "已提交 1 章正文和 1 份大纲",
+          analysisMode: "long_opening_outline",
+          inputComposition: "chapters_outline",
+          status: "completed",
+          resultStatus: "available",
+          createdAt: "2026-03-28T10:00:00Z",
+          resultAvailable: true,
+        },
+      ],
       activeTasks: [],
       recentResults: [
         {
@@ -156,6 +161,7 @@ describe("api mappers", () => {
       ],
     });
 
+    expect(view.recentTasks[0].analysisMode).toBe("long_opening_outline");
     expect(view.recentResults[0].overallScore).toBe(75);
     expect(view.recentResults[0].overallVerdict).toContain("继续观察");
     expect("signingProbability" in view.recentResults[0]).toBe(false);

@@ -24,6 +24,72 @@ _STAGE_TIMEOUT_MS = 90_000
 _STAGE_MAX_TOKENS = 2_500
 _SCHEMA_VALIDATION_MAX_ATTEMPTS = 2
 _FALLBACK_CANDIDATE_CONFIDENCES = (0.55, 0.43, 0.31)
+_SCI_FI_SIGNAL_CONFIDENCE = 0.72
+_SCI_FI_SIGNAL_TERMS = (
+    "科幻",
+    "赛博",
+    "人工智能",
+    "ai",
+    "量子",
+    "机器人",
+    "仿生",
+    "义体",
+    "脑机",
+    "星际",
+    "太空",
+    "星舰",
+    "飞船",
+    "空间站",
+    "火星",
+    "殖民",
+    "末世",
+    "废土",
+    "基因",
+    "克隆",
+    "时间线",
+    "元宇宙",
+    "全息",
+    "数据",
+    "算法",
+    "上传",
+    "意识",
+    "冷冻",
+    "轨道",
+    "生态舱",
+)
+_NOVEL_TYPE_ALIASES = {
+    "女频": NovelType.FEMALE_GENERAL,
+    "女频通用": NovelType.FEMALE_GENERAL,
+    "玄幻": NovelType.FANTASY_UPGRADE,
+    "玄幻升级": NovelType.FANTASY_UPGRADE,
+    "升级流": NovelType.FANTASY_UPGRADE,
+    "都市": NovelType.URBAN_REALITY,
+    "都市现实": NovelType.URBAN_REALITY,
+    "现实": NovelType.URBAN_REALITY,
+    "历史": NovelType.HISTORY_MILITARY,
+    "军事": NovelType.HISTORY_MILITARY,
+    "历史军事": NovelType.HISTORY_MILITARY,
+    "科幻": NovelType.SCI_FI_APOCALYPSE,
+    "科幻小说": NovelType.SCI_FI_APOCALYPSE,
+    "科幻末世": NovelType.SCI_FI_APOCALYPSE,
+    "赛博朋克": NovelType.SCI_FI_APOCALYPSE,
+    "sci-fi": NovelType.SCI_FI_APOCALYPSE,
+    "sci_fi": NovelType.SCI_FI_APOCALYPSE,
+    "science_fiction": NovelType.SCI_FI_APOCALYPSE,
+    "science fiction": NovelType.SCI_FI_APOCALYPSE,
+    "cyberpunk": NovelType.SCI_FI_APOCALYPSE,
+    "apocalypse": NovelType.SCI_FI_APOCALYPSE,
+    "悬疑": NovelType.SUSPENSE_HORROR,
+    "惊悚": NovelType.SUSPENSE_HORROR,
+    "恐怖": NovelType.SUSPENSE_HORROR,
+    "悬疑惊悚": NovelType.SUSPENSE_HORROR,
+    "游戏": NovelType.GAME_DERIVATIVE,
+    "游戏衍生": NovelType.GAME_DERIVATIVE,
+    "衍生": NovelType.GAME_DERIVATIVE,
+    "通用": NovelType.GENERAL_FALLBACK,
+    "通用兜底": NovelType.GENERAL_FALLBACK,
+    "兜底": NovelType.GENERAL_FALLBACK,
+}
 
 
 def execute_type_classification(
@@ -35,6 +101,7 @@ def execute_type_classification(
         "taskId": context.task_id,
         "title": context.submission.title,
         "inputComposition": context.screening.inputComposition.value,
+        "analysisMode": context.screening.analysisMode.value,
         "evaluationMode": context.screening.evaluationMode.value,
         "chapters": [chapter.content for chapter in context.submission.chapters or []],
         "outline": context.submission.outline.content if context.submission.outline is not None else None,
@@ -54,6 +121,7 @@ def execute_type_classification(
             task_id=context.task_id,
             stage=StageName.TYPE_CLASSIFICATION,
             input_composition=context.screening.inputComposition,
+            analysis_mode=context.screening.analysisMode,
             evaluation_mode=context.screening.evaluationMode,
             timeout_ms=_STAGE_TIMEOUT_MS,
             max_tokens=_STAGE_MAX_TOKENS,
@@ -110,6 +178,7 @@ def _normalize_type_classification_payload(
         return payload
     normalized_payload = dict(payload)
     candidates = _normalize_candidates(normalized_payload.get("candidates"))
+    candidates = _stabilize_candidates_with_submission_signals(candidates, context=context)
     decision = select_final_novel_type(candidates)
     summary = _normalize_text_value(normalized_payload.get("summary"))
     if summary is None:
@@ -128,6 +197,7 @@ def _normalize_type_classification_payload(
             "providerId": context.binding.provider_id,
             "modelId": context.binding.model_id,
             "inputComposition": context.screening.inputComposition.value,
+            "analysisMode": context.screening.analysisMode.value,
             "evaluationMode": context.screening.evaluationMode.value,
             "candidates": [candidate.model_dump(mode="json") for candidate in candidates],
             "novelType": decision.novel_type.value,
@@ -137,6 +207,53 @@ def _normalize_type_classification_payload(
         }
     )
     return normalized_payload
+
+
+def _stabilize_candidates_with_submission_signals(
+    candidates: list[TypeClassificationCandidate],
+    *,
+    context: TypeClassificationExecutionContext,
+) -> list[TypeClassificationCandidate]:
+    if not _has_clear_sci_fi_signal(context):
+        return candidates
+    sci_fi_index = next(
+        (
+            index
+            for index, candidate in enumerate(candidates)
+            if candidate.novelType is NovelType.SCI_FI_APOCALYPSE
+        ),
+        None,
+    )
+    reason = "标题、正文或大纲中存在明确科幻/赛博技术题材信号，后端提升为科幻末世候选以避免通用兜底吞掉窄类型。"
+    if sci_fi_index is None:
+        candidates = [
+            TypeClassificationCandidate(
+                novelType=NovelType.SCI_FI_APOCALYPSE,
+                confidence=_SCI_FI_SIGNAL_CONFIDENCE,
+                reason=reason,
+            ),
+            *candidates,
+        ]
+    else:
+        candidate = candidates[sci_fi_index]
+        candidates[sci_fi_index] = TypeClassificationCandidate(
+            novelType=NovelType.SCI_FI_APOCALYPSE,
+            confidence=max(candidate.confidence, _SCI_FI_SIGNAL_CONFIDENCE),
+            reason=reason if "科幻" not in candidate.reason and "赛博" not in candidate.reason else candidate.reason,
+        )
+    return sorted(candidates, key=lambda candidate: candidate.confidence, reverse=True)[:3]
+
+
+def _has_clear_sci_fi_signal(context: TypeClassificationExecutionContext) -> bool:
+    combined_text = "\n".join(
+        [
+            context.submission.title,
+            *[chapter.content for chapter in context.submission.chapters or []],
+            context.submission.outline.content if context.submission.outline is not None else "",
+        ]
+    ).lower()
+    signal_hits = sum(1 for term in _SCI_FI_SIGNAL_TERMS if term in combined_text)
+    return signal_hits >= 2 or "科幻" in combined_text or "sci-fi" in combined_text
 
 
 def _normalize_candidates(raw_candidates: Any) -> list[TypeClassificationCandidate]:
@@ -193,7 +310,7 @@ def _normalize_novel_type(raw_value: Any) -> NovelType | None:
     for novel_type in NovelType:
         if stripped == novel_type.value:
             return novel_type
-    return None
+    return _NOVEL_TYPE_ALIASES.get(stripped.lower()) or _NOVEL_TYPE_ALIASES.get(stripped)
 
 
 def _normalize_confidence(raw_value: Any, *, fallback: float) -> float:

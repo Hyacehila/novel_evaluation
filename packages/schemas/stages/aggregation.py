@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import FatalRisk, StageName
+from packages.schemas.common.enums import AnalysisMode, FatalRisk, StageName
 from packages.schemas.common.validators import ensure_non_empty_text, ensure_optional_text, validate_confidence, validate_percentage
 
 
@@ -35,6 +35,7 @@ class AggregatedRubricResult(SchemaModel):
     rubricVersion: str
     providerId: str
     modelId: str
+    analysisMode: AnalysisMode
     overallVerdictDraft: str
     verdictSubQuote: str | None = None   # 市场分析副句，与主判断形成双层结构
     overallSummaryDraft: str

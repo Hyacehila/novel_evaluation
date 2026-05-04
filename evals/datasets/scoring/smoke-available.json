@@ -1,6 +1,7 @@
 {
   "caseId": "smoke_available",
   "title": "修仙开篇样本",
+  "analysisMode": "long_opening_outline",
   "inputComposition": "chapters_outline",
   "chaptersRef": "datasets/fixtures/smoke-available-chapters.md",
   "outlineRef": "datasets/fixtures/smoke-available-outline.md",

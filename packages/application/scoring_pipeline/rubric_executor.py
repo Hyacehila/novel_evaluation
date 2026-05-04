@@ -4,6 +4,8 @@ from collections.abc import Mapping
 import logging
 from typing import Any
 
+from pydantic import ValidationError
+
 from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import RubricExecutionContext
@@ -79,30 +81,46 @@ def execute_rubric_slice(
         "taskId": context.task_id,
         "title": context.submission.title,
         "inputComposition": context.screening.inputComposition.value,
+        "analysisMode": context.screening.analysisMode.value,
         "evaluationMode": context.screening.evaluationMode.value,
         "requestedAxes": requested_axes,
         "chapters": [chapter.content for chapter in context.submission.chapters or []],
         "outline": context.submission.outline.content if context.submission.outline is not None else None,
         "screening": context.screening.model_dump(mode="json"),
     }
+    schema_repair: dict[str, Any] | None = None
     for attempt in range(1, _SCHEMA_VALIDATION_MAX_ATTEMPTS + 1):
+        request_payload = dict(user_payload)
+        if schema_repair is not None:
+            request_payload["schemaRepair"] = schema_repair
         payload = execute_provider_stage(
             provider_adapter=provider_adapter,
             binding=context.binding,
             task_id=context.task_id,
             stage=StageName.RUBRIC_EVALUATION,
             input_composition=context.screening.inputComposition,
+            analysis_mode=context.screening.analysisMode,
             evaluation_mode=context.screening.evaluationMode,
             timeout_ms=_STAGE_TIMEOUT_MS,
             max_tokens=_STAGE_MAX_TOKENS,
             response_format={"type": "json_object"},
-            user_payload=user_payload,
+            user_payload=request_payload,
         )
         payload = _normalize_rubric_payload(payload=payload, context=context)
         try:
             return RubricEvaluationSlice.model_validate(payload)
         except Exception as exc:  # noqa: BLE001
+            validation_errors = _summarize_validation_error(exc)
             if attempt < _SCHEMA_VALIDATION_MAX_ATTEMPTS:
+                schema_repair = {
+                    "previousAttempt": attempt,
+                    "validationErrors": validation_errors,
+                    "instruction": (
+                        "上一轮 rubric_evaluation 输出未通过 schema。"
+                        "本轮必须只返回合法 JSON object，补齐 listed validationErrors 对应字段，"
+                        "并确保 items 与 axisSummaries 精确覆盖 requestedAxes。"
+                    ),
+                }
                 log_event(
                     logger,
                     logging.WARNING,
@@ -117,6 +135,8 @@ def execute_rubric_slice(
                     errorCode=ErrorCode.STAGE_SCHEMA_INVALID,
                     attempt=attempt,
                     maxAttempts=_SCHEMA_VALIDATION_MAX_ATTEMPTS,
+                    requestedAxes=requested_axes,
+                    validationErrors=validation_errors,
                 )
                 continue
             log_event(
@@ -132,10 +152,12 @@ def execute_rubric_slice(
                 modelId=context.binding.model_id,
                 errorCode=ErrorCode.STAGE_SCHEMA_INVALID,
                 durationMs=0,
+                requestedAxes=requested_axes,
+                validationErrors=validation_errors,
             )
             raise PipelineFailureError(
                 error_code=ErrorCode.STAGE_SCHEMA_INVALID,
-                message="rubric_evaluation 阶段输出不满足正式 schema。",
+                message="模型返回的 rubric_evaluation 结构不完整或字段类型不符，已重试仍无法解析。",
             ) from exc
 
 
@@ -163,6 +185,7 @@ def merge_rubric_slices(*, context: RubricExecutionContext, slices: list[RubricE
             providerId=context.binding.provider_id,
             modelId=context.binding.model_id,
             inputComposition=context.screening.inputComposition,
+            analysisMode=context.screening.analysisMode,
             evaluationMode=context.screening.evaluationMode,
             items=[items_by_axis[axis_id] for axis_id in AxisId],
             axisSummaries={axis_id: axis_summaries[axis_id] for axis_id in AxisId},
@@ -175,6 +198,17 @@ def merge_rubric_slices(*, context: RubricExecutionContext, slices: list[RubricE
             error_code=ErrorCode.STAGE_SCHEMA_INVALID,
             message="rubric_evaluation 阶段输出不满足正式 schema。",
         ) from exc
+
+
+def _summarize_validation_error(exc: Exception) -> list[str]:
+    if isinstance(exc, ValidationError):
+        summaries: list[str] = []
+        for error in exc.errors(include_url=False):
+            location = ".".join(str(part) for part in error.get("loc", ())) or "<root>"
+            message = str(error.get("msg", "validation error"))
+            summaries.append(f"{location}: {message}")
+        return summaries[:12] or [type(exc).__name__]
+    return [type(exc).__name__]
 
 
 
@@ -218,6 +252,7 @@ def _normalize_rubric_payload(*, payload: Any, context: RubricExecutionContext) 
             "providerId": context.binding.provider_id,
             "modelId": context.binding.model_id,
             "inputComposition": context.screening.inputComposition.value,
+            "analysisMode": context.screening.analysisMode.value,
             "evaluationMode": context.screening.evaluationMode.value,
             "requestedAxes": [axis_id.value for axis_id in context.requested_axes],
             "axisSummaries": normalized_axis_summaries,
@@ -226,7 +261,6 @@ def _normalize_rubric_payload(*, payload: Any, context: RubricExecutionContext) 
         }
     )
     return normalized_payload
-
 
 
 def _normalize_rubric_item(item: Any) -> Any:
@@ -246,7 +280,6 @@ def _normalize_rubric_item(item: Any) -> Any:
         "confidence": item_confidence,
         "riskTags": _normalize_risk_tags(item.get("riskTags")),
         "blockingSignals": _normalize_text_list(item.get("blockingSignals")),
-        "degradedByInput": bool(item.get("degradedByInput")),
     }
 
 

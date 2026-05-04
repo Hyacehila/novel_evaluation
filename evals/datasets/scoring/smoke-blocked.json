@@ -1,6 +1,7 @@
 {
   "caseId": "smoke_blocked",
   "title": "跨输入冲突样本",
+  "analysisMode": "long_opening_outline",
   "inputComposition": "chapters_outline",
   "chaptersRef": "datasets/fixtures/smoke-blocked-chapters.md",
   "outlineRef": "datasets/fixtures/smoke-blocked-outline.md",

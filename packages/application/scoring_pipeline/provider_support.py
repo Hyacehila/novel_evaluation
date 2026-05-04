@@ -10,7 +10,7 @@ from typing import Any
 from packages.application.ports.runtime_metadata import ProviderExecutionPort
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.models import StagePromptBinding
-from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, StageName
 from packages.schemas.output.error import ErrorCode
 from packages.runtime.logging import log_event
 
@@ -23,8 +23,8 @@ _FAILURE_TYPE_TO_ERROR_CODE = {
 }
 
 _SANITIZED_FAILURE_MESSAGE_BY_ERROR_CODE = {
-    ErrorCode.PROVIDER_FAILURE: "模型服务调用失败，请稍后重试。",
-    ErrorCode.TIMEOUT: "模型服务响应超时，请稍后重试。",
+    ErrorCode.PROVIDER_FAILURE: "模型服务调用失败，请检查 API key、额度或上游状态后重试。",
+    ErrorCode.TIMEOUT: "模型服务响应超时；真实 provider 可能仍在执行，请缩短文本或稍后重试。",
     ErrorCode.DEPENDENCY_UNAVAILABLE: "模型依赖当前不可用，请稍后重试。",
     ErrorCode.CONTRACT_INVALID: "模型返回内容不满足约定格式。",
 }
@@ -51,6 +51,7 @@ class ProviderExecutionRequestPayload:
     requestId: str
     messages: list[ProviderMessagePayload]
     inputComposition: InputComposition
+    analysisMode: AnalysisMode
     evaluationMode: EvaluationMode
     timeoutMs: int | None = None
     maxTokens: int | None = None
@@ -64,6 +65,7 @@ def execute_provider_stage(
     task_id: str,
     stage: StageName,
     input_composition: InputComposition,
+    analysis_mode: AnalysisMode,
     evaluation_mode: EvaluationMode,
     user_payload: Mapping[str, Any],
     timeout_ms: int | None = None,
@@ -87,6 +89,7 @@ def execute_provider_stage(
             ProviderMessagePayload(role="user", content=json.dumps(dict(user_payload), ensure_ascii=False)),
         ],
         inputComposition=input_composition,
+        analysisMode=analysis_mode,
         evaluationMode=evaluation_mode,
         timeoutMs=timeout_ms,
         maxTokens=max_tokens,
@@ -105,6 +108,8 @@ def execute_provider_stage(
         rubricVersion=binding.rubric_version,
         providerId=binding.provider_id,
         modelId=binding.model_id,
+        timeoutMs=timeout_ms,
+        maxTokens=max_tokens,
     )
     try:
         result = provider_adapter.execute(provider_request)
@@ -124,6 +129,7 @@ def execute_provider_stage(
             providerId=binding.provider_id,
             modelId=binding.model_id,
             errorCode=error_code,
+            timeoutMs=timeout_ms,
             durationMs=duration_ms,
         )
         raise PipelineFailureError(
@@ -147,6 +153,9 @@ def execute_provider_stage(
             providerId=binding.provider_id,
             modelId=binding.model_id,
             errorCode=error_code,
+            failureType=getattr(failure_type, "value", failure_type),
+            retryable=getattr(result, "retryable", None),
+            timeoutMs=timeout_ms,
             durationMs=duration_ms,
         )
         raise PipelineFailureError(

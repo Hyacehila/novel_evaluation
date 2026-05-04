@@ -13,6 +13,7 @@ from packages.application.services.evaluation_service import EvaluationService
 from packages.application.support.clock import FixedClock
 from packages.application.support.id_generator import StaticIdGenerator, UuidTaskIdGenerator
 from packages.schemas.common.enums import (
+    AnalysisMode,
     EvaluationMode,
     FatalRisk,
     InputComposition,
@@ -51,7 +52,7 @@ class StubPromptRuntime:
     resolved_prompt: StubResolvedPrompt = StubResolvedPrompt()
     expected_stage: str | None = None
     expected_input_composition: str | None = None
-    expected_evaluation_mode: str | None = None
+    expected_analysis_mode: str | None = None
     expected_provider_id: str | None = None
     expected_model_id: str | None = None
 
@@ -60,7 +61,7 @@ class StubPromptRuntime:
         *,
         stage: str,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> StubResolvedPrompt:
@@ -68,8 +69,8 @@ class StubPromptRuntime:
             assert stage == self.expected_stage
         if self.expected_input_composition is not None:
             assert input_composition == self.expected_input_composition
-        if self.expected_evaluation_mode is not None:
-            assert evaluation_mode == self.expected_evaluation_mode
+        if self.expected_analysis_mode is not None:
+            assert analysis_mode == self.expected_analysis_mode
         if self.expected_provider_id is not None:
             assert provider_id == self.expected_provider_id
         if self.expected_model_id is not None:
@@ -78,8 +79,10 @@ class StubPromptRuntime:
 
 
 def build_request(*, chapters: bool = True, outline: bool = True) -> JointSubmissionRequest:
+    analysis_mode = AnalysisMode.LONG_OPENING_OUTLINE if outline else AnalysisMode.COMPLETED_FULLTEXT
     return JointSubmissionRequest(
         title="测试稿件",
+        analysisMode=analysis_mode,
         chapters=[ManuscriptChapter(content="第一章内容", title="第一章")] if chapters else None,
         outline=ManuscriptOutline(content="大纲内容") if outline else None,
         sourceType=SubmissionSourceType.DIRECT_INPUT,
@@ -89,7 +92,8 @@ def build_request(*, chapters: bool = True, outline: bool = True) -> JointSubmis
 def build_screening_result(
     *,
     task_id: str,
-    evaluation_mode: EvaluationMode = EvaluationMode.DEGRADED,
+    analysis_mode: AnalysisMode = AnalysisMode.LONG_OPENING_OUTLINE,
+    evaluation_mode: EvaluationMode = EvaluationMode.FULL,
     continue_allowed: bool = True,
     chapters_sufficiency: Sufficiency = Sufficiency.SUFFICIENT,
     outline_sufficiency: Sufficiency = Sufficiency.SUFFICIENT,
@@ -101,6 +105,7 @@ def build_screening_result(
         rubricVersion="rubric-screening-v2",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=analysis_mode,
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         hasChapters=True,
         hasOutline=True,
@@ -126,7 +131,8 @@ def build_type_classification_result(*, task_id: str, fallback_used: bool = Fals
         providerId="provider-test",
         modelId="model-test",
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
-        evaluationMode=EvaluationMode.DEGRADED,
+        analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
+        evaluationMode=EvaluationMode.FULL,
         candidates=[
             TypeClassificationCandidate(
                 novelType=NovelType.URBAN_REALITY,
@@ -193,7 +199,7 @@ def test_create_task_reads_runtime_metadata_from_collaborators() -> None:
         ),
         expected_stage=StageName.INPUT_SCREENING.value,
         expected_input_composition=InputComposition.CHAPTERS_OUTLINE.value,
-        expected_evaluation_mode=EvaluationMode.FULL.value,
+        expected_analysis_mode=AnalysisMode.LONG_OPENING_OUTLINE.value,
         expected_provider_id="provider-runtime",
         expected_model_id="model-runtime",
     )
@@ -214,20 +220,21 @@ def test_create_task_reads_runtime_metadata_from_collaborators() -> None:
     assert task.modelId == "model-runtime"
 
 
-def test_create_task_uses_degraded_mode_for_partial_input() -> None:
+def test_create_task_uses_completed_fulltext_analysis_mode_for_chapters_only_input() -> None:
     service = build_service(
         prompt_runtime=StubPromptRuntime(
             expected_stage=StageName.INPUT_SCREENING.value,
-            expected_input_composition=InputComposition.OUTLINE_ONLY.value,
-            expected_evaluation_mode=EvaluationMode.DEGRADED.value,
+            expected_input_composition=InputComposition.CHAPTERS_ONLY.value,
+            expected_analysis_mode=AnalysisMode.COMPLETED_FULLTEXT.value,
             expected_provider_id="provider-test",
             expected_model_id="model-test",
         )
     )
 
-    task = service.create_task(build_request(chapters=False, outline=True))
+    task = service.create_task(build_request(chapters=True, outline=False))
 
-    assert task.evaluationMode is EvaluationMode.DEGRADED
+    assert task.analysisMode is AnalysisMode.COMPLETED_FULLTEXT
+    assert task.evaluationMode is EvaluationMode.FULL
 
 
 def test_start_task_moves_to_processing() -> None:
@@ -307,6 +314,7 @@ def test_complete_task_with_projection_uses_projection_runtime_metadata() -> Non
         taskId="legacy_task",
         title="历史任务",
         inputSummary="已提交 1 章正文和 1 份大纲",
+        analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         hasChapters=True,
         hasOutline=True,
@@ -367,7 +375,7 @@ def test_get_dashboard_uses_overall_result_summary() -> None:
 
 def test_block_task_moves_to_completed_blocked() -> None:
     service = build_service()
-    task = service.create_task(build_request(chapters=False, outline=True))
+    task = service.create_task(build_request())
     service.start_task(task.taskId)
 
     updated = service.block_task(
@@ -405,7 +413,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
     service = build_service()
     submission = build_request()
     task = service.create_task(submission)
-    screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+    screening = build_screening_result(task_id=task.taskId)
     type_classification = build_type_classification_result(task_id=task.taskId)
 
     class StubPipeline:
@@ -419,7 +427,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
             submission: JointSubmissionRequest,
             screening: InputScreeningResult,
         ) -> TypeClassificationResult:
-            assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.evaluationMode is EvaluationMode.FULL
             return type_classification
 
         def run_after_type_classification(
@@ -430,7 +438,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
             screening: InputScreeningResult,
             type_classification: TypeClassificationResult,
         ) -> SimpleNamespace:
-            assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.evaluationMode is EvaluationMode.FULL
             assert task.novelType is NovelType.URBAN_REALITY
             return SimpleNamespace(projection=build_projection(task, score=80))
 
@@ -441,7 +449,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_success() -> None:
     updated = service.get_task(task.taskId)
     assert updated.status is TaskStatus.COMPLETED
     assert updated.resultStatus is ResultStatus.AVAILABLE
-    assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.evaluationMode is EvaluationMode.FULL
     assert updated.novelType is NovelType.URBAN_REALITY
     assert updated.typeClassificationConfidence == pytest.approx(0.78)
     assert updated.typeFallbackUsed is False
@@ -453,9 +461,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_screening_block() ->
     task = service.create_task(submission)
     screening = build_screening_result(
         task_id=task.taskId,
-        evaluation_mode=EvaluationMode.DEGRADED,
         continue_allowed=False,
-        chapters_sufficiency=Sufficiency.INSUFFICIENT,
     )
 
     class StubPipeline:
@@ -470,8 +476,8 @@ def test_execute_task_persists_screening_evaluation_mode_on_screening_block() ->
             screening: InputScreeningResult,
         ) -> TypeClassificationResult:
             raise PipelineBlockedError(
-                error_code=ErrorCode.INSUFFICIENT_CHAPTERS_INPUT,
-                message="正文内容不足，当前无法进入正式评分，请补充正文后重试。",
+                error_code=ErrorCode.JOINT_INPUT_UNRATEABLE,
+                message="输入材料未满足正式评分条件，当前无法进入正式评分，请补充材料后重试。",
             )
 
     service._scoring_pipeline = StubPipeline()
@@ -481,8 +487,8 @@ def test_execute_task_persists_screening_evaluation_mode_on_screening_block() ->
     updated = service.get_task(task.taskId)
     assert updated.status is TaskStatus.COMPLETED
     assert updated.resultStatus is ResultStatus.BLOCKED
-    assert updated.errorCode is ErrorCode.INSUFFICIENT_CHAPTERS_INPUT
-    assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.errorCode is ErrorCode.JOINT_INPUT_UNRATEABLE
+    assert updated.evaluationMode is EvaluationMode.FULL
     assert updated.novelType is None
     assert updated.typeFallbackUsed is None
 
@@ -491,7 +497,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screen
     service = build_service()
     submission = build_request()
     task = service.create_task(submission)
-    screening = build_screening_result(task_id=task.taskId, evaluation_mode=EvaluationMode.DEGRADED)
+    screening = build_screening_result(task_id=task.taskId)
     type_classification = build_type_classification_result(task_id=task.taskId)
 
     class StubPipeline:
@@ -505,11 +511,11 @@ def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screen
             submission: JointSubmissionRequest,
             screening: InputScreeningResult,
         ) -> TypeClassificationResult:
-            assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.evaluationMode is EvaluationMode.FULL
             return type_classification
 
         def run_after_type_classification(self, *, task, submission, screening, type_classification) -> SimpleNamespace:
-            assert task.evaluationMode is EvaluationMode.DEGRADED
+            assert task.evaluationMode is EvaluationMode.FULL
             assert task.novelType is NovelType.URBAN_REALITY
             raise PipelineFailureError(
                 error_code=ErrorCode.PROVIDER_FAILURE,
@@ -524,7 +530,7 @@ def test_execute_task_persists_screening_evaluation_mode_on_failure_after_screen
     assert updated.status is TaskStatus.FAILED
     assert updated.resultStatus is ResultStatus.NOT_AVAILABLE
     assert updated.errorCode is ErrorCode.PROVIDER_FAILURE
-    assert updated.evaluationMode is EvaluationMode.DEGRADED
+    assert updated.evaluationMode is EvaluationMode.FULL
     assert updated.novelType is NovelType.URBAN_REALITY
     assert updated.typeFallbackUsed is False
 
@@ -552,6 +558,7 @@ def test_get_history_filters_by_title_status_and_cursor() -> None:
             taskId="task_a",
             title="星际序章",
             inputSummary="已提交 1 章正文和 1 份大纲",
+            analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
             inputComposition=InputComposition.CHAPTERS_OUTLINE,
             hasChapters=True,
             hasOutline=True,
@@ -569,6 +576,7 @@ def test_get_history_filters_by_title_status_and_cursor() -> None:
             taskId="task_b",
             title="都市片段",
             inputSummary="已提交 1 章正文和 1 份大纲",
+            analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
             inputComposition=InputComposition.CHAPTERS_OUTLINE,
             hasChapters=True,
             hasOutline=True,
@@ -588,6 +596,7 @@ def test_get_history_filters_by_title_status_and_cursor() -> None:
             taskId="task_c",
             title="星际终章",
             inputSummary="已提交 1 章正文和 1 份大纲",
+            analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
             inputComposition=InputComposition.CHAPTERS_OUTLINE,
             hasChapters=True,
             hasOutline=True,

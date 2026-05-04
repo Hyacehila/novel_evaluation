@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import computed_field, field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import InputComposition, SubmissionSourceType
+from packages.schemas.common.enums import AnalysisMode, InputComposition, SubmissionSourceType
 from packages.schemas.common.validators import (
     derive_input_composition,
     ensure_non_empty_text,
@@ -38,6 +38,7 @@ class ManuscriptOutline(SchemaModel):
 
 class Manuscript(SchemaModel):
     title: str
+    analysisMode: AnalysisMode
     chapters: list[ManuscriptChapter] | None = None
     outline: ManuscriptOutline | None = None
     sourceType: SubmissionSourceType
@@ -49,8 +50,14 @@ class Manuscript(SchemaModel):
 
     @model_validator(mode="after")
     def validate_input_presence(self) -> "Manuscript":
-        if not self.hasChapters and not self.hasOutline:
-            raise ValueError("chapters 与 outline 至少存在一侧。")
+        if self.analysisMode is AnalysisMode.LONG_OPENING_OUTLINE:
+            if not self.hasChapters or not self.hasOutline:
+                raise ValueError("长篇开篇+大纲模式必须同时提供正文和大纲。")
+        if self.analysisMode is AnalysisMode.COMPLETED_FULLTEXT:
+            if not self.hasChapters:
+                raise ValueError("已完结中短篇全文模式必须提供正文。")
+            if self.hasOutline:
+                raise ValueError("已完结中短篇全文模式不接受大纲。")
         return self
 
     @computed_field

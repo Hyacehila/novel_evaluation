@@ -31,7 +31,7 @@ def test_file_prompt_runtime_fails_when_selected_body_is_blank(prompts_root: Pat
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -49,7 +49,7 @@ def test_file_prompt_runtime_rejects_nested_registry_yaml_structure(prompts_root
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -63,7 +63,7 @@ def test_file_prompt_runtime_rejects_nested_registry_yaml_structure(prompts_root
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -81,7 +81,7 @@ def test_file_prompt_runtime_rejects_yaml_line_without_key_value_separator(promp
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -93,7 +93,7 @@ def test_file_prompt_runtime_rejects_yaml_line_without_key_value_separator(promp
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -112,7 +112,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_duplicate_keys(prompts_r
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -124,7 +124,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_duplicate_keys(prompts_r
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -142,7 +142,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_missing_required_fields(promp
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
             ]
@@ -153,7 +153,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_missing_required_fields(promp
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -184,7 +184,7 @@ def test_file_prompt_runtime_rejects_version_yaml_missing_required_fields(prompt
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -216,7 +216,7 @@ def test_file_prompt_runtime_rejects_prompt_version_with_path_traversal_segment(
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -234,7 +234,7 @@ def test_file_prompt_runtime_rejects_registry_file_name_mismatched_with_prompt_i
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -246,7 +246,7 @@ def test_file_prompt_runtime_rejects_registry_file_name_mismatched_with_prompt_i
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -278,7 +278,7 @@ def test_file_prompt_runtime_rejects_version_file_name_mismatched_with_prompt_ve
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -326,7 +326,7 @@ def test_file_prompt_runtime_fails_when_selected_active_version_has_schema_misma
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -344,7 +344,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_invalid_stage(prompts_ro
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -356,7 +356,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_invalid_stage(prompts_ro
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -374,7 +374,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_invalid_status(prompts_r
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -386,7 +386,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_invalid_status(prompts_r
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -404,7 +404,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_non_boolean_enabled(prom
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: yes",
@@ -416,7 +416,7 @@ def test_file_prompt_runtime_rejects_registry_yaml_with_non_boolean_enabled(prom
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )

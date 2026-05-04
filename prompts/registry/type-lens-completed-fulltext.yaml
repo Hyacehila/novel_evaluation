@@ -1,0 +1,11 @@
+promptId: type-lens-completed-fulltext
+stage: type_lens_evaluation
+status: candidate
+schemaVersion: 1.0.0
+rubricVersion: rubric-v1
+inputCompositionScope: chapters_only
+analysisModeScope: completed_fulltext
+providerScope: provider-deepseek
+modelScope: *
+enabled: true
+notes: 已完结中短篇全文模式类型 lens 资产。

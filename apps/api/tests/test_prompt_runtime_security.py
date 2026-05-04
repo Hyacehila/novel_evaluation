@@ -22,7 +22,7 @@ def test_file_prompt_runtime_rejects_registry_symlink_outside_prompts_root(promp
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: full",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",
@@ -39,7 +39,7 @@ def test_file_prompt_runtime_rejects_registry_symlink_outside_prompts_root(promp
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from packages.schemas.output.provider_status import ProviderConfigurationSource, ProviderStatus
+from packages.schemas.output.provider_status import ProviderAuthSmokeResult, ProviderConfigurationSource, ProviderStatus
 
 if TYPE_CHECKING:
     from provider_adapters import ProviderExecutionRequest, ProviderExecutionResult
@@ -32,7 +32,7 @@ class PromptRuntimePort(Protocol):
         *,
         stage: str,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> ResolvedPromptPort:
@@ -46,6 +46,9 @@ class ProviderMetadataPort(Protocol):
 
 class ProviderRuntimePort(ProviderMetadataPort, Protocol):
     def get_status(self) -> ProviderStatus:
+        ...
+
+    def run_auth_smoke_test(self) -> ProviderAuthSmokeResult:
         ...
 
     def require_configured_adapter(self) -> ProviderExecutionPort:
@@ -81,7 +84,7 @@ class StaticPromptRuntime:
         *,
         stage: str,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> StaticResolvedPrompt:
@@ -115,6 +118,9 @@ class StaticProviderRuntime:
         )
 
     def require_configured_adapter(self) -> ProviderExecutionPort:
+        raise RuntimeError("provider 未配置。")
+
+    def run_auth_smoke_test(self) -> ProviderAuthSmokeResult:
         raise RuntimeError("provider 未配置。")
 
     def configure_runtime_key(self, api_key: str) -> ProviderStatus:

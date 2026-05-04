@@ -14,6 +14,7 @@ from packages.application.support.clock import Clock, UtcClock
 from packages.application.support.id_generator import IdGenerator, UuidTaskIdGenerator
 from packages.schemas.common.base import MetaData
 from packages.schemas.common.enums import (
+    AnalysisMode,
     EvaluationMode,
     InputComposition,
     ResultStatus,
@@ -76,6 +77,7 @@ class EvaluationService:
             taskId=task_id,
             title=request.title,
             inputSummary=self._build_input_summary(request),
+            analysisMode=request.analysisMode,
             inputComposition=request.inputComposition,
             hasChapters=request.hasChapters,
             hasOutline=request.hasOutline,
@@ -514,6 +516,7 @@ class EvaluationService:
             taskId=task.taskId,
             title=task.title,
             inputSummary=task.inputSummary,
+            analysisMode=task.analysisMode,
             inputComposition=task.inputComposition,
             status=task.status,
             resultStatus=task.resultStatus,
@@ -529,18 +532,16 @@ class EvaluationService:
         return task.model_copy(update={"resultStatus": ResultStatus.NOT_AVAILABLE})
 
     def _build_input_summary(self, request: JointSubmissionRequest) -> str:
-        if request.hasChapters and request.hasOutline:
+        if request.analysisMode is AnalysisMode.LONG_OPENING_OUTLINE:
             return f"已提交 {len(request.chapters or [])} 章正文和 1 份大纲"
-        if request.hasChapters:
-            return f"仅提交 {len(request.chapters or [])} 章正文"
-        return "仅提交大纲"
+        return f"已提交 {len(request.chapters or [])} 章完整正文"
 
     def _build_input_screening(self, task_id: str, request: JointSubmissionRequest) -> InputScreeningResult:
         evaluation_mode = self._derive_evaluation_mode(request.inputComposition)
         runtime_metadata = self._resolve_runtime_metadata(
             stage=StageName.INPUT_SCREENING,
             input_composition=request.inputComposition,
-            evaluation_mode=evaluation_mode,
+            analysis_mode=request.analysisMode,
         )
         return InputScreeningResult(
             taskId=task_id,
@@ -549,6 +550,7 @@ class EvaluationService:
             rubricVersion=runtime_metadata.rubric_version,
             providerId=runtime_metadata.provider_id,
             modelId=runtime_metadata.model_id,
+            analysisMode=request.analysisMode,
             inputComposition=request.inputComposition,
             hasChapters=request.hasChapters,
             hasOutline=request.hasOutline,
@@ -588,7 +590,7 @@ class EvaluationService:
         *,
         stage: StageName,
         input_composition: InputComposition,
-        evaluation_mode: EvaluationMode,
+        analysis_mode: AnalysisMode,
         provider_id: str | None = None,
         model_id: str | None = None,
     ) -> RuntimeMetadata:
@@ -605,7 +607,7 @@ class EvaluationService:
         resolved_prompt = self._prompt_runtime.resolve(
             stage=stage.value,
             input_composition=input_composition.value,
-            evaluation_mode=evaluation_mode.value,
+            analysis_mode=analysis_mode.value,
             provider_id=resolved_provider_id,
             model_id=resolved_model_id,
         )
@@ -623,6 +625,4 @@ class EvaluationService:
         return Sufficiency.MISSING
 
     def _derive_evaluation_mode(self, input_composition: InputComposition) -> EvaluationMode:
-        if input_composition is InputComposition.CHAPTERS_OUTLINE:
-            return EvaluationMode.FULL
-        return EvaluationMode.DEGRADED
+        return EvaluationMode.FULL

@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from uuid import uuid4
 
-from packages.schemas.common.enums import EvaluationMode, StageName
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, StageName
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.screening import InputScreeningResult
 from packages.schemas.output.result import FinalEvaluationProjection
@@ -36,6 +36,7 @@ class ScreeningExecutionContext:
     task_id: str
     submission: JointSubmissionRequest
     input_composition: str
+    analysis_mode: AnalysisMode
     evaluation_mode_hint: EvaluationMode
     binding: StagePromptBinding
 

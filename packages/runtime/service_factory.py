@@ -7,7 +7,9 @@ import threading
 from functools import lru_cache
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+from time import perf_counter
 from types import ModuleType
+from uuid import uuid4
 
 from packages.application.ports.runtime_metadata import (
     ProviderExecutionPort,
@@ -15,9 +17,12 @@ from packages.application.ports.runtime_metadata import (
     StaticPromptRuntime,
     StaticResolvedPrompt,
 )
+from packages.application.scoring_pipeline.exceptions import PipelineFailureError
+from packages.application.scoring_pipeline.provider_support import ProviderExecutionRequestPayload, ProviderMessagePayload
 from packages.application.services.evaluation_service import EvaluationService
-from packages.schemas.common.enums import EvaluationMode, InputComposition
-from packages.schemas.output.provider_status import ProviderConfigurationSource, ProviderStatus
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, StageName
+from packages.schemas.output.error import ErrorCode
+from packages.schemas.output.provider_status import ProviderAuthSmokeResult, ProviderConfigurationSource, ProviderStatus
 from packages.runtime.logging import log_event
 from packages.runtime.persistence import SQLiteTaskRepository, resolve_db_path
 
@@ -57,19 +62,13 @@ PRIMARY_PROMPT_RUNTIME_SCOPES = frozenset(
     {
         (
             InputComposition.CHAPTERS_OUTLINE.value,
-            EvaluationMode.FULL.value,
+            AnalysisMode.LONG_OPENING_OUTLINE.value,
             _PROVIDER_ID,
             _MODEL_ID,
         ),
         (
             InputComposition.CHAPTERS_ONLY.value,
-            EvaluationMode.DEGRADED.value,
-            _PROVIDER_ID,
-            _MODEL_ID,
-        ),
-        (
-            InputComposition.OUTLINE_ONLY.value,
-            EvaluationMode.DEGRADED.value,
+            AnalysisMode.COMPLETED_FULLTEXT.value,
             _PROVIDER_ID,
             _MODEL_ID,
         ),
@@ -127,7 +126,7 @@ class RuntimePromptRuntime:
         *,
         stage: str,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ):
@@ -135,7 +134,7 @@ class RuntimePromptRuntime:
             return self._file_runtime.resolve(
                 stage=stage,
                 input_composition=input_composition,
-                evaluation_mode=evaluation_mode,
+                analysis_mode=analysis_mode,
                 provider_id=provider_id,
                 model_id=model_id,
             )
@@ -145,7 +144,7 @@ class RuntimePromptRuntime:
             return self._fallback_runtime.resolve(
                 stage=stage,
                 input_composition=input_composition,
-                evaluation_mode=evaluation_mode,
+                analysis_mode=analysis_mode,
                 provider_id=provider_id,
                 model_id=model_id,
             )
@@ -170,6 +169,93 @@ class ProviderRuntimeState:
             configurationSource=configuration_source,
             canAnalyze=configured,
             canConfigureFromUi=configuration_source is ProviderConfigurationSource.MISSING,
+        )
+
+    def run_auth_smoke_test(self) -> ProviderAuthSmokeResult:
+        _, configuration_source = self._resolve_api_key()
+        if configuration_source is ProviderConfigurationSource.MISSING:
+            raise RuntimeError(f"{_DEEPSEEK_API_KEY_ENV} 未配置，当前不可执行 provider smoke。")
+        adapter = self.require_configured_adapter()
+        request_id = f"provider_auth_smoke_{uuid4().hex}"
+        request = ProviderExecutionRequestPayload(
+            taskId="provider_auth_smoke",
+            stage=StageName.INPUT_SCREENING,
+            promptId="provider-auth-smoke",
+            promptVersion="v1",
+            schemaVersion="1.0.0",
+            rubricVersion="rubric-v1",
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            requestId=request_id,
+            messages=[
+                ProviderMessagePayload(
+                    role="system",
+                    content='You are only verifying provider connectivity. Return exactly {"ok": true}.',
+                ),
+                ProviderMessagePayload(role="user", content='Return {"ok": true} as a JSON object.'),
+            ],
+            inputComposition=InputComposition.CHAPTERS_ONLY,
+            analysisMode=AnalysisMode.COMPLETED_FULLTEXT,
+            evaluationMode=EvaluationMode.FULL,
+            timeoutMs=30_000,
+            maxTokens=32,
+            responseFormat={"type": "json_object"},
+        )
+        started_at = perf_counter()
+        result = adapter.execute(request)
+        duration_ms = int((perf_counter() - started_at) * 1000)
+        failure_type = getattr(result, "failureType", None)
+        if failure_type is not None:
+            error_code = _provider_failure_to_error_code(failure_type)
+            log_event(
+                logger,
+                logging.ERROR,
+                "provider_auth_smoke_failed",
+                providerId=self.provider_id,
+                modelId=self.model_id,
+                configurationSource=configuration_source.value,
+                errorCode=error_code.value,
+                failureType=getattr(failure_type, "value", failure_type),
+                retryable=getattr(result, "retryable", None),
+                durationMs=duration_ms,
+            )
+            raise PipelineFailureError(
+                error_code=error_code,
+                message=_provider_smoke_failure_message(error_code=error_code),
+            )
+        raw_json = getattr(result, "rawJson", None)
+        if raw_json is None:
+            log_event(
+                logger,
+                logging.ERROR,
+                "provider_auth_smoke_failed",
+                providerId=self.provider_id,
+                modelId=self.model_id,
+                configurationSource=configuration_source.value,
+                errorCode=ErrorCode.CONTRACT_INVALID.value,
+                durationMs=duration_ms,
+            )
+            raise PipelineFailureError(
+                error_code=ErrorCode.CONTRACT_INVALID,
+                message=_provider_smoke_failure_message(error_code=ErrorCode.CONTRACT_INVALID),
+            )
+        provider_request_id = getattr(result, "providerRequestId", None)
+        log_event(
+            logger,
+            logging.INFO,
+            "provider_auth_smoke_completed",
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configurationSource=configuration_source.value,
+            durationMs=duration_ms,
+        )
+        return ProviderAuthSmokeResult(
+            providerId=self.provider_id,
+            modelId=self.model_id,
+            configurationSource=configuration_source,
+            ok=True,
+            durationMs=duration_ms,
+            providerRequestId=provider_request_id,
         )
 
     def configure_runtime_key(self, api_key: str) -> ProviderStatus:
@@ -282,6 +368,27 @@ def build_configured_provider_adapter(*, api_key: str) -> ProviderExecutionPort:
             structured_stage_outputs=True,
         )
     return provider_adapters_module.DeepSeekProviderAdapter(api_key=api_key, model_id=_MODEL_ID)
+
+
+def _provider_failure_to_error_code(failure_type: object) -> ErrorCode:
+    normalized = getattr(failure_type, "value", failure_type)
+    if normalized == "timeout":
+        return ErrorCode.TIMEOUT
+    if normalized == "dependency_unavailable":
+        return ErrorCode.DEPENDENCY_UNAVAILABLE
+    if normalized == "contract_invalid":
+        return ErrorCode.CONTRACT_INVALID
+    return ErrorCode.PROVIDER_FAILURE
+
+
+def _provider_smoke_failure_message(*, error_code: ErrorCode) -> str:
+    if error_code is ErrorCode.TIMEOUT:
+        return "Provider auth smoke 请求超时，真实模型当前响应过慢。"
+    if error_code is ErrorCode.DEPENDENCY_UNAVAILABLE:
+        return "Provider auth smoke 无法连接模型依赖，请检查网络或 SDK。"
+    if error_code is ErrorCode.CONTRACT_INVALID:
+        return "Provider auth smoke 返回内容不满足最小 JSON 契约。"
+    return "Provider auth smoke 调用失败，请检查 API key、额度或上游状态。"
 
 
 def get_startup_provider_adapter() -> ProviderExecutionPort:

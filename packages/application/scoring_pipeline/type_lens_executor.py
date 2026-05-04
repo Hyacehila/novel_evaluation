@@ -9,7 +9,7 @@ from packages.application.scoring_pipeline.exceptions import PipelineFailureErro
 from packages.application.scoring_pipeline.models import TypeLensExecutionContext
 from packages.application.scoring_pipeline.provider_support import execute_provider_stage
 from packages.application.scoring_pipeline.type_support import build_type_lens_summary
-from packages.schemas.common.enums import EvaluationMode, FatalRisk, ScoreBand, StageName
+from packages.schemas.common.enums import FatalRisk, ScoreBand, StageName
 from packages.schemas.common.novel_types import get_novel_type_label, get_type_lens_definitions
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.stages.type_lens import TypeLensEvaluationResult
@@ -52,6 +52,7 @@ def execute_type_lens(
         "taskId": context.task_id,
         "title": context.submission.title,
         "inputComposition": context.screening.inputComposition.value,
+        "analysisMode": context.screening.analysisMode.value,
         "evaluationMode": context.screening.evaluationMode.value,
         "chapters": [chapter.content for chapter in context.submission.chapters or []],
         "outline": context.submission.outline.content if context.submission.outline is not None else None,
@@ -73,6 +74,7 @@ def execute_type_lens(
             task_id=context.task_id,
             stage=StageName.TYPE_LENS_EVALUATION,
             input_composition=context.screening.inputComposition,
+            analysis_mode=context.screening.analysisMode,
             evaluation_mode=context.screening.evaluationMode,
             timeout_ms=_STAGE_TIMEOUT_MS,
             max_tokens=_STAGE_MAX_TOKENS,
@@ -130,7 +132,6 @@ def _normalize_type_lens_payload(*, payload: Any, context: TypeLensExecutionCont
             raw_item=_find_matching_lens_item(raw_items, lens_id=definition.lens_id, label=definition.label),
             lens_id=definition.lens_id,
             label=definition.label,
-            degraded_default=context.screening.evaluationMode is EvaluationMode.DEGRADED,
         )
         for definition in lens_definitions
     ]
@@ -146,6 +147,7 @@ def _normalize_type_lens_payload(*, payload: Any, context: TypeLensExecutionCont
         "providerId": context.binding.provider_id,
         "modelId": context.binding.model_id,
         "inputComposition": context.screening.inputComposition.value,
+        "analysisMode": context.screening.analysisMode.value,
         "evaluationMode": context.screening.evaluationMode.value,
         "novelType": context.type_classification.novelType.value,
         "summary": summary,
@@ -178,12 +180,11 @@ def _normalize_type_lens_item(
     raw_item: Any,
     lens_id: str,
     label: str,
-    degraded_default: bool,
 ) -> dict[str, Any]:
     normalized_item = dict(raw_item) if isinstance(raw_item, Mapping) else {}
     item_confidence = _normalize_confidence(
         normalized_item.get("confidence"),
-        fallback=0.58 if degraded_default else 0.76,
+        fallback=0.76,
     )
     reason = _normalize_text_value(normalized_item.get("reason"))
     if reason is None:
@@ -200,7 +201,6 @@ def _normalize_type_lens_item(
         ),
         "confidence": item_confidence,
         "riskTags": _normalize_risk_tags(normalized_item.get("riskTags")),
-        "degradedByInput": _normalize_bool(normalized_item.get("degradedByInput"), fallback=degraded_default),
     }
 
 
@@ -292,9 +292,3 @@ def _normalize_text_value(raw_value: Any) -> str | None:
         return None
     stripped = raw_value.strip()
     return stripped or None
-
-
-def _normalize_bool(raw_value: Any, *, fallback: bool) -> bool:
-    if isinstance(raw_value, bool):
-        return raw_value
-    return fallback

@@ -28,6 +28,7 @@ def execute_aggregation(
     user_payload = {
         "taskId": context.task_id,
         "title": context.submission.title,
+        "analysisMode": context.screening.analysisMode.value,
         "chapters": [chapter.content for chapter in context.submission.chapters or []],
         "outline": context.submission.outline.content if context.submission.outline is not None else None,
         "screening": context.screening.model_dump(mode="json"),
@@ -43,6 +44,7 @@ def execute_aggregation(
             task_id=context.task_id,
             stage=StageName.AGGREGATION,
             input_composition=context.screening.inputComposition,
+            analysis_mode=context.screening.analysisMode,
             evaluation_mode=context.screening.evaluationMode,
             timeout_ms=_STAGE_TIMEOUT_MS,
             max_tokens=_STAGE_MAX_TOKENS,
@@ -107,6 +109,7 @@ def _normalize_aggregation_payload(*, payload: Any, context: AggregationExecutio
         "rubricVersion": context.binding.rubric_version,
         "providerId": context.binding.provider_id,
         "modelId": context.binding.model_id,
+        "analysisMode": context.screening.analysisMode.value,
         "overallVerdictDraft": overall_verdict,
         "verdictSubQuote": _normalize_text_value(normalized_payload.get("verdictSubQuote")),
         "overallSummaryDraft": overall_summary,
@@ -127,7 +130,7 @@ def _normalize_platform_candidates(raw_values: Any) -> list[dict[str, Any]]:
     """将 LLM 输出的 platformCandidates 规范化为 PlatformCandidate dict 列表。
 
     每个有效 item 必须是包含 name（非空字符串）、weight（整数）、pitchQuote（非空字符串）的 dict。
-    格式不符的 item 直接丢弃，不做字符串降级。
+    格式不符的 item 直接丢弃，不把字符串伪装成平台候选。
     """
     if not isinstance(raw_values, list):
         return []

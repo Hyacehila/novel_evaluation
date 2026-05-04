@@ -19,7 +19,7 @@ export default function GlobalError({
 
   return (
     <div className="page-frame">
-      <Card className="grain-card p-10">
+      <Card className="p-8">
         <p className="text-sm tracking-[0.12em] text-[var(--bad)]">页面异常</p>
         <h1 className="section-title mt-3 text-3xl font-semibold">页面加载失败</h1>
         <p className="mt-4 max-w-2xl text-sm text-[var(--muted)]">

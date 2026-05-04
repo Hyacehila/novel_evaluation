@@ -8,7 +8,7 @@ export function Card({ className, ...props }: ComponentProps<"section">) {
     <section
       {...props}
       className={cn(
-        "rounded-[26px] border border-[var(--line)] bg-[var(--surface)] shadow-[var(--shadow)] backdrop-blur-sm",
+        "rounded-[12px] border border-[var(--line)] bg-[var(--surface)] shadow-[0_8px_24px_rgba(15,23,42,0.04)] backdrop-blur-sm",
         className
       )}
     />

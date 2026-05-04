@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from packages.schemas.common.enums import InputComposition, ResultStatus, TaskStatus
+from packages.schemas.common.enums import AnalysisMode, InputComposition, ResultStatus, TaskStatus
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.evals import EvalExpectedOutcomeType
 
@@ -47,6 +47,7 @@ def test_load_dataset_entry_reads_minimal_dataset_payload(tmp_path: Path) -> Non
         {
             "caseId": "case_001",
             "title": "样本 1",
+            "analysisMode": "long_opening_outline",
             "inputComposition": "chapters_outline",
             "chaptersRef": "datasets/fixtures/case_001-chapters.md",
             "outlineRef": "datasets/fixtures/case_001-outline.md",
@@ -61,6 +62,7 @@ def test_load_dataset_entry_reads_minimal_dataset_payload(tmp_path: Path) -> Non
     assert entry == EvalDatasetEntry(
         caseId="case_001",
         title="样本 1",
+        analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         chaptersRef="datasets/fixtures/case_001-chapters.md",
         outlineRef="datasets/fixtures/case_001-outline.md",
@@ -83,7 +85,7 @@ def test_load_prompt_metadata_snapshot_reads_registry_and_version(tmp_path: Path
                 "schemaVersion: 1.0.0",
                 "rubricVersion: rubric-v1",
                 "inputCompositionScope: chapters_outline",
-                "evaluationModeScope: full",
+                "analysisModeScope: long_opening_outline",
                 "providerScope: provider-local",
                 "modelScope: model-local",
                 "enabled: true",

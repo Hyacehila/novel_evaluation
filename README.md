@@ -11,6 +11,7 @@
 - 代码真源：`apps/api/src/api/routes.py`、`packages/application/`、`packages/schemas/`、`packages/runtime/`、`packages/prompt-runtime/`、`packages/provider-adapters/`、`prompts/`、`evals/`
 - 默认存储：`SQLite`，默认路径 `var/novel-evaluation.sqlite3`
 - 上传格式：`TXT / MD / DOCX`
+- 分析模式：`long_opening_outline` 用于长篇开篇正文 + 大纲，`completed_fulltext` 用于已完成全文；两者显式选择，不按材料缺口自动切换
 - Playwright 默认基线：deterministic provider；真实 `DeepSeek` 只作为可选验收路径
 - 真实模型默认：`deepseek-v4-pro`，思考模式 `enabled`，`reasoning_effort=high`
 
@@ -30,6 +31,8 @@
 2. API 启动时不带 key，然后在 `/tasks/new` 页录入一次性 runtime key
 
 默认真实模型可在 `.env` 里通过 `NOVEL_EVAL_DEEPSEEK_MODEL_ID` 调整，当前支持直接改为 `deepseek-v4-flash` 走降本路径；`NOVEL_EVAL_DEEPSEEK_THINKING` 与 `NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT` 控制 V4 思考模式。
+
+本地 SQLite 可在关闭 API 后直接清空：删除 `var/novel-evaluation.sqlite3`，下次启动会重建空库。
 
 ## 文档入口
 
@@ -53,11 +56,14 @@ pnpm --dir apps/web test:e2e
 真实 DeepSeek E2E 为可选补充：
 
 ```powershell
-$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<your-key>"
+$env:NOVEL_EVAL_DEEPSEEK_API_KEY = "<redacted-local-key>"
+$env:NOVEL_EVAL_DEEPSEEK_THINKING = "disabled"
 $env:NOVEL_EVAL_E2E_PROVIDER_MODE = "startup_key"
-pnpm --dir apps/web test:e2e
-$env:NOVEL_EVAL_E2E_PROVIDER_MODE = "runtime_key"
-pnpm --dir apps/web test:e2e
+$env:NOVEL_EVAL_E2E_REAL_SCOPE = "auth_smoke"
+pnpm --dir apps/web test:e2e -- e2e/provider-auth-smoke.spec.ts
+
+$env:NOVEL_EVAL_E2E_REAL_SCOPE = "full_pipeline"
+pnpm --dir apps/web test:e2e -- e2e/provider-full-pipeline-real.spec.ts
 ```
 
 ## 非目标

@@ -5,15 +5,15 @@ import { cn } from "@/shared/lib/cn";
 
 
 const baseClasses =
-  "inline-flex items-center justify-center rounded-full border px-4 py-2 text-sm font-medium transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-[10px] border px-4 py-2 text-sm font-medium transition hover:border-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60";
 
 const variants = {
   primary:
-    "border-transparent bg-[var(--accent)] text-white shadow-[0_14px_30px_rgba(180,70,42,0.24)] hover:bg-[var(--accent-strong)]",
+    "border-transparent bg-[var(--accent)] text-white shadow-[0_8px_18px_rgba(43,92,110,0.16)] hover:bg-[var(--accent-strong)]",
   secondary:
     "border-[var(--line-strong)] bg-[var(--surface-strong)] text-[var(--foreground)] hover:border-[var(--accent)] hover:text-[var(--accent-strong)]",
   ghost:
-    "border-transparent bg-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-white/60 hover:text-[var(--foreground)]",
+    "border-transparent bg-transparent text-[var(--muted)] hover:border-[var(--line)] hover:bg-white hover:text-[var(--foreground)]",
 };
 
 type ButtonVariant = keyof typeof variants;

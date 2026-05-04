@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import computed_field, field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import EvaluationMode, InputComposition, NovelType, ResultStatus, TaskStatus
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, NovelType, ResultStatus, TaskStatus
 from packages.schemas.common.validators import (
     ensure_non_empty_text,
     validate_confidence,
@@ -29,6 +29,7 @@ class EvaluationTask(SchemaModel):
     taskId: str
     title: str
     inputSummary: str
+    analysisMode: AnalysisMode
     inputComposition: InputComposition
     hasChapters: bool
     hasOutline: bool
@@ -121,6 +122,7 @@ class EvaluationTaskSummary(SchemaModel):
     taskId: str
     title: str
     inputSummary: str
+    analysisMode: AnalysisMode
     inputComposition: InputComposition
     status: TaskStatus
     resultStatus: ResultStatus

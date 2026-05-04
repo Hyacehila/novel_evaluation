@@ -69,6 +69,7 @@ def _build_eval_fixture(tmp_path: Path) -> tuple[WorkerRuntimeContext, Path]:
         {
             "caseId": "case_001",
             "title": "成功样本",
+            "analysisMode": "long_opening_outline",
             "inputComposition": "chapters_outline",
             "chaptersRef": "datasets/fixtures/case_001_chapters.md",
             "outlineRef": "datasets/fixtures/case_001_outline.md",
@@ -81,6 +82,7 @@ def _build_eval_fixture(tmp_path: Path) -> tuple[WorkerRuntimeContext, Path]:
         {
             "caseId": "case_002",
             "title": "阻断样本",
+            "analysisMode": "long_opening_outline",
             "inputComposition": "chapters_outline",
             "chaptersRef": "datasets/fixtures/case_002_chapters.md",
             "outlineRef": "datasets/fixtures/case_002_outline.md",
@@ -146,6 +148,7 @@ def test_batch_dry_run_reports_runtime(monkeypatch: pytest.MonkeyPatch, tmp_path
         [
             {
                 "title": "batch sample",
+                "analysisMode": "long_opening_outline",
                 "chapters": [{"title": "第一章", "content": "修仙危机开篇"}],
                 "outline": {"content": "后续主线围绕宗门升级展开"},
                 "sourceType": "direct_input",
@@ -244,12 +247,14 @@ def test_batch_executes_source_and_writes_summary(
         [
             {
                 "title": "batch success",
+                "analysisMode": "long_opening_outline",
                 "chapters": [{"title": "第一章", "content": "修仙危机开篇"}],
                 "outline": {"content": "后续主线围绕宗门升级展开"},
                 "sourceType": "direct_input",
             },
             {
                 "title": "batch blocked",
+                "analysisMode": "long_opening_outline",
                 "chapters": [{"title": "第一章", "content": "都市豪门婚约开篇"}],
                 "outline": {"content": "后续切成星际机甲远征"},
                 "sourceType": "direct_input",

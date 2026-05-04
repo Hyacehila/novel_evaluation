@@ -5,7 +5,7 @@ from typing import Literal
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import EvaluationMode, FatalRisk, InputComposition, NovelType, ScoreBand, StageName
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, FatalRisk, InputComposition, NovelType, ScoreBand, StageName
 from packages.schemas.common.novel_types import get_type_lens_ids
 from packages.schemas.common.validators import ensure_non_empty_text, validate_confidence
 from packages.schemas.stages.rubric import RubricEvaluationEvidenceRef
@@ -19,7 +19,6 @@ class TypeLensItem(SchemaModel):
     evidenceRefs: list[RubricEvaluationEvidenceRef]
     confidence: float
     riskTags: list[FatalRisk]
-    degradedByInput: bool
 
     @field_validator("lensId", "label", "reason")
     @classmethod
@@ -47,6 +46,7 @@ class TypeLensEvaluationResult(SchemaModel):
     providerId: str
     modelId: str
     inputComposition: InputComposition
+    analysisMode: AnalysisMode
     evaluationMode: EvaluationMode
     novelType: NovelType
     summary: str

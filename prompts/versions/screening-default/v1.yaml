@@ -5,6 +5,6 @@ schemaVersion: 1.0.0
 rubricVersion: rubric-v1
 owner: prompt-governance
 updatedAt: 2026-03-26T00:00:00Z
-changeSummary: 将 screening prompt 重写为编辑签约视角的输入预检查规范，强化 full/degraded 判定、谨慎可评策略、结构化阻断与 segmentationPlan 约束。
+changeSummary: 将 screening prompt 收敛为 long_opening_outline 的正式输入预检查，删除自动切换继续路径。
 rollbackTarget: none
 evalRequirement: uv run --project apps/api pytest apps/api/tests -k repository_prompt_assets

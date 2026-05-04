@@ -24,7 +24,6 @@ class AxisEvaluationResult(SchemaModel):
     score: int
     summary: str
     reason: str
-    degradedByInput: bool
     riskTags: list[FatalRisk]
 
     @field_validator("summary", "reason")

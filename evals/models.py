@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import InputComposition, ResultStatus, TaskStatus
+from packages.schemas.common.enums import AnalysisMode, InputComposition, ResultStatus, TaskStatus
 from packages.schemas.common.validators import ensure_non_empty_text, ensure_optional_text
 from packages.schemas.evals import EvalExpectedOutcomeType
 from packages.schemas.output.error import ErrorCode
@@ -12,6 +12,7 @@ from packages.schemas.output.error import ErrorCode
 class EvalDatasetEntry(SchemaModel):
     caseId: str
     title: str
+    analysisMode: AnalysisMode
     inputComposition: InputComposition
     chaptersRef: str | None = None
     chaptersContent: str | None = None
@@ -41,6 +42,12 @@ class EvalDatasetEntry(SchemaModel):
             raise ValueError("chapters_only 样本必须只提供 chapters。")
         if self.inputComposition is InputComposition.OUTLINE_ONLY and (not has_outline or has_chapters):
             raise ValueError("outline_only 样本必须只提供 outline。")
+        if self.analysisMode is AnalysisMode.LONG_OPENING_OUTLINE:
+            if self.inputComposition is not InputComposition.CHAPTERS_OUTLINE:
+                raise ValueError("long_opening_outline eval 样本必须使用 chapters_outline。")
+        if self.analysisMode is AnalysisMode.COMPLETED_FULLTEXT:
+            if self.inputComposition is not InputComposition.CHAPTERS_ONLY:
+                raise ValueError("completed_fulltext eval 样本必须使用 chapters_only。")
         return self
 
 

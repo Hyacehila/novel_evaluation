@@ -69,6 +69,13 @@ $legacyReferenceTerms = @(
     "packages/sdk/"
 )
 
+$secretPatterns = @(
+    @{
+        Name = "DeepSeek/OpenAI style API key"
+        Pattern = [regex]'(?<![A-Za-z0-9_])sk-[A-Za-z0-9_-]{12,}'
+    }
+)
+
 foreach ($relativePath in $bannedDirectories) {
     $target = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $relativePath))
     if (-not $target.StartsWith($repoRoot)) {
@@ -130,6 +137,20 @@ foreach ($term in $legacyReferenceTerms) {
     foreach ($match in $matches) {
         $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $match.Path)
         $errors.Add("Legacy reference '$term' found in ${relativeFile}:$($match.LineNumber)")
+    }
+}
+
+foreach ($secretPattern in $secretPatterns) {
+    foreach ($file in $filesToScan) {
+        $lines = @(Get-Content -LiteralPath $file.FullName)
+        for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
+            $line = $lines[$lineIndex]
+            if (-not $secretPattern.Pattern.IsMatch($line)) {
+                continue
+            }
+            $relativeFile = [System.IO.Path]::GetRelativePath($repoRoot, $file.FullName)
+            $errors.Add("Possible secret '$($secretPattern.Name)' found in ${relativeFile}:$($lineIndex + 1)")
+        }
     }
 }
 

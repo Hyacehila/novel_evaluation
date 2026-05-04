@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatScore, getAxisLabel, getScoreBandLabel, getScoreBandTone } from "@/shared/lib/format";
+import { describeTaskFailure, formatScore, getAxisLabel, getScoreBandLabel, getScoreBandTone } from "@/shared/lib/format";
 
 
 describe("format helpers", () => {
@@ -30,5 +30,11 @@ describe("format helpers", () => {
     expect(getScoreBandTone("2")).toBe("warn");
     expect(getScoreBandTone("3")).toBe("neutral");
     expect(getScoreBandTone("4")).toBe("good");
+  });
+
+  it("returns actionable real provider failure copy", () => {
+    expect(describeTaskFailure("TIMEOUT", null)).toContain("真实模型响应超时");
+    expect(describeTaskFailure("STAGE_SCHEMA_INVALID", null)).toContain("schema 校验");
+    expect(describeTaskFailure("PROVIDER_FAILURE", "模型服务调用失败")).toBe("模型服务调用失败");
   });
 });

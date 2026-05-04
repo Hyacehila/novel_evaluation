@@ -106,22 +106,41 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
             <Card className="p-6">
               <p className="text-xs tracking-[0.12em] text-[var(--muted)]">总体判断</p>
               <h2 className="section-title mt-3 text-2xl font-semibold">总体结论与市场判断</h2>
-              <div className="mt-5 grid gap-4 md:grid-cols-2">
+              <div className="mt-5 grid gap-4 md:grid-cols-3">
                 <MetricCard label="总体评分" value={formatScore(resultQuery.data.result.overall.score)} />
                 <MetricCard label="平台候选数" value={`${resultQuery.data.result.overall.platformCandidates.length} 个`} />
+                <MetricCard label="市场适配" value="已完成" />
               </div>
-              <div className="mt-5 space-y-4">
-                <AnalysisCard title="总体结论" content={resultQuery.data.result.overall.verdict} />
-                <AnalysisCard title="总体摘要" content={resultQuery.data.result.overall.summary} />
-                <AnalysisCard title="市场判断" content={resultQuery.data.result.overall.marketFit} />
+              <div className="mt-5 grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+                <TextPanel title="总体结论" content={resultQuery.data.result.overall.verdict} />
+                <TextPanel title="总体摘要" content={resultQuery.data.result.overall.summary} />
+                <TextPanel title="市场判断" content={resultQuery.data.result.overall.marketFit} />
+                <section className="rounded-[12px] border border-[var(--line)] bg-white p-5">
+                  <h3 className="font-semibold">平台候选</h3>
+                  <div className="mt-4 space-y-3">
+                    {resultQuery.data.result.overall.platformCandidates.map((platform) => (
+                      <div key={platform.name} className="rounded-[10px] border border-[var(--line)] bg-[var(--surface)] p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="font-semibold">{platform.name}</p>
+                          <Badge tone="neutral">{platform.weight}%</Badge>
+                        </div>
+                        <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{platform.pitchQuote}</p>
+                      </div>
+                    ))}
+                  </div>
+                </section>
               </div>
-              <div className="mt-5">
-                <p className="text-sm text-[var(--muted)]">平台候选</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {resultQuery.data.result.overall.platformCandidates.map((platform) => (
-                    <Badge key={platform.name}>{platform.name}</Badge>
-                  ))}
-                </div>
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <TextPanel
+                  title="优势"
+                  contentList={resultQuery.data.result.overall.strengths}
+                  emptyText="暂无优势摘要"
+                />
+                <TextPanel
+                  title="弱点"
+                  contentList={resultQuery.data.result.overall.weaknesses}
+                  emptyText="暂无弱点摘要"
+                />
               </div>
             </Card>
 
@@ -144,10 +163,10 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
               <h2 className="section-title mt-3 text-2xl font-semibold">类型判断与 4 个 lens</h2>
               <div className="mt-5 flex flex-wrap gap-2">
                 <Badge>{getNovelTypeLabel(resultQuery.data.result.typeAssessment.novelType)}</Badge>
+                <Badge tone="neutral">置信度 {formatConfidence(resultQuery.data.result.typeAssessment.classificationConfidence)}</Badge>
                 <Badge tone={resultQuery.data.result.typeAssessment.fallbackUsed ? "warn" : "good"}>
                   {resultQuery.data.result.typeAssessment.fallbackUsed ? "通用兜底 lens" : "类型 lens 已锁定"}
                 </Badge>
-                <Badge tone="neutral">置信度 {formatConfidence(resultQuery.data.result.typeAssessment.classificationConfidence)}</Badge>
               </div>
               <AnalysisCard title="类型总结" content={resultQuery.data.result.typeAssessment.summary} />
               <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -158,7 +177,6 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
                     scoreBand={lens.scoreBand}
                     confidence={lens.confidence}
                     reason={lens.reason}
-                    degradedByInput={lens.degradedByInput}
                     riskTags={lens.riskTags}
                   />
                 ))}
@@ -178,7 +196,6 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
                   scoreBand={axis.scoreBand}
                   summary={axis.summary}
                   reason={axis.reason}
-                  degradedByInput={axis.degradedByInput}
                   riskTags={axis.riskTags}
                 />
               ))}
@@ -192,7 +209,7 @@ export function ResultDetailPage({ taskId }: { taskId: string }) {
 
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[18px] border border-[var(--line)] bg-white/60 p-4">
+    <div className="flex items-start justify-between gap-4 rounded-[10px] border border-[var(--line)] bg-white p-4">
       <dt className="text-[var(--muted)]">{label}</dt>
       <dd className="break-all">{value}</dd>
     </div>
@@ -201,16 +218,45 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
 
 function MetricCard({ label, value }: { label: string; value: string }) {
   return (
-    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+    <section className="rounded-[12px] border border-[var(--line)] bg-white p-5">
       <p className="text-sm text-[var(--muted)]">{label}</p>
-      <p className="section-title mt-3 text-3xl font-semibold">{value}</p>
+      <p className="section-title mt-3 text-2xl font-semibold">{value}</p>
+    </section>
+  );
+}
+
+function TextPanel({
+  title,
+  content,
+  contentList,
+  emptyText,
+}: {
+  title: string;
+  content?: string;
+  contentList?: string[];
+  emptyText?: string;
+}) {
+  return (
+    <section className="rounded-[12px] border border-[var(--line)] bg-white p-5">
+      <h3 className="font-semibold">{title}</h3>
+      {contentList ? (
+        <ul className="mt-3 space-y-2 text-sm leading-7 text-[var(--muted)]">
+          {contentList.length > 0 ? (
+            contentList.map((item) => <li key={item}>{item}</li>)
+          ) : (
+            <li>{emptyText ?? "暂无内容"}</li>
+          )}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{content}</p>
+      )}
     </section>
   );
 }
 
 function AnalysisCard({ title, content }: { title: string; content: string }) {
   return (
-    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+    <section className="mt-5 rounded-[12px] border border-[var(--line)] bg-white p-5">
       <h3 className="font-semibold">{title}</h3>
       <p className="mt-3 text-sm leading-7 text-[var(--muted)]">{content}</p>
     </section>
@@ -223,7 +269,6 @@ function AxisCard({
   scoreBand,
   summary,
   reason,
-  degradedByInput,
   riskTags,
 }: {
   axisId: string;
@@ -231,11 +276,10 @@ function AxisCard({
   scoreBand: string;
   summary: string;
   reason: string;
-  degradedByInput: boolean;
   riskTags: string[];
 }) {
   return (
-    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+    <section className="rounded-[12px] border border-[var(--line)] bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">{getAxisLabel(axisId)}</h3>
@@ -245,7 +289,6 @@ function AxisCard({
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
         <Badge tone={getScoreBandTone(scoreBand)}>{getScoreBandLabel(scoreBand)}</Badge>
-        {degradedByInput ? <Badge tone="warn">输入降级</Badge> : null}
         {riskTags.map((riskTag) => (
           <Badge key={riskTag} tone="bad">{riskTag}</Badge>
         ))}
@@ -260,18 +303,16 @@ function TypeLensCard({
   scoreBand,
   confidence,
   reason,
-  degradedByInput,
   riskTags,
 }: {
   label: string;
   scoreBand: string;
   confidence: number;
   reason: string;
-  degradedByInput: boolean;
   riskTags: string[];
 }) {
   return (
-    <section className="rounded-[22px] border border-[var(--line)] bg-white/60 p-5">
+    <section className="rounded-[12px] border border-[var(--line)] bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">{label}</h3>
@@ -280,7 +321,6 @@ function TypeLensCard({
         <Badge tone={getScoreBandTone(scoreBand)}>{getScoreBandLabel(scoreBand)}</Badge>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        {degradedByInput ? <Badge tone="warn">输入降级</Badge> : null}
         {riskTags.map((riskTag) => (
           <Badge key={riskTag} tone="bad">{riskTag}</Badge>
         ))}

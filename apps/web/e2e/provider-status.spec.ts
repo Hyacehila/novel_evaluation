@@ -25,25 +25,27 @@ async function waitForTaskResult(page: Page) {
 }
 
 test("provider 状态场景可按模式完成主流程", async ({ page, request }) => {
+  test.skip(providerMode !== "deterministic", "真实 provider 验收由 provider-auth-smoke / provider-full-pipeline-real 显式执行。");
   test.setTimeout(taskFlowTimeoutMs);
   await resetRuntimeProviderKey(request);
   await page.goto("/tasks/new");
 
-  await expect(page.getByText("Provider 状态", { exact: true })).toBeVisible();
+  const providerPanel = page.locator(".app-shell-desktop-provider");
+  await expect(providerPanel.getByText("Provider 状态", { exact: true })).toBeVisible();
 
   if (providerMode === "runtime_key") {
-    await expect(page.getByText("当前无 API，无法进行分析").first()).toBeVisible();
+    await expect(providerPanel.getByText("当前无 API，无法进行分析").first()).toBeVisible();
     await expect(page.getByRole("button", { name: "创建评测任务" })).toBeDisabled();
-    const runtimeKeyInput = page.getByLabel("运行时 API Key");
+    const runtimeKeyInput = providerPanel.getByLabel("运行时 API Key");
     await expect(runtimeKeyInput).toBeVisible();
     await expect(runtimeKeyInput).toHaveAttribute("type", "password");
     await submitRuntimeProviderKey(page);
-    await expect(page.getByText("运行时内存", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("运行时 API Key")).toHaveCount(0);
+    await expect(providerPanel.getByText("运行时内存", { exact: true })).toBeVisible();
+    await expect(providerPanel.getByLabel("运行时 API Key")).toHaveCount(0);
   } else {
-    await expect(page.getByText("已配置，可进行分析", { exact: true })).toBeVisible();
-    await expect(page.getByText("启动环境变量", { exact: true })).toBeVisible();
-    await expect(page.getByLabel("运行时 API Key")).toHaveCount(0);
+    await expect(providerPanel.getByText("已配置，可进行分析", { exact: true })).toBeVisible();
+    await expect(providerPanel.getByText("启动环境变量", { exact: true })).toBeVisible();
+    await expect(providerPanel.getByLabel("运行时 API Key")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "创建评测任务" })).toBeEnabled();
   }
 

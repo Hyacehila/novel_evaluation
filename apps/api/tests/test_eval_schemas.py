@@ -35,7 +35,6 @@ def build_result() -> EvaluationResult:
                 "score": 75,
                 "summary": f"{axis_id.value} 维度总结",
                 "reason": "证据充分，表现合格。",
-                "degradedByInput": False,
                 "riskTags": [],
             }
             for axis_id in AxisId

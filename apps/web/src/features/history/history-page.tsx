@@ -8,6 +8,7 @@ import { useHistoryQuery } from "@/api/hooks";
 import { useDebouncedValue } from "@/shared/hooks/use-debounced-value";
 import { routes } from "@/shared/config/routes";
 import {
+  getAnalysisModeLabel,
   formatDateTime,
   getInputCompositionLabel,
   getResultStatusLabel,
@@ -86,7 +87,7 @@ export function HistoryPage() {
           <label className="block">
             <span className="text-sm font-semibold">标题检索</span>
             <input
-              className="mt-2 w-full rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+              className="mt-2 w-full rounded-[10px] border border-[var(--line)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
               placeholder="输入标题关键字"
               value={draftQuery}
               onChange={(event) => {
@@ -98,7 +99,7 @@ export function HistoryPage() {
           <label className="block">
             <span className="text-sm font-semibold">任务状态</span>
             <select
-              className="mt-2 w-full rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+              className="mt-2 w-full rounded-[10px] border border-[var(--line)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
               value={status ?? ""}
               onChange={(event) => {
                 updateSearchParams((params) => {
@@ -123,7 +124,7 @@ export function HistoryPage() {
           <label className="block">
             <span className="text-sm font-semibold">分页大小</span>
             <select
-              className="mt-2 w-full rounded-[18px] border border-[var(--line)] bg-white/80 px-4 py-3 outline-none transition focus:border-[var(--accent)]"
+              className="mt-2 w-full rounded-[10px] border border-[var(--line)] bg-white px-4 py-3 outline-none transition focus:border-[var(--accent)]"
               value={String(limit)}
               onChange={(event) => {
                 updateSearchParams((params) => {
@@ -188,7 +189,7 @@ export function HistoryPage() {
               historyQuery.data.items.map((item) => (
                 <article
                   key={item.taskId}
-                  className="rounded-[22px] border border-[var(--line)] bg-white/65 p-5"
+                  className="rounded-[12px] border border-[var(--line)] bg-white p-5"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
@@ -202,6 +203,7 @@ export function HistoryPage() {
                   </div>
                   <div className="mt-4 flex flex-wrap gap-4 text-sm text-[var(--muted)]">
                     <span>{getInputCompositionLabel(item.inputComposition)}</span>
+                    <span>{getAnalysisModeLabel(item.analysisMode)}</span>
                     <span>{formatDateTime(item.createdAt)}</span>
                     <span>{item.taskId}</span>
                   </div>

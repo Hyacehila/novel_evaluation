@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Any
 
 from packages.schemas.common.enums import (
+    AnalysisMode,
     AxisId,
     EvaluationMode,
     EvidenceSourceType,
@@ -197,6 +198,7 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
     chapters_text = "\n".join(chapters).strip()
     outline_text = str(payload.get("outline") or "").strip()
     input_composition = str(payload.get("inputComposition") or request.inputComposition.value)
+    analysis_mode = str(payload.get("analysisMode") or (request.analysisMode.value if request.analysisMode else ""))
     has_chapters = bool(chapters_text)
     has_outline = bool(outline_text)
     chapters_sufficiency = _classify_sufficiency(chapters_text, threshold=4)
@@ -204,7 +206,7 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
     non_narrative = any(token in f"{chapters_text}\n{outline_text}" for token in ("简历", "说明书", "API 文档", "合同", "非小说"))
 
     if non_narrative:
-        evaluation_mode = request.evaluationMode.value
+        evaluation_mode = EvaluationMode.FULL.value
         rateable = False
         continue_allowed = False
         status = StageStatus.UNRATEABLE.value
@@ -212,25 +214,24 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
         risk_tags = [FatalRisk.NON_NARRATIVE_SUBMISSION.value]
         confidence = 0.18
     else:
-        sufficient_sides = sum(
-            sufficiency == Sufficiency.SUFFICIENT.value
-            for sufficiency in (chapters_sufficiency, outline_sufficiency)
-        )
-        rateable = sufficient_sides >= 1
+        if analysis_mode == AnalysisMode.LONG_OPENING_OUTLINE.value:
+            rateable = (
+                input_composition == InputComposition.CHAPTERS_OUTLINE.value
+                and chapters_sufficiency == Sufficiency.SUFFICIENT.value
+                and outline_sufficiency == Sufficiency.SUFFICIENT.value
+            )
+        else:
+            rateable = (
+                input_composition == InputComposition.CHAPTERS_ONLY.value
+                and chapters_sufficiency == Sufficiency.SUFFICIENT.value
+                and not has_outline
+            )
         continue_allowed = rateable
-        evaluation_mode = (
-            EvaluationMode.FULL.value
-            if input_composition == InputComposition.CHAPTERS_OUTLINE.value
-            and chapters_sufficiency == Sufficiency.SUFFICIENT.value
-            and outline_sufficiency == Sufficiency.SUFFICIENT.value
-            else EvaluationMode.DEGRADED.value
-        )
-        status = StageStatus.OK.value if evaluation_mode == EvaluationMode.FULL.value else (
-            StageStatus.WARNING.value if continue_allowed else StageStatus.UNRATEABLE.value
-        )
+        evaluation_mode = EvaluationMode.FULL.value
+        status = StageStatus.OK.value if continue_allowed else StageStatus.UNRATEABLE.value
         rejection_reasons = [] if continue_allowed else ["输入材料不足，无法形成稳定评分结论。"]
-        risk_tags = [] if continue_allowed and evaluation_mode == EvaluationMode.FULL.value else [FatalRisk.INSUFFICIENT_MATERIAL.value]
-        confidence = 0.9 if evaluation_mode == EvaluationMode.FULL.value else (0.72 if continue_allowed else 0.24)
+        risk_tags = [] if continue_allowed else [FatalRisk.INSUFFICIENT_MATERIAL.value]
+        confidence = 0.9 if continue_allowed else 0.24
 
     total_length = len(chapters_text) + len(outline_text)
     if total_length >= 800 and continue_allowed:
@@ -244,6 +245,7 @@ def _build_screening_output(request: ProviderExecutionRequest, payload: dict[str
         "rubricVersion": request.rubricVersion,
         "providerId": request.providerId,
         "modelId": request.modelId,
+        "analysisMode": analysis_mode,
         "inputComposition": input_composition,
         "hasChapters": has_chapters,
         "hasOutline": has_outline,
@@ -264,7 +266,7 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
     chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
     outline_text = str(payload.get("outline") or "")
     screening = payload.get("screening") or {}
-    degraded = screening.get("evaluationMode") == EvaluationMode.DEGRADED.value
+    analysis_mode = str(payload.get("analysisMode") or screening.get("analysisMode") or "")
     requested_axes = [
         axis_id
         for axis_id in AxisId
@@ -277,12 +279,9 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
     risk_tags: set[str] = set()
     for axis_id in requested_axes:
         score_band, reason = _score_axis(axis_id, chapters_text=chapters_text, outline_text=outline_text)
-        degraded_by_input = degraded and axis_id in {
-            AxisId.SERIAL_MOMENTUM,
-            AxisId.PACING_PAYOFF,
-            AxisId.PLATFORM_FIT,
-        }
-        item_risk_tags = [FatalRisk.INSUFFICIENT_MATERIAL.value] if degraded_by_input else []
+        if analysis_mode == AnalysisMode.COMPLETED_FULLTEXT.value:
+            score_band, reason = _score_fulltext_axis(axis_id, text=chapters_text)
+        item_risk_tags: list[str] = []
         risk_tags.update(item_risk_tags)
         items.append(
             {
@@ -297,13 +296,12 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
                         "excerpt": (chapters_text or outline_text or "deterministic fallback")[:120],
                         "observationType": "narrative_observation",
                         "evidenceNote": "deterministic fallback 生成的稳定证据。",
-                        "confidence": 0.78 if not degraded_by_input else 0.52,
+                        "confidence": 0.78,
                     }
                 ],
-                "confidence": 0.8 if not degraded_by_input else 0.55,
+                "confidence": 0.8,
                 "riskTags": item_risk_tags,
                 "blockingSignals": [],
-                "degradedByInput": degraded_by_input,
             }
         )
         axis_summaries.append({"axisId": axis_id.value, "summary": f"{axis_id.value} 维度总结"})
@@ -316,13 +314,14 @@ def _build_rubric_output(request: ProviderExecutionRequest, payload: dict[str, A
         "providerId": request.providerId,
         "modelId": request.modelId,
         "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "analysisMode": analysis_mode,
         "evaluationMode": screening.get("evaluationMode") or request.evaluationMode.value,
         "requestedAxes": [axis_id.value for axis_id in requested_axes],
         "items": items,
         "axisSummaries": axis_summaries,
         "missingRequiredAxes": [],
         "riskTags": sorted(risk_tags),
-        "overallConfidence": 0.8 if not degraded else 0.62,
+        "overallConfidence": 0.8,
     }
 
 
@@ -334,13 +333,14 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
     consistency = payload.get("consistency") or {}
     chapters_text = "\n".join(str(item) for item in payload.get("chapters", []))
     outline_text = str(payload.get("outline") or "")
+    analysis_mode = str(payload.get("analysisMode") or screening.get("analysisMode") or "")
     novel_type = _resolve_novel_type(type_classification.get("novelType")) or _infer_novel_type(f"{chapters_text}\n{outline_text}")
     platform = _platform_for_novel_type(novel_type)
     risk_tags = sorted(set(rubric.get("riskTags", [])))
     if not consistency.get("passed", True):
         risk_tags.append(FatalRisk.FAKE_PAYOFF.value)
-    degraded = screening.get("evaluationMode") == EvaluationMode.DEGRADED.value
     type_summary = str(type_lens.get("summary") or f"当前按 {get_novel_type_label(novel_type)} lens 继续评估。").strip()
+    completed_fulltext = analysis_mode == AnalysisMode.COMPLETED_FULLTEXT.value
     return {
         "taskId": request.taskId,
         "stage": request.stage.value,
@@ -349,23 +349,24 @@ def _build_aggregation_output(request: ProviderExecutionRequest, payload: dict[s
         "rubricVersion": request.rubricVersion,
         "providerId": request.providerId,
         "modelId": request.modelId,
-        "overallVerdictDraft": "建议补全正文后再复核。" if degraded else "建议继续观察并进入样章复核。",
+        "analysisMode": analysis_mode,
+        "overallVerdictDraft": "建议作为完整中短篇进入人工复核。" if completed_fulltext else "建议继续观察并进入样章复核。",
         "verdictSubQuote": (
-            "当前样本量偏少，市场承接判断需等待正文补全后再确认。"
-            if degraded
+            "全文完成度具备基础判断条件，后续重点复核结尾余韵和投稿栏目匹配。"
+            if completed_fulltext
             else f"作品当前归入{get_novel_type_label(novel_type)}，与 {platform} 的圈层预期更为贴合。"
         ),
         "overallSummaryDraft": (
-            f"当前结果基于 degraded 材料，整体结论偏保守；类型评估暂按 {get_novel_type_label(novel_type)} lens 处理。"
-            if degraded
+            f"全文样本已经覆盖开端、推进与收束，具备完整作品层面的结构化判断条件；{type_summary}"
+            if completed_fulltext
             else f"章节主线与市场抓手已形成初步可读的总体判断；{type_summary}"
         ),
         "platformCandidates": [{"name": platform, "weight": 100, "pitchQuote": f"题材卖点与 {platform} 主流读者偏好一致，具备明确承接空间。"}],
         "marketFitDraft": f"当前作品被识别为 {get_novel_type_label(novel_type)}，更贴合 {platform} 的用户预期。",
         "strengthCandidates": ["题材定位清晰", "主线冲突具备继续阅读抓手"],
-        "weaknessCandidates": ["正文样本仍不足以完全验证长线兑现" if degraded else "平台承接仍需更多正文样本验证"],
+        "weaknessCandidates": ["结尾余韵与投稿栏目适配仍需人工复核" if completed_fulltext else "平台承接仍需更多正文样本验证"],
         "riskTags": sorted(set(risk_tags)),
-        "overallConfidence": max(0.24, round(float(rubric.get("overallConfidence", 0.8)) - (0.12 if degraded else 0.0), 2)),
+        "overallConfidence": max(0.24, round(float(rubric.get("overallConfidence", 0.8)), 2)),
     }
 
 
@@ -385,6 +386,7 @@ def _build_type_classification_output(request: ProviderExecutionRequest, payload
         "providerId": request.providerId,
         "modelId": request.modelId,
         "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "analysisMode": payload.get("analysisMode") or (request.analysisMode.value if request.analysisMode else ""),
         "evaluationMode": payload.get("evaluationMode") or request.evaluationMode.value,
         "candidates": candidates,
         "summary": f"当前最高题材信号落在“{top_label}”，次高候选为“{second_label}”。",
@@ -396,14 +398,12 @@ def _build_type_lens_output(request: ProviderExecutionRequest, payload: dict[str
     outline_text = str(payload.get("outline") or "")
     combined_text = f"{chapters_text}\n{outline_text}"
     selected_type = _resolve_novel_type((payload.get("selectedType") or {}).get("novelType")) or NovelType.GENERAL_FALLBACK
-    degraded = (payload.get("screening") or {}).get("evaluationMode") == EvaluationMode.DEGRADED.value
     items = [
         _build_type_lens_item(
             novel_type=selected_type,
             lens_id=definition.lens_id,
             label=definition.label,
             combined_text=combined_text,
-            degraded=degraded,
         )
         for definition in get_type_lens_definitions(selected_type)
     ]
@@ -416,6 +416,7 @@ def _build_type_lens_output(request: ProviderExecutionRequest, payload: dict[str
         "providerId": request.providerId,
         "modelId": request.modelId,
         "inputComposition": payload.get("inputComposition") or request.inputComposition.value,
+        "analysisMode": payload.get("analysisMode") or (request.analysisMode.value if request.analysisMode else ""),
         "evaluationMode": payload.get("evaluationMode") or request.evaluationMode.value,
         "novelType": selected_type.value,
         "summary": f"本次类型评价按“{get_novel_type_label(selected_type)}”lens 执行。",
@@ -469,6 +470,26 @@ def _score_axis(axis_id: AxisId, *, chapters_text: str, outline_text: str) -> tu
     if any(token in combined for token in ("付费", "连载", "追读", "爆点", "爽点")):
         return ScoreBand.FOUR.value, "商业化信号较明确，具备继续观察价值。"
     return ScoreBand.THREE.value, "商业化潜力基础尚可，但仍需更多样本验证。"
+
+
+def _score_fulltext_axis(axis_id: AxisId, *, text: str) -> tuple[str, str]:
+    if axis_id is AxisId.HOOK_RETENTION:
+        return (ScoreBand.THREE.value, "全文开端具备可识别的叙事入口与读者抓手。")
+    if axis_id is AxisId.SERIAL_MOMENTUM:
+        return (ScoreBand.THREE.value, "已完结文本的推进链条基本完整，章节间目标延续清楚。")
+    if axis_id is AxisId.CHARACTER_DRIVE:
+        return (ScoreBand.THREE.value, "主要角色目标和行动线能够支撑完整篇幅。")
+    if axis_id is AxisId.NARRATIVE_CONTROL:
+        return (ScoreBand.FOUR.value, "全文结构有起承转合，信息组织较稳定。") if len(text) > 260 else (ScoreBand.THREE.value, "全文叙事控制基本成立。")
+    if axis_id is AxisId.PACING_PAYOFF:
+        if any(token in text for token in ("结局", "真相", "收束", "回收", "兑现")):
+            return (ScoreBand.FOUR.value, "全文结尾与前文承诺存在明确回收关系。")
+        return (ScoreBand.THREE.value, "全文完成度基本可读，但结尾兑现仍可强化。")
+    if axis_id is AxisId.SETTING_DIFFERENTIATION:
+        return _score_axis(axis_id, chapters_text=text, outline_text="")
+    if axis_id is AxisId.PLATFORM_FIT:
+        return (ScoreBand.THREE.value, "完整文本的类型标签和目标读者预期大体匹配。")
+    return (ScoreBand.THREE.value, "完整作品具备基础商业化观察价值，但爆点密度仍需人工复核。")
 
 
 def _rank_novel_types(text: str) -> list[dict[str, Any]]:
@@ -530,13 +551,12 @@ def _build_type_lens_item(
     lens_id: str,
     label: str,
     combined_text: str,
-    degraded: bool,
 ) -> dict[str, Any]:
     matching_keywords = _count_keywords(combined_text, _NOVEL_TYPE_KEYWORDS.get(novel_type, ()))
     score_band = ScoreBand.THREE.value if matching_keywords >= 2 else ScoreBand.TWO.value
     if matching_keywords >= 4:
         score_band = ScoreBand.FOUR.value
-    confidence = 0.58 if degraded else 0.78
+    confidence = 0.78
     if score_band == ScoreBand.FOUR.value:
         confidence += 0.05
     return {
@@ -555,8 +575,7 @@ def _build_type_lens_item(
             }
         ],
         "confidence": round(confidence, 2),
-        "riskTags": [FatalRisk.INSUFFICIENT_MATERIAL.value] if degraded else [],
-        "degradedByInput": degraded,
+        "riskTags": [],
     }
 
 

@@ -73,6 +73,7 @@ def parse_upload_bytes(*, filename: str, content: bytes, max_bytes: int | None =
 def build_upload_request(
     *,
     title: str,
+    analysis_mode: str,
     source_type: str,
     chapters_text: str | None,
     outline_text: str | None,
@@ -88,6 +89,7 @@ def build_upload_request(
     try:
         return JointSubmissionRequest(
             title=title,
+            analysisMode=analysis_mode,
             chapters=[ManuscriptChapter(content=chapters_text)] if chapters_text is not None else None,
             outline=ManuscriptOutline(content=outline_text) if outline_text is not None else None,
             sourceType=submission_source,

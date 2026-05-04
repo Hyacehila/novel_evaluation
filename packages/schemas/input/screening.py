@@ -6,6 +6,7 @@ from pydantic import field_validator, model_validator
 
 from packages.schemas.common.base import SchemaModel
 from packages.schemas.common.enums import (
+    AnalysisMode,
     EvaluationMode,
     FatalRisk,
     InputComposition,
@@ -28,6 +29,7 @@ class InputScreeningResult(SchemaModel):
     rubricVersion: str
     providerId: str
     modelId: str
+    analysisMode: AnalysisMode
     inputComposition: InputComposition
     hasChapters: bool
     hasOutline: bool
@@ -72,12 +74,20 @@ class InputScreeningResult(SchemaModel):
             input_composition=self.inputComposition,
         )
         if self.evaluationMode is EvaluationMode.FULL:
-            if self.inputComposition is not InputComposition.CHAPTERS_OUTLINE:
-                raise ValueError("full 模式要求同时存在正文与大纲。")
-            if self.chaptersSufficiency is not Sufficiency.SUFFICIENT:
-                raise ValueError("full 模式要求 chaptersSufficiency 为 sufficient。")
-            if self.outlineSufficiency is not Sufficiency.SUFFICIENT:
-                raise ValueError("full 模式要求 outlineSufficiency 为 sufficient。")
+            if self.analysisMode is AnalysisMode.LONG_OPENING_OUTLINE:
+                if self.inputComposition is not InputComposition.CHAPTERS_OUTLINE:
+                    raise ValueError("long_opening_outline 要求同时存在正文与大纲。")
+                if self.continueAllowed and self.chaptersSufficiency is not Sufficiency.SUFFICIENT:
+                    raise ValueError("long_opening_outline 要求 chaptersSufficiency 为 sufficient。")
+                if self.continueAllowed and self.outlineSufficiency is not Sufficiency.SUFFICIENT:
+                    raise ValueError("long_opening_outline 要求 outlineSufficiency 为 sufficient。")
+            if self.analysisMode is AnalysisMode.COMPLETED_FULLTEXT:
+                if self.inputComposition is not InputComposition.CHAPTERS_ONLY:
+                    raise ValueError("completed_fulltext 要求只存在正文。")
+                if self.continueAllowed and self.chaptersSufficiency is not Sufficiency.SUFFICIENT:
+                    raise ValueError("completed_fulltext 要求 chaptersSufficiency 为 sufficient。")
+                if self.outlineSufficiency is not Sufficiency.MISSING:
+                    raise ValueError("completed_fulltext 不应提供 outline。")
         if not self.rateable:
             if not self.rejectionReasons:
                 raise ValueError("不可评输入必须提供 rejectionReasons。")

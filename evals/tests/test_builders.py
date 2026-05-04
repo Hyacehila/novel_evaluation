@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from packages.schemas.common.enums import InputComposition, ResultStatus, TaskStatus
+from packages.schemas.common.enums import AnalysisMode, InputComposition, ResultStatus, TaskStatus
 from packages.schemas.output.error import ErrorCode
 from packages.schemas.evals import EvalExpectedOutcomeType, EvalReportType
 
@@ -34,6 +34,7 @@ def build_dataset_entry(*, case_id: str = "case_001", included_in_baseline: bool
     return EvalDatasetEntry(
         caseId=case_id,
         title="测试样本",
+        analysisMode=AnalysisMode.LONG_OPENING_OUTLINE,
         inputComposition=InputComposition.CHAPTERS_OUTLINE,
         chaptersRef="datasets/fixtures/case_001-chapters.md",
         outlineRef="datasets/fixtures/case_001-outline.md",

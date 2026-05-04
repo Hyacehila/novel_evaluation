@@ -45,6 +45,7 @@ def write_registry(
     model_scope: str = "*",
     enabled: bool = True,
 ) -> None:
+    analysis_scope = {"full": "long_opening_outline"}.get(evaluation_scope, evaluation_scope)
     content = "\n".join(
         [
             f"promptId: {prompt_id}",
@@ -53,7 +54,7 @@ def write_registry(
             f"schemaVersion: {schema_version}",
             f"rubricVersion: {rubric_version}",
             f"inputCompositionScope: {input_scope}",
-            f"evaluationModeScope: {evaluation_scope}",
+            f"analysisModeScope: {analysis_scope}",
             f"providerScope: {provider_scope}",
             f"modelScope: {model_scope}",
             f"enabled: {'true' if enabled else 'false'}",
@@ -134,7 +135,7 @@ def test_file_prompt_runtime_returns_frozen_prompt_payload(prompts_root: Path) -
     resolved = build_runtime(prompts_root).resolve(
         stage="input_screening",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -180,7 +181,7 @@ def test_file_prompt_runtime_reads_body_bound_to_selected_prompt_version(prompts
     resolved = build_runtime(prompts_root).resolve(
         stage="input_screening",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -230,7 +231,7 @@ def test_file_prompt_runtime_filters_by_stage_before_other_scopes(prompts_root: 
     resolved = build_runtime(prompts_root).resolve(
         stage="input_screening",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -282,7 +283,7 @@ def test_file_prompt_runtime_excludes_registry_records_with_unloadable_status(pr
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -334,7 +335,7 @@ def test_file_prompt_runtime_prefers_active_registry_status_after_scope_tie(prom
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -386,7 +387,7 @@ def test_file_prompt_runtime_falls_back_to_candidate_when_active_does_not_match_
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -419,32 +420,32 @@ def test_file_prompt_runtime_prefers_best_overall_scope_match_instead_of_greedy_
 
     write_registry(
         prompts_root,
-        prompt_id="rubric-degraded-wildcard-input",
+        prompt_id="rubric-completed-fulltext-wildcard-input",
         stage="rubric_evaluation",
         input_scope="*",
-        evaluation_scope="degraded",
+        evaluation_scope="completed_fulltext",
         provider_scope="provider-local",
         model_scope="model-local",
     )
-    write_version(prompts_root, prompt_id="rubric-degraded-wildcard-input", prompt_version="2026-03-27")
+    write_version(prompts_root, prompt_id="rubric-completed-fulltext-wildcard-input", prompt_version="2026-03-27")
     write_body(
         prompts_root,
         stage_directory="rubric",
-        prompt_id="rubric-degraded-wildcard-input",
+        prompt_id="rubric-completed-fulltext-wildcard-input",
         prompt_version="2026-03-27",
-        body="degraded wildcard input",
+        body="completed fulltext wildcard input",
     )
 
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="degraded",
+        analysis_mode="completed_fulltext",
         provider_id="provider-local",
         model_id="model-local",
     )
 
-    assert resolved.promptId == "rubric-degraded-wildcard-input"
-    assert resolved.body == "degraded wildcard input"
+    assert resolved.promptId == "rubric-completed-fulltext-wildcard-input"
+    assert resolved.body == "completed fulltext wildcard input"
 
 
 def test_file_prompt_runtime_prefers_input_scope_before_later_scopes(prompts_root: Path) -> None:
@@ -487,7 +488,7 @@ def test_file_prompt_runtime_prefers_input_scope_before_later_scopes(prompts_roo
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -537,7 +538,7 @@ def test_file_prompt_runtime_prefers_evaluation_scope_before_provider_and_model(
     resolved = build_runtime(prompts_root).resolve(
         stage="rubric_evaluation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -587,7 +588,7 @@ def test_file_prompt_runtime_prefers_provider_scope_before_model_scope(prompts_r
     resolved = build_runtime(prompts_root).resolve(
         stage="aggregation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -639,7 +640,7 @@ def test_file_prompt_runtime_prefers_enabled_only_after_scope_tie(prompts_root: 
     resolved = build_runtime(prompts_root).resolve(
         stage="aggregation",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -692,7 +693,7 @@ def test_file_prompt_runtime_fails_when_best_ranked_candidate_is_disabled(prompt
         build_runtime(prompts_root).resolve(
             stage="aggregation",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -713,7 +714,7 @@ def test_file_prompt_runtime_fails_when_selected_version_metadata_is_missing(pro
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -728,7 +729,7 @@ def test_file_prompt_runtime_fails_when_selected_body_is_missing(prompts_root: P
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -776,7 +777,7 @@ def test_file_prompt_runtime_fails_when_multiple_best_candidates_remain(prompts_
         build_runtime(prompts_root).resolve(
             stage="rubric_evaluation",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -805,7 +806,7 @@ def test_file_prompt_runtime_prefers_active_version_over_candidate_version(promp
     resolved = build_runtime(prompts_root).resolve(
         stage="input_screening",
         input_composition="chapters_outline",
-        evaluation_mode="full",
+        analysis_mode="long_opening_outline",
         provider_id="provider-local",
         model_id="model-local",
     )
@@ -830,7 +831,7 @@ def test_file_prompt_runtime_rejects_prompt_id_that_breaks_asset_boundaries(prom
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -852,7 +853,7 @@ def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(p
         build_runtime(prompts_root).resolve(
             stage="input_screening",
             input_composition="chapters_outline",
-            evaluation_mode="full",
+            analysis_mode="long_opening_outline",
             provider_id="provider-local",
             model_id="model-local",
         )
@@ -860,26 +861,27 @@ def test_file_prompt_runtime_rejects_prompt_id_with_windows_trailing_dot_alias(p
 
 REPO_PROMPTS_ROOT = Path(__file__).resolve().parents[3] / "prompts"
 REPO_PROMPT_CASES = (
-    pytest.param("input_screening", "screening", "screening-default", id="repo-screening"),
-    pytest.param("input_screening", "screening", "screening-degraded", id="repo-screening-degraded"),
-    pytest.param("rubric_evaluation", "rubric", "rubric-default", id="repo-rubric"),
-    pytest.param("rubric_evaluation", "rubric", "rubric-degraded", id="repo-rubric-degraded"),
-    pytest.param("aggregation", "aggregation", "aggregation-default", id="repo-aggregation"),
-    pytest.param("aggregation", "aggregation", "aggregation-degraded", id="repo-aggregation-degraded"),
+    pytest.param("input_screening", "screening", "screening-default", "chapters_outline", "long_opening_outline", id="repo-screening-long"),
+    pytest.param("input_screening", "screening", "screening-completed-fulltext", "chapters_only", "completed_fulltext", id="repo-screening-fulltext"),
+    pytest.param("rubric_evaluation", "rubric", "rubric-default", "chapters_outline", "long_opening_outline", id="repo-rubric-long"),
+    pytest.param("rubric_evaluation", "rubric", "rubric-completed-fulltext", "chapters_only", "completed_fulltext", id="repo-rubric-fulltext"),
+    pytest.param("aggregation", "aggregation", "aggregation-default", "chapters_outline", "long_opening_outline", id="repo-aggregation-long"),
+    pytest.param("aggregation", "aggregation", "aggregation-completed-fulltext", "chapters_only", "completed_fulltext", id="repo-aggregation-fulltext"),
 )
 
 
-@pytest.mark.parametrize(("stage", "stage_directory", "prompt_id"), REPO_PROMPT_CASES)
+@pytest.mark.parametrize(("stage", "stage_directory", "prompt_id", "input_composition", "analysis_mode"), REPO_PROMPT_CASES)
 def test_file_prompt_runtime_resolves_repository_prompt_assets(
     stage: str,
     stage_directory: str,
     prompt_id: str,
+    input_composition: str,
+    analysis_mode: str,
 ) -> None:
-    evaluation_mode = "degraded" if prompt_id.endswith("-degraded") else "full"
     resolved = FilePromptRuntime(prompts_root=REPO_PROMPTS_ROOT).resolve(
         stage=stage,
-        input_composition="chapters_outline",
-        evaluation_mode=evaluation_mode,
+        input_composition=input_composition,
+        analysis_mode=analysis_mode,
         provider_id="provider-deepseek",
         model_id="deepseek-v4-pro",
     )

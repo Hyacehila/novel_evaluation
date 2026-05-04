@@ -8,7 +8,7 @@ from typing import Any
 from pydantic import Field, field_serializer, field_validator
 
 from packages.schemas.common.base import SchemaModel
-from packages.schemas.common.enums import EvaluationMode, InputComposition, StageName
+from packages.schemas.common.enums import AnalysisMode, EvaluationMode, InputComposition, StageName
 from packages.schemas.common.validators import ensure_non_empty_text, ensure_optional_text
 from packages.schemas.output.error import ErrorCode
 
@@ -90,6 +90,7 @@ class ProviderExecutionRequest(SchemaModel):
     requestId: str
     messages: list[ProviderMessage] = Field(min_length=1)
     inputComposition: InputComposition | None = None
+    analysisMode: AnalysisMode | None = None
     evaluationMode: EvaluationMode | None = None
     timeoutMs: int | None = Field(default=None, ge=1)
     maxTokens: int | None = Field(default=None, ge=1)

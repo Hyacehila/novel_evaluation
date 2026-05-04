@@ -16,13 +16,16 @@ from packages.application.scoring_pipeline.models import (
     RubricExecutionContext,
     ScreeningExecutionContext,
     StagePromptBinding,
+    TypeClassificationExecutionContext,
 )
 from packages.application.scoring_pipeline.orchestration import ScoringPipeline
 from packages.application.scoring_pipeline.projection_service import build_final_projection
 from packages.application.scoring_pipeline.rubric_executor import execute_rubric, execute_rubric_slice
 from packages.application.scoring_pipeline.screening_executor import execute_screening
+from packages.application.scoring_pipeline.type_classification_executor import execute_type_classification
 from packages.schemas.common.enums import (
     AxisId,
+    AnalysisMode,
     EvaluationMode,
     EvidenceSourceType,
     FatalRisk,
@@ -84,7 +87,7 @@ class RecordingPromptRuntime:
         *,
         stage: str,
         input_composition: str,
-        evaluation_mode: str,
+        analysis_mode: str,
         provider_id: str,
         model_id: str,
     ) -> StubResolvedPrompt:
@@ -92,7 +95,7 @@ class RecordingPromptRuntime:
             {
                 "stage": stage,
                 "input_composition": input_composition,
-                "evaluation_mode": evaluation_mode,
+                "analysis_mode": analysis_mode,
                 "provider_id": provider_id,
                 "model_id": model_id,
             }
@@ -123,9 +126,16 @@ def build_submission(
     outline_text: str = "都市豪门主线明确，后续阶段目标稳定推进。",
     with_chapters: bool = True,
     with_outline: bool = True,
+    analysis_mode: AnalysisMode | None = None,
 ) -> JointSubmissionRequest:
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE if with_outline else AnalysisMode.COMPLETED_FULLTEXT
+        )
     return JointSubmissionRequest(
         title="测试稿件",
+        analysisMode=resolved_analysis_mode,
         chapters=[ManuscriptChapter(title="第一章", content=chapter_text)] if with_chapters else None,
         outline=ManuscriptOutline(content=outline_text) if with_outline else None,
         sourceType="direct_input",
@@ -147,6 +157,7 @@ def build_stage_binding(*, stage: StageName = StageName.RUBRIC_EVALUATION) -> St
 
 def build_screening_result(
     *,
+    analysis_mode: AnalysisMode | None = None,
     input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
     has_chapters: bool = True,
@@ -157,6 +168,13 @@ def build_screening_result(
     rateable: bool = True,
     rejection_reasons: list[str] | None = None,
 ) -> InputScreeningResult:
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE
+            if input_composition is InputComposition.CHAPTERS_OUTLINE
+            else AnalysisMode.COMPLETED_FULLTEXT
+        )
     return InputScreeningResult(
         taskId="task_pipeline_001",
         schemaVersion="schema-test-v1",
@@ -164,6 +182,7 @@ def build_screening_result(
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=resolved_analysis_mode,
         inputComposition=input_composition,
         hasChapters=has_chapters,
         hasOutline=has_outline,
@@ -219,18 +238,25 @@ def build_rubric_item(
         confidence=confidence,
         riskTags=risk_tags or [],
         blockingSignals=blocking_signals or [],
-        degradedByInput=False,
     )
 
 
 def build_rubric_set(
     *,
+    analysis_mode: AnalysisMode | None = None,
     input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
     item_overrides: dict[AxisId, RubricEvaluationItem] | None = None,
     missing_required_axes: list[AxisId] | None = None,
     overall_confidence: float = 0.8,
 ) -> RubricEvaluationSet:
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE
+            if input_composition is InputComposition.CHAPTERS_OUTLINE
+            else AnalysisMode.COMPLETED_FULLTEXT
+        )
     overrides = item_overrides or {}
     items = [overrides.get(axis_id, build_rubric_item(axis_id)) for axis_id in AxisId]
     return RubricEvaluationSet(
@@ -240,6 +266,7 @@ def build_rubric_set(
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=resolved_analysis_mode,
         inputComposition=input_composition,
         evaluationMode=evaluation_mode,
         items=items,
@@ -256,6 +283,7 @@ def build_platform_candidate(name: str, weight: int, pitch_quote: str) -> Platfo
 
 def build_aggregation_result(
     *,
+    analysis_mode: AnalysisMode = AnalysisMode.LONG_OPENING_OUTLINE,
     platform_candidates: list[PlatformCandidate] | None = None,
     market_fit: str = "当前题材更贴合女频平台 A 的用户预期。",
     overall_summary: str = "章节主线与市场抓手已形成初步可读的总体判断。",
@@ -274,6 +302,7 @@ def build_aggregation_result(
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=analysis_mode,
         overallVerdictDraft=overall_verdict,
         overallSummaryDraft=overall_summary,
         platformCandidates=platform_candidates if platform_candidates is not None else default_candidates,
@@ -288,9 +317,17 @@ def build_type_classification_result(
     novel_type: NovelType = NovelType.URBAN_REALITY,
     classification_confidence: float = 0.78,
     fallback_used: bool = False,
+    analysis_mode: AnalysisMode | None = None,
     input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
 ) -> TypeClassificationResult:
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE
+            if input_composition is InputComposition.CHAPTERS_OUTLINE
+            else AnalysisMode.COMPLETED_FULLTEXT
+        )
     secondary_novel_type = (
         NovelType.URBAN_REALITY
         if novel_type in {NovelType.FANTASY_UPGRADE, NovelType.GENERAL_FALLBACK}
@@ -325,6 +362,7 @@ def build_type_classification_result(
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=resolved_analysis_mode,
         inputComposition=input_composition,
         evaluationMode=evaluation_mode,
         candidates=candidates,
@@ -338,10 +376,18 @@ def build_type_classification_result(
 def build_type_lens_result(
     *,
     novel_type: NovelType = NovelType.URBAN_REALITY,
+    analysis_mode: AnalysisMode | None = None,
     input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
     score_band: ScoreBand = ScoreBand.THREE,
 ) -> TypeLensEvaluationResult:
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE
+            if input_composition is InputComposition.CHAPTERS_OUTLINE
+            else AnalysisMode.COMPLETED_FULLTEXT
+        )
     lens_map = {
         NovelType.FEMALE_GENERAL: [
             ("emotionImmersion", "情绪钩子与代入"),
@@ -399,9 +445,8 @@ def build_type_lens_result(
             scoreBand=score_band,
             reason=f"{label} 证据完整。",
             evidenceRefs=[build_evidence()],
-            confidence=0.8 if evaluation_mode is EvaluationMode.FULL else 0.58,
-            riskTags=[FatalRisk.INSUFFICIENT_MATERIAL] if evaluation_mode is EvaluationMode.DEGRADED else [],
-            degradedByInput=evaluation_mode is EvaluationMode.DEGRADED,
+            confidence=0.8,
+            riskTags=[],
         )
         for lens_id, label in lens_map[novel_type]
     ]
@@ -412,6 +457,7 @@ def build_type_lens_result(
         rubricVersion="rubric-test-v1",
         providerId="provider-test",
         modelId="model-test",
+        analysisMode=resolved_analysis_mode,
         inputComposition=input_composition,
         evaluationMode=evaluation_mode,
         novelType=novel_type,
@@ -423,14 +469,23 @@ def build_type_lens_result(
 
 def build_task(
     *,
+    analysis_mode: AnalysisMode | None = None,
     evaluation_mode: EvaluationMode = EvaluationMode.FULL,
     input_composition: InputComposition = InputComposition.CHAPTERS_OUTLINE,
 ) -> EvaluationTask:
     now = datetime(2026, 3, 27, tzinfo=timezone.utc)
+    resolved_analysis_mode = analysis_mode
+    if resolved_analysis_mode is None:
+        resolved_analysis_mode = (
+            AnalysisMode.LONG_OPENING_OUTLINE
+            if input_composition is InputComposition.CHAPTERS_OUTLINE
+            else AnalysisMode.COMPLETED_FULLTEXT
+        )
     return EvaluationTask(
         taskId="task_pipeline_001",
         title="测试稿件",
         inputSummary="已提交 1 章正文和 1 份大纲",
+        analysisMode=resolved_analysis_mode,
         inputComposition=input_composition,
         hasChapters=input_composition is not InputComposition.OUTLINE_ONLY,
         hasOutline=input_composition is not InputComposition.CHAPTERS_ONLY,
@@ -478,7 +533,6 @@ def build_rubric_slice_payload(*, requested_axes: list[AxisId]) -> dict[str, Any
                 "confidence": 0.84,
                 "riskTags": [],
                 "blockingSignals": [],
-                "degradedByInput": False,
             }
             for axis_id in requested_axes
         ],
@@ -562,6 +616,7 @@ def build_screening_context(
         task_id="task_pipeline_001",
         submission=resolved_submission,
         input_composition=resolved_submission.inputComposition.value,
+        analysis_mode=resolved_submission.analysisMode,
         evaluation_mode_hint=evaluation_mode_hint,
         binding=build_stage_binding(stage=StageName.INPUT_SCREENING),
     )
@@ -583,7 +638,7 @@ def test_execute_screening_normalizes_joint_input_full_mode_and_metadata() -> No
                 "hasOutline": True,
                 "chaptersSufficiency": "sufficient",
                 "outlineSufficiency": "sufficient",
-                "evaluationMode": "degraded",
+                "evaluationMode": "legacy_mode",
                 "rateable": True,
                 "status": "warning",
                 "rejectionReasons": [],
@@ -609,7 +664,7 @@ def test_execute_screening_normalizes_joint_input_full_mode_and_metadata() -> No
     assert result.riskTags == [FatalRisk.AI_MANUAL_TONE]
 
 
-def test_execute_screening_fail_fast_blocks_low_confidence_non_narrative_joint_input() -> None:
+def test_execute_screening_accepts_unrateable_full_mode_rejection() -> None:
     provider = RecordingProviderAdapter(
         payloads={
             StageName.INPUT_SCREENING: {
@@ -625,13 +680,13 @@ def test_execute_screening_fail_fast_blocks_low_confidence_non_narrative_joint_i
                 "hasOutline": True,
                 "chaptersSufficiency": "insufficient",
                 "outlineSufficiency": "insufficient",
-                "evaluationMode": "degraded",
-                "rateable": True,
-                "status": "warning",
-                "rejectionReasons": [],
+                "evaluationMode": "legacy_mode",
+                "rateable": False,
+                "status": "unrateable",
+                "rejectionReasons": ["模型认为正文与大纲仍停留在梗概层面。"],
                 "riskTags": ["nonNarrativeSubmission", "insufficientMaterial"],
                 "confidence": 0.3,
-                "continueAllowed": True,
+                "continueAllowed": False,
             }
         }
     )
@@ -642,11 +697,84 @@ def test_execute_screening_fail_fast_blocks_low_confidence_non_narrative_joint_i
 
     result = execute_screening(provider_adapter=provider, context=build_screening_context(submission=submission))
 
-    assert result.evaluationMode is EvaluationMode.DEGRADED
+    assert result.evaluationMode is EvaluationMode.FULL
     assert result.rateable is False
     assert result.continueAllowed is False
     assert result.status is StageStatus.UNRATEABLE
-    assert result.rejectionReasons[0].startswith("正文与大纲仍停留在梗概")
+    assert result.rejectionReasons[0].startswith("模型认为正文与大纲")
+
+
+def test_execute_screening_normalizes_provider_mode_drift_to_full_mode() -> None:
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.INPUT_SCREENING: {
+                "taskId": "task-from-model",
+                "stage": "input_screening",
+                "schemaVersion": "1.0",
+                "promptVersion": "1.0",
+                "rubricVersion": "1.0",
+                "providerId": "default",
+                "modelId": "default",
+                "inputComposition": "chapters_outline",
+                "hasChapters": True,
+                "hasOutline": True,
+                "chaptersSufficiency": "sufficient",
+                "outlineSufficiency": "sufficient",
+                "evaluationMode": "legacy_mode",
+                "rateable": True,
+                "status": "warning",
+                "rejectionReasons": ["模型误判材料不足。"],
+                "riskTags": ["insufficientMaterial", "unknownRisk"],
+                "confidence": 0.72,
+                "continueAllowed": True,
+            }
+        }
+    )
+    submission = build_submission(
+        chapter_text="赛博城市的雨夜里，主角追查清明祭扫数据被篡改的真相，义体眼不断回放母亲死亡前的最后讯号。" * 12,
+        outline_text="后续主线围绕祖先记忆云、企业祭祀算法和地下反抗组织展开，主角逐步查明家族死亡与城市 AI 的关系。" * 3,
+    )
+
+    result = execute_screening(provider_adapter=provider, context=build_screening_context(submission=submission))
+
+    assert result.evaluationMode is EvaluationMode.FULL
+    assert result.chaptersSufficiency is Sufficiency.SUFFICIENT
+    assert result.outlineSufficiency is Sufficiency.SUFFICIENT
+    assert result.continueAllowed is True
+    assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
+
+
+def test_execute_type_classification_keeps_clear_sci_fi_from_general_fallback() -> None:
+    provider = RecordingProviderAdapter(
+        payloads={
+            StageName.TYPE_CLASSIFICATION: {
+                "candidates": [
+                    {"novelType": "科幻小说", "confidence": 0.55, "reason": "存在赛博城市和 AI 记忆云设定。"},
+                    {"novelType": "general_fallback", "confidence": 0.43, "reason": "样本仍有跨类型不确定性。"},
+                    {"novelType": "suspense_horror", "confidence": 0.31, "reason": "追查真相带有悬疑结构。"},
+                ],
+                "summary": "模型给出低置信科幻候选。",
+            }
+        }
+    )
+    submission = build_submission(
+        chapter_text="赛博清明的凌晨，主角接入祖先记忆云，发现祭祀 AI 正在篡改亡者数据与城市算法。" * 6,
+        outline_text="后续围绕量子墓园、义体家族、数据幽灵和轨道服务器展开，逐步揭露企业控制生死记忆的阴谋。",
+    )
+
+    result = execute_type_classification(
+        provider_adapter=provider,
+        context=TypeClassificationExecutionContext(
+            task_id="task_pipeline_001",
+            submission=submission,
+            screening=build_screening_result(),
+            binding=build_stage_binding(stage=StageName.TYPE_CLASSIFICATION),
+        ),
+    )
+
+    assert result.novelType is NovelType.SCI_FI_APOCALYPSE
+    assert result.fallbackUsed is False
+    assert result.classificationConfidence >= 0.6
 
 
 def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
@@ -710,7 +838,7 @@ def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
                     "confidence": 0.84,
                     "riskTags": ["staleFormula", "unknownRisk"],
                     "blockingSignals": [" 节奏仍需补强 ", "", 3],
-                    "degradedByInput": False,
+                    "legacyExtraField": False,
                 }
                 for axis_id in requested_axes
             ],
@@ -766,12 +894,14 @@ def test_execute_rubric_normalizes_real_deepseek_schema_drift() -> None:
     assert set(result.axisSummaries) == set(AxisId)
 
 
-def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None:
+def test_execute_rubric_normalizes_fulltext_real_deepseek_schema_drift() -> None:
     screening = build_screening_result(
-        input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        chapters_sufficiency=Sufficiency.INSUFFICIENT,
-        outline_sufficiency=Sufficiency.INSUFFICIENT,
+        analysis_mode=AnalysisMode.COMPLETED_FULLTEXT,
+        input_composition=InputComposition.CHAPTERS_ONLY,
+        has_chapters=True,
+        has_outline=False,
+        chapters_sufficiency=Sufficiency.SUFFICIENT,
+        outline_sufficiency=Sufficiency.MISSING,
     )
     raw_payloads = [
         {
@@ -782,14 +912,14 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
             "rubricVersion": "1.0",
             "providerId": "default",
             "modelId": "default",
-            "inputComposition": "chapters_outline",
-            "evaluationMode": "degraded",
+            "inputComposition": "chapters_only",
+            "evaluationMode": "legacy_mode",
             "items": [
                 {
                     "evaluationId": f"model-{axis_id.value}",
                     "axisId": axis_id.value,
                     "scoreBand": "medium" if axis_id is AxisId.PLATFORM_FIT else "low",
-                    "reason": f"{axis_id.value} 在当前梗概材料下只能做保守判断。",
+                    "reason": f"{axis_id.value} 在当前全文材料下形成保守判断。",
                     "evidenceRefs": [
                         {
                             "sourceType": "chapters" if axis_id in {AxisId.HOOK_RETENTION, AxisId.CHARACTER_DRIVE} else "outline",
@@ -800,7 +930,6 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
                     "confidence": 0.42,
                     "riskTags": ["insufficientMaterial"],
                     "blockingSignals": [],
-                    "degradedByInput": True,
                 }
                 for axis_id in requested_axes
             ],
@@ -842,16 +971,13 @@ def test_execute_rubric_normalizes_degraded_real_deepseek_schema_drift() -> None
     assert result.riskTags == [FatalRisk.INSUFFICIENT_MATERIAL]
 
 
-def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() -> None:
+def test_execute_aggregation_rejects_legacy_aggregation_schema_drift() -> None:
     screening = build_screening_result(
         input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        chapters_sufficiency=Sufficiency.INSUFFICIENT,
         outline_sufficiency=Sufficiency.SUFFICIENT,
     )
     rubric = build_rubric_set(
         input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
     )
     raw_payload = {
         "taskId": "task-from-model",
@@ -862,12 +988,12 @@ def test_execute_aggregation_normalizes_degraded_real_deepseek_schema_drift() ->
         "providerId": "default",
         "modelId": "default",
         "platformCandidates": [
-            {"name": "女频平台 A", "weight": 100, "pitchQuote": "降级模式下保守推荐，题材基本适配。"},
+            {"name": "女频平台 A", "weight": 100, "pitchQuote": "题材基本适配。"},
         ],
         "marketFitDraft": "当前材料更适合走保守市场判断。",
         "editorVerdictDraft": "建议补全正文后再复核。",
-        "verdictSubQuote": "降级评估结论保守，材料补全后可重新判断市场承接能力。",
-        "detailedAnalysisDraft": "聚合基于 degraded 模式，只能形成保守摘要。",
+        "verdictSubQuote": "材料补全后可重新判断市场承接能力。",
+        "detailedAnalysisDraft": "旧版聚合字段不再兼容。",
         "riskTags": ["insufficientMaterial"],
         "overallConfidence": 0.44,
     }
@@ -911,6 +1037,32 @@ def test_execute_rubric_retries_once_after_schema_invalid_payload() -> None:
 
     assert [item.axisId for item in result.items] == requested_axes
     assert len([request for request in provider.requests if request.stage is StageName.RUBRIC_EVALUATION]) == 2
+    retry_payload = json.loads(provider.requests[1].messages[-1].content)
+    assert retry_payload["schemaRepair"]["previousAttempt"] == 1
+    assert retry_payload["schemaRepair"]["validationErrors"]
+    assert "requestedAxes" in retry_payload["schemaRepair"]["instruction"]
+
+
+def test_execute_rubric_rejects_missing_axis_without_backfill() -> None:
+    requested_axes = [AxisId.HOOK_RETENTION, AxisId.SERIAL_MOMENTUM, AxisId.CHARACTER_DRIVE]
+    payload = build_rubric_slice_payload(requested_axes=requested_axes)
+    payload["items"] = payload["items"][:2]
+    payload["axisSummaries"] = payload["axisSummaries"][:2]
+    provider = RecordingProviderAdapter(payloads={StageName.RUBRIC_EVALUATION: payload})
+
+    with pytest.raises(PipelineFailureError) as exc_info:
+        execute_rubric_slice(
+            provider_adapter=provider,
+            context=RubricExecutionContext(
+                task_id="task_pipeline_001",
+                submission=build_submission(),
+                screening=build_screening_result(),
+                binding=build_stage_binding(stage=StageName.RUBRIC_EVALUATION),
+                requested_axes=tuple(requested_axes),
+            ),
+        )
+
+    assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
 
 
 def test_execute_aggregation_retries_once_after_schema_invalid_payload() -> None:
@@ -1007,21 +1159,8 @@ def test_run_consistency_check_marks_suspected_cross_input_divergence_without_bl
 
 
 def test_run_consistency_check_emits_missing_required_axis_conflict_and_blocks() -> None:
-    screening = build_screening_result(
-        input_composition=InputComposition.OUTLINE_ONLY,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        has_chapters=False,
-        has_outline=True,
-    )
-    context = build_rubric_context(
-        submission=build_submission(with_chapters=False, with_outline=True),
-        screening=screening,
-    )
-    rubric = build_rubric_set(
-        input_composition=InputComposition.OUTLINE_ONLY,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        missing_required_axes=[AxisId.PLATFORM_FIT],
-    )
+    context = build_rubric_context()
+    rubric = build_rubric_set().model_copy(update={"missingRequiredAxes": [AxisId.PLATFORM_FIT]})
 
     result = run_consistency_check(context=context, rubric=rubric)
 
@@ -1174,34 +1313,26 @@ def test_build_final_projection_preserves_empty_platform_candidates() -> None:
     assert projection.overall.weaknesses == []
 
 
-def test_build_final_projection_applies_type_weights_and_degraded_penalty() -> None:
+def test_build_final_projection_applies_type_weights_without_mode_penalty() -> None:
     aggregation = build_aggregation_result()
-    rubric = build_rubric_set(evaluation_mode=EvaluationMode.DEGRADED)
+    rubric = build_rubric_set()
     consistency = run_consistency_check(
-        context=build_rubric_context(screening=build_screening_result(evaluation_mode=EvaluationMode.DEGRADED)),
+        context=build_rubric_context(),
         rubric=rubric,
     )
     weighted_type_classification = build_type_classification_result(
         novel_type=NovelType.FANTASY_UPGRADE,
-        input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
     )
     weighted_type_lens = build_type_lens_result(
         novel_type=weighted_type_classification.novelType,
-        input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
         score_band=ScoreBand.FOUR,
     )
     fallback_type_classification = build_type_classification_result(
         novel_type=NovelType.FANTASY_UPGRADE,
         fallback_used=True,
-        input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
     )
     fallback_type_lens = build_type_lens_result(
         novel_type=fallback_type_classification.novelType,
-        input_composition=InputComposition.CHAPTERS_OUTLINE,
-        evaluation_mode=EvaluationMode.DEGRADED,
         score_band=ScoreBand.FOUR,
     )
 
@@ -1220,20 +1351,15 @@ def test_build_final_projection_applies_type_weights_and_degraded_penalty() -> N
         consistency=consistency,
     )
 
-    assert weighted_projection.overall.score == 71
-    assert fallback_projection.overall.score == 69
+    assert weighted_projection.overall.score == 79
+    assert fallback_projection.overall.score == 77
     assert fallback_projection.typeAssessment is not None
     assert fallback_projection.typeAssessment.fallbackUsed is True
     assert fallback_projection.typeAssessment.novelType is NovelType.GENERAL_FALLBACK
 
 
 def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested_axis() -> None:
-    screening = build_screening_result(
-        input_composition=InputComposition.OUTLINE_ONLY,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        has_chapters=False,
-        has_outline=True,
-    )
+    screening = build_screening_result()
     prompt_runtime = RecordingPromptRuntime()
 
     def provide_rubric_payload(request: Any) -> dict[str, Any]:
@@ -1264,11 +1390,8 @@ def test_scoring_pipeline_raises_stage_schema_invalid_when_slice_omits_requested
 
     with pytest.raises(PipelineFailureError) as exc_info:
         pipeline.run(
-            task=build_task(
-                evaluation_mode=EvaluationMode.DEGRADED,
-                input_composition=InputComposition.OUTLINE_ONLY,
-            ),
-            submission=build_submission(with_chapters=False, with_outline=True),
+            task=build_task(),
+            submission=build_submission(),
         )
 
     assert exc_info.value.error_code is ErrorCode.STAGE_SCHEMA_INVALID
@@ -1334,7 +1457,6 @@ def test_scoring_pipeline_allows_weak_cross_input_divergence_to_continue() -> No
 
 def test_scoring_pipeline_masks_screening_rejection_reason_message() -> None:
     screening = build_screening_result(
-        evaluation_mode=EvaluationMode.DEGRADED,
         chapters_sufficiency=Sufficiency.INSUFFICIENT,
         outline_sufficiency=Sufficiency.SUFFICIENT,
         continue_allowed=False,
@@ -1361,11 +1483,7 @@ def test_scoring_pipeline_masks_screening_rejection_reason_message() -> None:
 
 def test_scoring_pipeline_masks_outline_screening_rejection_reason_message() -> None:
     screening = build_screening_result(
-        input_composition=InputComposition.OUTLINE_ONLY,
-        evaluation_mode=EvaluationMode.DEGRADED,
-        has_chapters=False,
-        has_outline=True,
-        chapters_sufficiency=Sufficiency.MISSING,
+        chapters_sufficiency=Sufficiency.SUFFICIENT,
         outline_sufficiency=Sufficiency.INSUFFICIENT,
         continue_allowed=False,
         rateable=False,
@@ -1380,13 +1498,7 @@ def test_scoring_pipeline_masks_outline_screening_rejection_reason_message() -> 
     pipeline = ScoringPipeline(prompt_runtime=prompt_runtime, provider_adapter=provider)
 
     with pytest.raises(PipelineBlockedError) as exc_info:
-        pipeline.run(
-            task=build_task(
-                evaluation_mode=EvaluationMode.DEGRADED,
-                input_composition=InputComposition.OUTLINE_ONLY,
-            ),
-            submission=build_submission(with_chapters=False, with_outline=True),
-        )
+        pipeline.run(task=build_task(), submission=build_submission())
 
     assert exc_info.value.error_code is ErrorCode.INSUFFICIENT_OUTLINE_INPUT
     assert exc_info.value.message == "大纲内容不足，当前无法进入正式评分，请补充大纲后重试。"
@@ -1397,7 +1509,6 @@ def test_scoring_pipeline_masks_outline_screening_rejection_reason_message() -> 
 
 def test_scoring_pipeline_masks_joint_unrateable_screening_rejection_reason_message() -> None:
     screening = build_screening_result(
-        evaluation_mode=EvaluationMode.DEGRADED,
         chapters_sufficiency=Sufficiency.SUFFICIENT,
         outline_sufficiency=Sufficiency.SUFFICIENT,
         continue_allowed=False,
@@ -1605,35 +1716,35 @@ def test_scoring_pipeline_happy_path_resolves_runtime_by_screening_output() -> N
         {
             "stage": "input_screening",
             "input_composition": "chapters_outline",
-            "evaluation_mode": "full",
+            "analysis_mode": "long_opening_outline",
             "provider_id": "provider-test",
             "model_id": "model-test",
         },
         {
             "stage": "type_classification",
             "input_composition": "chapters_outline",
-            "evaluation_mode": "full",
+            "analysis_mode": "long_opening_outline",
             "provider_id": "provider-test",
             "model_id": "model-test",
         },
         {
             "stage": "rubric_evaluation",
             "input_composition": "chapters_outline",
-            "evaluation_mode": "full",
+            "analysis_mode": "long_opening_outline",
             "provider_id": "provider-test",
             "model_id": "model-test",
         },
         {
             "stage": "type_lens_evaluation",
             "input_composition": "chapters_outline",
-            "evaluation_mode": "full",
+            "analysis_mode": "long_opening_outline",
             "provider_id": "provider-test",
             "model_id": "model-test",
         },
         {
             "stage": "aggregation",
             "input_composition": "chapters_outline",
-            "evaluation_mode": "full",
+            "analysis_mode": "long_opening_outline",
             "provider_id": "provider-test",
             "model_id": "model-test",
         },

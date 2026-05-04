@@ -48,11 +48,11 @@ flowchart LR
 5. `packages/application/scoring_pipeline/` 依次执行 `screening -> type_classification -> rubric -> type_lens -> consistency -> aggregation -> projection`。
 6. `packages/prompt-runtime` 按 stage/scope 从 `prompts/` 解析 Prompt 元数据和正文。
 7. `packages/provider-adapters` 执行真实 `DeepSeek` 或 deterministic adapter，并把返回值规整成统一 contract。
-8. `packages/schemas` 验证每个阶段与最终结果；旧持久化结果在读取期只降级为 `not_available`，不影响历史任务可见语义。
+8. `packages/schemas` 验证每个阶段与最终结果；旧持久化结果不再做兼容投影，读取时按当前 schema 严格校验。
 
 ## 评分主线拆分
 
-- `input_screening`：判定输入组成、可评性、`full/degraded` 模式和阻断原因。
+- `input_screening`：判定输入组成、显式 `analysisMode`、可评性和阻断原因。
 - `type_classification`：给出 Top-3 类型候选，并确定最终 `novelType` / `fallbackUsed`。
 - `rubric_evaluation`：按 `requestedAxes` 分三批完成全部 8 轴。
 - `type_lens_evaluation`：基于最终类型输出固定 4 个 lens。

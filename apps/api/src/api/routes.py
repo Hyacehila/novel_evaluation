@@ -12,6 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.formparsers import MultiPartException
 
 from packages.application.services.evaluation_service import EvaluationService
+from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.schemas.common.enums import TaskStatus
 from packages.schemas.input.joint_submission import JointSubmissionRequest
 from packages.schemas.input.provider_configuration import RuntimeProviderKeyRequest
@@ -41,6 +42,34 @@ def get_provider_status(
     provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
 ) -> SuccessEnvelope[ProviderStatus]:
     return SuccessEnvelope(data=provider_runtime.get_status())
+
+
+@router.post("/provider-status/smoke-test")
+def run_provider_auth_smoke_test(
+    request: Request,
+    provider_runtime: ProviderRuntimePort = Depends(get_provider_runtime_state),
+):
+    if not _is_local_client(request):
+        raise ApiError(
+            status_code=403,
+            code=ErrorCode.FORBIDDEN,
+            message="仅允许本机访问 provider smoke 接口。",
+        )
+    try:
+        smoke_result = provider_runtime.run_auth_smoke_test()
+    except PipelineFailureError as exc:
+        raise ApiError(
+            status_code=_provider_smoke_failure_status(exc.error_code),
+            code=exc.error_code,
+            message=exc.message,
+        ) from exc
+    except RuntimeError as exc:
+        raise ApiError(
+            status_code=409,
+            code=ErrorCode.PROVIDER_NOT_CONFIGURED,
+            message="当前 provider 未配置，无法执行 provider smoke。",
+        ) from exc
+    return SuccessEnvelope(data=smoke_result)
 
 
 @router.post("/provider-status/runtime-key")
@@ -186,7 +215,7 @@ async def _parse_multipart_submission(request: Request) -> JointSubmissionReques
         raise ApiError(status_code=422, code=ErrorCode.VALIDATION_ERROR, message="输入参数不合法") from exc
 
     try:
-        form = await request.form(max_files=2, max_fields=2, max_part_size=max_bytes)
+        form = await request.form(max_files=2, max_fields=3, max_part_size=max_bytes)
     except StarletteHTTPException as exc:
         detail = str(exc.detail)
         if "Part exceeded maximum size" in detail:
@@ -201,6 +230,7 @@ async def _parse_multipart_submission(request: Request) -> JointSubmissionReques
     outline_text = await read_upload_text(outline_upload, max_bytes=max_bytes)
     return build_upload_request(
         title=_get_optional_text(form.get("title")),
+        analysis_mode=_get_optional_text(form.get("analysisMode")),
         source_type=_get_optional_text(form.get("sourceType")),
         chapters_text=chapters_text,
         outline_text=outline_text,
@@ -260,6 +290,14 @@ def _is_local_client(request: Request) -> bool:
         return ip_address(client.host).is_loopback
     except ValueError:
         return False
+
+
+def _provider_smoke_failure_status(error_code: ErrorCode) -> int:
+    if error_code is ErrorCode.TIMEOUT:
+        return 504
+    if error_code is ErrorCode.DEPENDENCY_UNAVAILABLE:
+        return 503
+    return 502
 
 
 

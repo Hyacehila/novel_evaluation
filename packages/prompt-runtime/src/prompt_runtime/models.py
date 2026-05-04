@@ -30,7 +30,7 @@ class PromptRegistryRecord(SchemaModel):
     schemaVersion: str
     rubricVersion: str
     inputCompositionScope: str
-    evaluationModeScope: str
+    analysisModeScope: str
     providerScope: str
     modelScope: str
     enabled: StrictBool

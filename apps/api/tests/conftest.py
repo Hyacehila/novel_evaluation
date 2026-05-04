@@ -58,6 +58,7 @@ def write_registry(
     model_scope: str = "*",
     enabled: bool = True,
 ) -> None:
+    analysis_scope = {"full": "long_opening_outline"}.get(evaluation_scope, evaluation_scope)
     content = "\n".join(
         [
             f"promptId: {prompt_id}",
@@ -66,7 +67,7 @@ def write_registry(
             f"schemaVersion: {schema_version}",
             f"rubricVersion: {rubric_version}",
             f"inputCompositionScope: {input_scope}",
-            f"evaluationModeScope: {evaluation_scope}",
+            f"analysisModeScope: {analysis_scope}",
             f"providerScope: {provider_scope}",
             f"modelScope: {model_scope}",
             f"enabled: {'true' if enabled else 'false'}",

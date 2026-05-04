@@ -1,5 +1,6 @@
 import type {
-  EvaluationMode,
+  AnalysisMode,
+  ErrorCode,
   InputComposition,
   NovelType,
   ResultStatus,
@@ -57,8 +58,13 @@ export function getInputCompositionLabel(value: InputComposition) {
   }
 }
 
-export function getEvaluationModeLabel(value: EvaluationMode) {
-  return value === "full" ? "完整评测" : "降级评测";
+export function getAnalysisModeLabel(value: AnalysisMode) {
+  switch (value) {
+    case "long_opening_outline":
+      return "长篇开篇 + 大纲";
+    case "completed_fulltext":
+      return "已完结全文";
+  }
 }
 
 export function getTaskStatusLabel(value: TaskStatus) {
@@ -144,4 +150,20 @@ export function formatConfidence(value: number | null | undefined) {
     return "未生成";
   }
   return `${Math.round(value * 100)}%`;
+}
+
+export function describeTaskFailure(errorCode: ErrorCode | null | undefined, errorMessage: string | null | undefined) {
+  if (errorCode === "TIMEOUT") {
+    return "真实模型响应超时。可以缩短正文/大纲，或稍后重试；系统没有生成正式结果。";
+  }
+  if (errorCode === "STAGE_SCHEMA_INVALID") {
+    return "模型返回的结构化结果未通过 schema 校验，系统已重试但仍无法解析。请稍后重试，或缩短输入降低结构漂移概率。";
+  }
+  if (errorCode === "PROVIDER_FAILURE") {
+    return errorMessage ?? "模型服务调用失败，请检查 API key、额度或上游状态后重试。";
+  }
+  if (errorCode === "DEPENDENCY_UNAVAILABLE") {
+    return "模型依赖当前不可用，请检查网络、SDK 或稍后重试。";
+  }
+  return errorMessage ?? "评测流程出现技术故障，当前结果不可用。";
 }

@@ -6,10 +6,10 @@ import { cn } from "@/shared/lib/cn";
 type Tone = "good" | "warn" | "bad" | "neutral";
 
 const toneClasses: Record<Tone, string> = {
-  good: "border-[rgba(47,143,85,0.3)] bg-[rgba(47,143,85,0.12)] text-[var(--good)]",
-  warn: "border-[rgba(191,123,24,0.28)] bg-[rgba(191,123,24,0.12)] text-[var(--warn)]",
-  bad: "border-[rgba(168,51,47,0.28)] bg-[rgba(168,51,47,0.12)] text-[var(--bad)]",
-  neutral: "border-[var(--line)] bg-white/50 text-[var(--muted)]",
+  good: "border-[rgba(36,123,85,0.24)] bg-[rgba(36,123,85,0.09)] text-[var(--good)]",
+  warn: "border-[rgba(174,111,18,0.24)] bg-[rgba(174,111,18,0.1)] text-[var(--warn)]",
+  bad: "border-[rgba(184,55,65,0.24)] bg-[rgba(184,55,65,0.09)] text-[var(--bad)]",
+  neutral: "border-[var(--line)] bg-white text-[var(--muted)]",
 };
 
 export function Badge({
@@ -24,7 +24,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold tracking-[0.08em]",
+        "inline-flex items-center rounded-[8px] border px-2.5 py-1 text-xs font-semibold",
         toneClasses[tone],
         className
       )}
