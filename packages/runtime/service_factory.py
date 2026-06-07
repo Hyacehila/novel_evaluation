@@ -14,8 +14,6 @@ from uuid import uuid4
 from packages.application.ports.runtime_metadata import (
     ProviderExecutionPort,
     ProviderRuntimeExecutionPort,
-    StaticPromptRuntime,
-    StaticResolvedPrompt,
 )
 from packages.application.scoring_pipeline.exceptions import PipelineFailureError
 from packages.application.scoring_pipeline.provider_support import ProviderExecutionRequestPayload, ProviderMessagePayload
@@ -33,7 +31,6 @@ PROVIDER_ADAPTERS_PACKAGE_DIR = REPO_ROOT / "packages" / "provider-adapters" / "
 PROMPT_RUNTIME_MODULE_NAME = "packages.runtime._prompt_runtime_runtime"
 PROVIDER_ADAPTERS_MODULE_NAME = "packages.runtime._provider_adapters_runtime"
 logger = logging.getLogger(__name__)
-_REQUIRE_REAL_PROVIDER_ENV = "NOVEL_EVAL_REQUIRE_REAL_PROVIDER"
 _DEEPSEEK_API_KEY_ENV = "NOVEL_EVAL_DEEPSEEK_API_KEY"
 _DEEPSEEK_MODEL_ID_ENV = "NOVEL_EVAL_DEEPSEEK_MODEL_ID"
 _DEFAULT_DEEPSEEK_MODEL_ID = "deepseek-v4-pro"
@@ -111,15 +108,6 @@ class RuntimePromptRuntime:
     def __init__(self) -> None:
         prompt_runtime_module = _get_prompt_runtime_module()
         self._file_runtime = prompt_runtime_module.FilePromptRuntime(prompts_root=resolve_prompts_root())
-        self._fallback_runtime = StaticPromptRuntime(
-            resolved_prompt=StaticResolvedPrompt(
-                promptId="prompt-fallback",
-                promptVersion="v1",
-                schemaVersion="1.0.0",
-                rubricVersion="rubric-v1",
-                body="You are the fallback prompt placeholder.",
-            )
-        )
 
     def resolve(
         self,
@@ -130,24 +118,13 @@ class RuntimePromptRuntime:
         provider_id: str,
         model_id: str,
     ):
-        try:
-            return self._file_runtime.resolve(
-                stage=stage,
-                input_composition=input_composition,
-                analysis_mode=analysis_mode,
-                provider_id=provider_id,
-                model_id=model_id,
-            )
-        except Exception:
-            if provider_id == _PROVIDER_ID and model_id == _MODEL_ID:
-                raise
-            return self._fallback_runtime.resolve(
-                stage=stage,
-                input_composition=input_composition,
-                analysis_mode=analysis_mode,
-                provider_id=provider_id,
-                model_id=model_id,
-            )
+        return self._file_runtime.resolve(
+            stage=stage,
+            input_composition=input_composition,
+            analysis_mode=analysis_mode,
+            provider_id=provider_id,
+            model_id=model_id,
+        )
 
 
 class ProviderRuntimeState:
@@ -157,7 +134,6 @@ class ProviderRuntimeState:
     def __init__(self) -> None:
         self._runtime_api_key: str | None = None
         self._lock = threading.RLock()
-        self._warn_if_require_real_provider_is_deprecated()
 
     def get_status(self) -> ProviderStatus:
         _, configuration_source = self._resolve_api_key()
@@ -329,18 +305,6 @@ class ProviderRuntimeState:
             return None
         normalized = raw_value.strip()
         return normalized or None
-
-    def _warn_if_require_real_provider_is_deprecated(self) -> None:
-        if os.getenv(_REQUIRE_REAL_PROVIDER_ENV) != "1":
-            return
-        log_event(
-            logger,
-            logging.WARNING,
-            "require_real_provider_deprecated",
-            environmentVariable=_REQUIRE_REAL_PROVIDER_ENV,
-            message="API 已忽略 NOVEL_EVAL_REQUIRE_REAL_PROVIDER；缺少 key 时允许只读启动。",
-        )
-
 
 @lru_cache(maxsize=1)
 def get_task_repository() -> SQLiteTaskRepository:

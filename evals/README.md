@@ -7,8 +7,11 @@
 - `datasets/`
 - `cases/`
 - `runners/`
-- `reports/`
-- `baselines/`
+
+运行时输出：
+
+- `reports/`：运行报告输出目录，默认不入库
+- `baselines/`：baseline 输出目录，默认不入库
 
 触发回归的典型变更：
 

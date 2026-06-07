@@ -89,7 +89,7 @@
 - `axes`
 - `optional typeAssessment`
 
-这就是当前前端展示和历史兼容的唯一正式结果形状。
+这就是当前前端展示、历史读取和 evals 工件共同使用的唯一正式结果形状。
 
 ## 当前阶段契约
 
@@ -123,7 +123,7 @@
 - `missingRequiredAxes`
 - `overallConfidence`
 
-旧骨架字段已经移除，当前 Prompt 与 schema 只认现行 8 轴契约。
+Prompt 与 schema 只接受现行 8 轴契约，不维护替代字段别名。
 
 ### `type_lens_evaluation`
 
@@ -146,7 +146,7 @@
 - `riskTags`
 - `overallConfidence`
 
-旧四分字段和旧编辑摘要字段不再属于现行契约。
+聚合阶段只接受以上字段，不维护替代聚合别名。
 
 ### `final_projection`
 
@@ -164,10 +164,9 @@
 
 这些字段由共享 runtime 与 prompt runtime 决定，不由前端生成。
 
-## 历史数据
+## 持久化数据
 
-- 当前本地 SQLite 在本次重构后应清空重建。
-- 旧持久化结果和损坏 JSON 不再做读取期兼容转换。
 - 历史任务条目仍按当前任务 schema 读取；结果只接受当前 `EvaluationResult` 结构。
-
-这条规则由 `packages/runtime/persistence.py` 的当前 schema 校验负责，而不是通过保留旧 Prompt 或旧文档来维持。
+- 损坏 JSON 或不满足当前结果结构的 payload 会在读取期被 schema 校验拒绝。
+- 本地开发数据可通过停止 API 后删除 `var/novel-evaluation.sqlite3` 重建。
+- 持久化规则由 `packages/runtime/persistence.py` 负责，不在 API 或前端保留第二套转换逻辑。

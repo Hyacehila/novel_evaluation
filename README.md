@@ -32,6 +32,8 @@
 
 默认真实模型可在 `.env` 里通过 `NOVEL_EVAL_DEEPSEEK_MODEL_ID` 调整，当前支持直接改为 `deepseek-v4-flash` 走降本路径；`NOVEL_EVAL_DEEPSEEK_THINKING` 与 `NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT` 控制 V4 思考模式。
 
+上传大小和日志级别可通过 `NOVEL_EVAL_UPLOAD_MAX_BYTES`、`NOVEL_EVAL_LOG_LEVEL` 调整；完整环境变量见 `.env.example`。
+
 本地 SQLite 可在关闭 API 后直接清空：删除 `var/novel-evaluation.sqlite3`，下次启动会重建空库。
 
 ## 文档入口
@@ -50,7 +52,6 @@ uv run --project apps/api pytest apps/api/tests evals/tests
 pnpm --dir apps/web test
 pnpm --dir apps/web build
 pnpm --dir apps/web test:e2e
-.\scripts\repo\check-hygiene.ps1
 ```
 
 真实 DeepSeek E2E 为可选补充：

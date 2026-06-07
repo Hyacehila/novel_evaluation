@@ -4,7 +4,7 @@
 
 本项目是面向中文网文场景的本地单用户评测工具。核心能力是对用户提交的正文、章节和大纲进行多阶段结构化评价，并输出当前正式结果形态：`overall + axes + optional typeAssessment`。
 
-当前仓库已经进入实现与回归并行维护阶段。后续开发应围绕现有 API、schema、Prompt、worker 和前端页面继续扩展，不再恢复历史规划目录或旧四分结果结构。
+当前仓库已经进入实现与回归并行维护阶段。后续开发应围绕现有 API、schema、Prompt、worker 和前端页面继续扩展，避免恢复已经退出当前架构的历史目录或结果形状。
 
 ## 当前范围
 
@@ -36,7 +36,7 @@
 - `prompts/`：正式 Prompt 资产，只保留当前评分主线
 - `evals/`：回归样本、suite、runner、report/baseline 写入模型
 - `docs/`：当前正式文档入口，不再保留历史分层目录
-- `scripts/`：安装、启动和仓库卫生检查脚本
+- `scripts/`：安装、启动和辅助脚本
 - `output/`、`var/`：本地运行产物，不纳入正式源码边界
 
 ## 项目规则
@@ -60,8 +60,8 @@
 `input_screening -> type_classification -> rubric_evaluation -> type_lens_evaluation -> consistency_check -> aggregation -> final_projection`
 
 - `consistency_check` 与 `final_projection` 是规则/投影阶段，不发模型请求
-- 当前公开结果不再保留旧四分字段、旧骨架字段或旧聚合别名
-- 历史旧结果只能在读取期降级为 `not_available`
+- 当前公开结果只保留 `overall + axes + optional typeAssessment`
+- 不满足当前 schema 的持久化结果不能伪装成成功结果
 
 ### Worker 约定
 
@@ -74,7 +74,7 @@
 - 代码真源优先于解释文档；文档必须跟随当前实现更新
 - 新增公开行为时同步更新 README、`docs/runbook.md` 或 `docs/contracts.md`
 - 不引入第二套任务状态、错误码、结果 DTO 或 Prompt 选择规则
-- 不恢复被 `scripts/repo/check-hygiene.ps1` 禁止的历史目录
+- 不恢复历史目录、历史结果结构或历史 Prompt 目录
 
 ## 推荐阅读顺序
 

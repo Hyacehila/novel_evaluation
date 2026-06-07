@@ -1,6 +1,16 @@
 # Architecture
 
-## 保留模块
+## 架构故事
+
+这个项目把“本地单用户操作”和“结构化评分流水线”拆开维护。`apps/api` 是唯一 HTTP 入口，并在进程内执行用户任务；`apps/web` 只负责本地 UI、轮询和展示；`apps/worker` 不承接页面任务，只把同一套 runtime 用在 `eval` / `batch`。业务规则、契约、Prompt 选择和 provider 调用都沉到 `packages/` 与 `prompts/`，避免每个 app 自己长出一套解释。
+
+这样的分层让维护者能沿着三条线看项目：
+
+- 用户线：`apps/web -> apps/api -> packages/application -> packages/runtime`
+- 契约线：`packages/schemas` 是字段真源，前端 DTO 只是消费镜像
+- 回归线：`prompts` 定义正式评分资产，`evals` 和 worker 负责批处理与回归工件
+
+## 模块职责
 
 | 模块 | 负责什么 | 怎么做 | 不负责什么 |
 | --- | --- | --- | --- |
@@ -14,7 +24,7 @@
 | `packages/provider-adapters` | Provider 执行边界 | 提供 `DeepSeek` 适配器和 deterministic 本地适配器 | 不定义任务状态和结果结构 |
 | `prompts` | 正式 Prompt 资产 | `registry + versions + scoring markdown` 三层结构 | 不包含历史试验目录 |
 | `evals` | 回归与批处理工件模型 | 数据集、suite、runner、report/baseline 写入 | 不承接用户主流程 |
-| `scripts` | 启动、安装、仓库卫生检查 | `setup.ps1`、`run-api.ps1`、`run-web.ps1`、`repo/check-hygiene.ps1` | 不成为业务真源 |
+| `scripts` | 启动、安装和可重复执行的辅助命令 | `setup.ps1`、`run-api.ps1`、`run-web.ps1` | 不成为业务真源 |
 
 ## 依赖方向
 
@@ -39,7 +49,7 @@ flowchart LR
 - `apps/api` 与 `apps/worker` 共用 `packages/runtime`。
 - `apps/web/src/api/contracts.ts` 是前端消费镜像，不是正式真源。
 
-## 端到端数据流
+## 请求数据流
 
 1. `apps/web` 通过同源 `/api/*` 或直接页面请求触发 API。
 2. `apps/api/src/api/routes.py` 校验输入，创建任务，并把执行交给 `EvaluationService`。
@@ -48,7 +58,7 @@ flowchart LR
 5. `packages/application/scoring_pipeline/` 依次执行 `screening -> type_classification -> rubric -> type_lens -> consistency -> aggregation -> projection`。
 6. `packages/prompt-runtime` 按 stage/scope 从 `prompts/` 解析 Prompt 元数据和正文。
 7. `packages/provider-adapters` 执行真实 `DeepSeek` 或 deterministic adapter，并把返回值规整成统一 contract。
-8. `packages/schemas` 验证每个阶段与最终结果；旧持久化结果不再做兼容投影，读取时按当前 schema 严格校验。
+8. `packages/schemas` 验证每个阶段与最终结果，持久化读取也按当前 schema 严格校验。
 
 ## 评分主线拆分
 
@@ -60,8 +70,8 @@ flowchart LR
 - `aggregation`：生成总体判断草稿、平台候选、市场判断、强弱项和整体置信度。
 - `final_projection`：把 stage 结果投影成前端展示的 `overall + axes + optional typeAssessment`。
 
-## 当前架构判断
+## 维护判断
 
 - 对外稳定面只有 API 路由、任务状态语义、结果结构和页面路由。
 - 运行时装配被收口到 `packages/runtime`，避免 app-to-app 反向依赖。
-- 文档、Prompt 和 schema 已按“代码真源 + 少量解释文档”收敛，不再保留历史设计区。
+- 文档、Prompt 和 schema 按“代码真源 + 少量解释文档”维护，历史设计稿不作为当前架构依据。

@@ -1,7 +1,7 @@
 [project]
 name = "worker"
 version = "0.1.0"
-description = "Standalone worker CLI skeleton for batch and eval flows"
+description = "Worker CLI for batch and eval flows"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [

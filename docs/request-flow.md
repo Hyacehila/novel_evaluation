@@ -1,6 +1,6 @@
 # Request Flow
 
-本文描述当前评分请求的正式流程。系统只接受显式 `analysisMode`，不会根据输入缺口自动切换到其他 prompt。
+本文描述一次 `POST /api/tasks` 从提交到结果落库的主链。系统只接受显式 `analysisMode`，不会根据输入缺口自动切换到其他 Prompt。
 
 ## Analysis Modes
 
@@ -31,6 +31,15 @@
 | 9 | `final_projection` | 否 | 本地组装对外结果 |
 
 Prompt registry 使用 `analysisModeScope` 区分两种正式输入模式。当前只应存在长篇开篇与全文两套正式 prompt；测试应断言 primary scopes 精确覆盖这两个路由。
+
+## Execution Flow
+
+1. API 先检查 provider 状态；没有启动期 key 或 runtime key 时，创建任务返回 `409 PROVIDER_NOT_CONFIGURED`，只读查询仍可用。
+2. JSON 或 multipart 输入被解析成 `JointSubmissionRequest`，上传文件只支持 `TXT / MD / DOCX`，并受 `NOVEL_EVAL_UPLOAD_MAX_BYTES` 限制。
+3. `EvaluationService` 创建 `queued + not_available` 任务，并由 API background task 推进执行。
+4. 评分流水线按 stage 解析 Prompt、调用 provider、校验 stage schema；`consistency_check` 和 `final_projection` 是本地规则阶段。
+5. 业务阻断写成 `completed + blocked`，技术失败写成 `failed + not_available`，成功结果写成 `completed + available`。
+6. API、dashboard、history 和结果页都从同一个 SQLite repository 读取当前任务与结果。
 
 ## Screening Blocks
 

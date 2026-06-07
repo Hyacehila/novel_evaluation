@@ -44,7 +44,7 @@
 - 如果 rubric 阶段收到 `schemaRepair`，说明上一轮真实 provider 输出未通过 schema；Prompt 必须按其中列出的错误补齐字段，并重新输出严格 JSON。
 - `aggregation` Prompt 只允许输出当前 `AggregatedRubricResult` 需要的字段：
   `overallVerdictDraft`、`verdictSubQuote`、`overallSummaryDraft`、`platformCandidates`、`marketFitDraft`、`strengthCandidates`、`weaknessCandidates`、`riskTags`、`overallConfidence`
-- 当前 Prompt 与文档禁止再出现旧四分字段、旧骨架字段和旧聚合别名
+- Prompt 输出字段必须与 `packages/schemas/stages/` 的当前模型一致，不维护历史别名。
 
 ## `evals/` 结构
 
@@ -57,6 +57,8 @@
 `apps/worker` 通过共享 runtime 运行 `eval` / `batch`，不会分叉出第二套评分主线。
 `--dry-run` 只预览 suite/source 和 runtime 元数据，不要求真实 key；实际执行仍必须配置 `NOVEL_EVAL_DEEPSEEK_API_KEY`。
 
+evals 的价值是给 Prompt、schema 和 provider 适配器提供稳定回归样本。用户页面任务不经过 worker，worker 也不直接依赖 API 内部装配；两者通过 `packages/runtime` 共享运行时口径。
+
 ## 常用命令
 
 ```powershell
@@ -65,17 +67,11 @@ uv run --project apps/worker worker eval --suite smoke --report-id smoke_report 
 uv run --project apps/worker worker batch --source .\path\to\batch.json --report-id batch_report
 ```
 
-## 仓库卫生检查
+## 维护复核
 
-仓库卫生脚本：
+Prompt、evals 或文档变更需要人工复核：
 
-```powershell
-.\scripts\repo\check-hygiene.ps1
-```
-
-当前固定检查三类问题：
-
-- 空壳/禁用目录回流
-- 旧 docs 子目录回流
-- 现行文档、根文档与 `prompts/` 出现旧字段、旧语义或疑似真实 API key
-- 正式 Markdown 文档中的本地链接失效
+- 不恢复空壳目录、历史文档目录或历史 Prompt 目录。
+- 现行文档、根文档与 `prompts/` 不引入历史字段、历史语义或真实 API key。
+- 正式 Markdown 文档中的本地链接仍然有效。
+- Prompt ID、registry、version 和 scoring 正文与代码真源一致。

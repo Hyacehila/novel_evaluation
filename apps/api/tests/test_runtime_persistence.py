@@ -56,7 +56,7 @@ def create_client(*, db_path: Path, monkeypatch) -> TestClient:
 
 
 def test_sqlite_repository_persists_completed_result_across_instances(tmp_path: Path) -> None:
-    from api.sqlite_repository import SQLiteTaskRepository
+    from packages.runtime.persistence import SQLiteTaskRepository
 
     db_path = tmp_path / "state.sqlite3"
     repository = SQLiteTaskRepository(db_path=db_path)
@@ -134,7 +134,7 @@ def test_api_restart_keeps_history_and_result_readable(tmp_path: Path, monkeypat
 
 
 def test_sqlite_repository_rejects_legacy_result_payload_shape(tmp_path: Path) -> None:
-    from api.sqlite_repository import SQLiteTaskRepository
+    from packages.runtime.persistence import SQLiteTaskRepository
 
     db_path = tmp_path / "legacy.sqlite3"
     repository = SQLiteTaskRepository(db_path=db_path)
@@ -187,7 +187,7 @@ def test_sqlite_repository_rejects_legacy_result_payload_shape(tmp_path: Path) -
 
 
 def test_sqlite_repository_rejects_corrupted_result_payload(tmp_path: Path) -> None:
-    from api.sqlite_repository import SQLiteTaskRepository
+    from packages.runtime.persistence import SQLiteTaskRepository
 
     db_path = tmp_path / "legacy-corrupted.sqlite3"
     repository = SQLiteTaskRepository(db_path=db_path)
@@ -211,7 +211,7 @@ def test_sqlite_repository_rejects_corrupted_result_payload(tmp_path: Path) -> N
 
 
 def test_api_restart_marks_stale_processing_task_failed(tmp_path: Path, monkeypatch) -> None:
-    from api.sqlite_repository import SQLiteTaskRepository
+    from packages.runtime.persistence import SQLiteTaskRepository
 
     db_path = tmp_path / "recovery.sqlite3"
     repository = SQLiteTaskRepository(db_path=db_path)
@@ -242,7 +242,7 @@ def test_api_restart_marks_stale_processing_task_failed(tmp_path: Path, monkeypa
 
 
 def test_history_orders_latest_tasks_first_across_restart(tmp_path: Path, monkeypatch) -> None:
-    from api.sqlite_repository import SQLiteTaskRepository
+    from packages.runtime.persistence import SQLiteTaskRepository
 
     db_path = tmp_path / "history.sqlite3"
     repository = SQLiteTaskRepository(db_path=db_path)
@@ -272,7 +272,7 @@ def test_history_orders_latest_tasks_first_across_restart(tmp_path: Path, monkey
 
 
 def test_default_db_path_is_stable_absolute_location() -> None:
-    from api.sqlite_repository import API_ROOT, DEFAULT_DB_PATH, resolve_db_path
+    from packages.runtime.persistence import API_ROOT, DEFAULT_DB_PATH, resolve_db_path
 
     resolved = resolve_db_path(None)
 

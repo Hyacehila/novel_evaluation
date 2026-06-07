@@ -875,7 +875,6 @@ def test_runtime_key_reset_is_locked_when_startup_key_exists(monkeypatch: pytest
 
 
 def test_api_starts_without_provider_key_and_keeps_read_only_queries(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NOVEL_EVAL_REQUIRE_REAL_PROVIDER", "1")
     monkeypatch.delenv("NOVEL_EVAL_DEEPSEEK_API_KEY", raising=False)
     client = create_client()
 
@@ -1096,3 +1095,16 @@ def test_api_prompt_runtime_selects_explicit_mode_prompts_for_primary_scopes() -
         )
 
         assert resolved.promptId in {"rubric-default", "rubric-completed-fulltext"}
+
+
+def test_api_prompt_runtime_rejects_unregistered_provider_scope() -> None:
+    runtime = ApiPromptRuntime()
+
+    with pytest.raises(Exception, match="provider-other|没有匹配"):
+        runtime.resolve(
+            stage="rubric_evaluation",
+            input_composition="chapters_outline",
+            analysis_mode="long_opening_outline",
+            provider_id="provider-other",
+            model_id="model-other",
+        )

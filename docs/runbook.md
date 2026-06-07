@@ -44,6 +44,8 @@ Copy-Item .env.example .env
 $env:NOVEL_EVAL_DEEPSEEK_MODEL_ID = "deepseek-v4-pro"      # 可改 deepseek-v4-flash
 $env:NOVEL_EVAL_DEEPSEEK_THINKING = "enabled"              # enabled / disabled
 $env:NOVEL_EVAL_DEEPSEEK_REASONING_EFFORT = "high"         # high / max，仅 thinking=enabled 时使用
+$env:NOVEL_EVAL_UPLOAD_MAX_BYTES = "10485760"              # 上传体大小上限
+$env:NOVEL_EVAL_LOG_LEVEL = "INFO"                         # INFO / WARNING / ERROR 等 Python 日志级别
 ```
 
 ### 1. 只读模式
@@ -84,7 +86,6 @@ pnpm --dir apps/web test
 pnpm --dir apps/web build
 pnpm --dir apps/web test:e2e
 uv run --project apps/worker worker eval --suite smoke --dry-run
-.\scripts\repo\check-hygiene.ps1
 ```
 
 ## Playwright E2E
@@ -122,6 +123,16 @@ pnpm --dir apps/web test:e2e -- e2e/provider-full-pipeline-real.spec.ts
 - `auth_smoke`：只调用 `/api/provider-status/smoke-test`，验证真实 provider 能返回成功响应
 - `full_pipeline`：跑完整评分链；若真实模型超时或结构化输出失败，页面必须显示明确诊断
 
+E2E 专用变量：
+
+- `NOVEL_EVAL_E2E_PROVIDER_MODE`：`deterministic` / `startup_key` / `runtime_key`
+- `NOVEL_EVAL_E2E_REAL_SCOPE`：`auth_smoke` / `full_pipeline`
+- `NOVEL_EVAL_E2E_REAL_TASK_TIMEOUT_MS`：真实 full pipeline 等待任务完成的上限
+- `NOVEL_EVAL_E2E_DISABLE_ARTIFACTS=1`：关闭失败 trace、截图和视频
+- `NOVEL_EVAL_E2E_API_ORIGIN`：provider helper 访问 E2E API 的地址，默认 `http://127.0.0.1:18000`
+- `NOVEL_EVAL_E2E_ALLOW_PROVIDER_RESET`：E2E API 启动脚本内部设置的 runtime key 重置开关，不需要手动配置
+- `NOVEL_EVAL_CAPTURE_README_SCREENSHOT_PATH`：维护 README 截图时指定截图输出路径
+
 ## Smoke 与回归
 
 - 后端基线：`uv run --project apps/api pytest apps/api/tests evals/tests`
@@ -139,6 +150,6 @@ pnpm --dir apps/web test:e2e -- e2e/provider-full-pipeline-real.spec.ts
 - `Provider auth smoke` 失败：优先检查 key、额度、网络和 DeepSeek 上游状态；该接口不会写入任务库。
 - 真实任务失败且显示 schema 校验问题：模型返回结构化结果不满足契约，系统会重试一次并显示明确失败说明。
 - 真实任务超时：缩短正文/大纲，或在 E2E 中延长 `NOVEL_EVAL_E2E_REAL_TASK_TIMEOUT_MS`。
-- 历史结果读取失败：先确认本地 SQLite 是否已经按本次重构清空重建；旧结构或损坏结果不再伪装成成功结果。
+- 历史结果读取失败：先确认本地 SQLite 是否包含不满足当前 schema 的结果；损坏结果不会伪装成成功结果。
 - 想重置本地数据：关闭 API 后删除 `var/novel-evaluation.sqlite3`；下次启动会自动创建空 SQLite 库。
 - 上传失败：当前只支持 `TXT`、`MD`、`DOCX`，并受 `NOVEL_EVAL_UPLOAD_MAX_BYTES` 限制。
